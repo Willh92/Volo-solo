@@ -20,11 +20,11 @@ package org.b3log.solo.service;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Strings;
@@ -184,6 +184,7 @@ public class PermalinkQueryService {
      *         otherwise
      */
     private static boolean isReservedLink(final String requestURI) {
+        if (org.b3log.solo.util.AdminPaths.reserved(requestURI)) return true;
         for (int i = 0; i < RESERVED_LINKS.length; i++) {
             final String reservedLink = RESERVED_LINKS[i];
 

@@ -37,9 +37,9 @@
                         <div class="fn-clear post-meta">
                             <span class="fn-left">
                                 <#if "http://" == comment.commentURL>
-                                <span>${comment.commentName}</span>
+                                <span>${comment.commentName?html}</span>
                                 <#else>
-                                <a href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+                                <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
                                 </#if>
                                 <time>${comment.commentDate?string("yy-MM-dd HH")}</time> 
                             </span>
@@ -68,8 +68,8 @@
                 <ul>
                     <#list mostCommentArticles as article>
                     <li>
-                        <a href="${servePath}${article.articlePermalink}" title="${article.articleTitle}" rel="nofollow">
-                            ${article.articleTitle}
+                        <a href="${servePath}${article.articlePermalink}" title="${(article.articleTitle)?html}" rel="nofollow">
+                            ${(article.articleTitle)?html}
                         </a>
                         <span data-ico="&#xe14e;">
                             ${article.articleCommentCount}
@@ -89,8 +89,8 @@
                 <ul>
                     <#list mostViewCountArticles as article>
                     <li>
-                        <a href="${servePath}${article.articlePermalink}" title="${article.articleTitle}" rel="nofollow">
-                            ${article.articleTitle}
+                        <a href="${servePath}${article.articlePermalink}" title="${(article.articleTitle)?html}" rel="nofollow">
+                            ${(article.articleTitle)?html}
                         </a>
                         <span data-ico="&#xe185;">
                             ${article.articleViewCount}

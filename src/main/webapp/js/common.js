@@ -28,6 +28,111 @@
  * @static
  */
 var Util = {
+  generatedAvatar: function (seed) {
+    var name = String(seed || '').normalize('NFKC').trim(), text = name.toLowerCase(), hash = 2166136261
+    for (var i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0
+    var color = 'hsl(' + (hash % 360) + ',38%,34%)'
+    var words = name.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2').match(/[\p{L}\p{N}]+/gu) || []
+    var first = Array.from(words[0] || '')
+    var initials = !first.length ? '访' : /\p{Script=Han}/u.test(first[0]) ? first[0]
+      : words.length > 1 ? first[0] + Array.from(words[1])[0] : first.slice(0, 2).join('')
+    initials = Array.from(initials.toUpperCase()).slice(0, 2).join('')
+    var escaped = initials.replace(/[&<>"']/g, character => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&apos;'}[character]))
+    return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="' + color + '"/><text x="24" y="24" dy=".35em" text-anchor="middle" fill="#fff" font-family="Segoe UI,Microsoft YaHei,Arial,sans-serif" font-size="' + (Array.from(initials).length > 1 ? 19 : 23) + '" font-weight="500">' + escaped + '</text></svg>')
+  },
+  bindCommentAvatars: function (root) {
+    if (!root) return
+    root.querySelectorAll('img[data-avatar-seed]').forEach(function (image) {
+      function fallback () {
+        image.onerror = null
+        image.src = Util.generatedAvatar(image.getAttribute('data-avatar-seed'))
+      }
+      image.onerror = fallback
+      var source = image.getAttribute('src') || ''
+      if (!source || /\/images\/volo-mark\.svg(?:[?#]|$)/.test(source) || (image.complete && image.naturalWidth === 0)) fallback()
+    })
+  },
+  // Keep the editing runtime on the application's origin, even when a separate
+  // static CDN is configured for skin assets. Render-only method.min.js is insufficient.
+  loadVditor: function (callback) {
+    const owner = window.BoloEditorCore || (window.BoloEditorCore = {})
+    const editable = candidate => typeof candidate === 'function' && typeof candidate.prototype?.getValue === 'function'
+    // A skin can reload method.min.js during PJAX and replace the global with its render-only API.
+    if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
+    const complete = () => editable(globalThis.Vditor)
+    if (complete()) { owner.Editor = Vditor; return callback ? Promise.resolve().then(callback) : Promise.resolve() }
+    if (!owner.vditorLibrary) {
+      owner.vditorLibrary = new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        const schedule = window.BoloNavigation?.setTimeout || setTimeout
+        const cancel = window.BoloNavigation?.clearTimeout || clearTimeout
+        const timeout = schedule(() => finish(new Error('Comment editor load timed out')), 20000)
+        function finish (error) {
+          cancel(timeout)
+          script.onload = script.onerror = null
+          if (error) { script.remove(); reject(error) } else { owner.Editor = Vditor; resolve() }
+        }
+        script.src = Label.servePath + '/js/lib/vditor/dist/index.min.js'
+        script.setAttribute('data-bolo-navigation', '')
+        script.async = true
+        script.onload = () => finish(complete() ? null : new Error('Comment editor unavailable'))
+        script.onerror = () => finish(new Error('Comment editor load failed'))
+        document.head.appendChild(script)
+      }).then(() => { owner.vditorLibrary = null }, error => { owner.vditorLibrary = null; throw error })
+    }
+    return callback ? owner.vditorLibrary.then(callback) : owner.vditorLibrary
+  },
+  loadVditorRuntime: function () {
+    const languages = ['de_DE', 'en_US', 'es_ES', 'fr_FR', 'ja_JP', 'ko_KR', 'pt_BR', 'ru_RU', 'sv_SE', 'vi_VN', 'zh_CN', 'zh_TW']
+    const requested = Label.localeString || Label.langLabel
+    const language = languages.includes(requested) ? requested : 'zh_CN'
+    const assets = window.BoloEditorAssets || (window.BoloEditorAssets = new Map())
+    const translations = window.BoloEditorLanguages || (window.BoloEditorLanguages = new Map())
+    const load = (part, id, ready, complete) => {
+      const url = Label.servePath + '/js/lib/vditor/dist/js/' + part
+      if (ready()) {
+        if (!document.getElementById(id)) {
+          const marker = document.createElement('script')
+          marker.id = id
+          marker.setAttribute('data-bolo-navigation', '')
+          document.head.appendChild(marker)
+        }
+        return Promise.resolve()
+      }
+      if (assets.has(url)) return assets.get(url)
+      const promise = new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        const schedule = window.BoloNavigation?.setTimeout || setTimeout
+        const cancel = window.BoloNavigation?.clearTimeout || clearTimeout
+        const timer = schedule(() => finish(new Error('Editor runtime load timed out')), 20000)
+        function finish (error) {
+          cancel(timer)
+          script.onload = script.onerror = null
+          if (error) { script.remove(); reject(error); return }
+          complete?.()
+          if (!ready()) { script.remove(); reject(new Error('Editor runtime unavailable')); return }
+          script.id = id
+          resolve()
+        }
+        script.src = url
+        script.async = true
+        script.setAttribute('data-bolo-navigation', '')
+        script.onload = () => finish()
+        script.onerror = () => finish(new Error('Editor runtime load failed'))
+        document.head.appendChild(script)
+      }).catch(error => { assets.delete(url); throw error })
+      assets.set(url, promise)
+      return promise
+    }
+    // The constructor, parser and language load in parallel and are shared by every editor.
+    return Promise.all([
+      this.loadVditor(),
+      load('lute/lute.min.js', 'vditorLuteScript', () => typeof window.Lute?.New === 'function'),
+      load('i18n/' + language + '.js', 'vditorI18nScript' + language,
+        () => translations.has(language),
+        () => { if (window.VditorI18n) translations.set(language, window.VditorI18n) }),
+    ]).then(() => ({i18n: translations.get(language)}))
+  },
   isArticlePage: function (href) {
     var isArticle = true
     if (href.indexOf(Label.servePath + '/tags/') > -1) {
@@ -61,6 +166,7 @@ var Util = {
    * @param cb 除文章外的其他页面加载回调
    */
   initPjax: function (cb) {
+    if (window.BoloNavigation && window.BoloNavigation.publicPages) return
     if ($('#pjax').length === 1) {
       $.pjax({
         selector: 'a',
@@ -77,6 +183,8 @@ var Util = {
             return true
           }
           if (href === Label.servePath + '/rss.xml' ||
+            href.indexOf(Label.servePath + '/start') === 0 ||
+            href.indexOf(Label.servePath + '/logout') === 0 ||
             href.indexOf(Label.servePath + '/admin-index.do') > -1) {
             return true
           }
@@ -158,7 +266,7 @@ var Util = {
     Vditor.highlightRender({
       style: Label.hljsStyle,
       enable: !Label.luteAvailable,
-    }, document)
+    }, document, Label.servePath + '/js/lib/vditor')
   },
   /**
    * 按需加载数学公式、流程图、代码复制、五线谱、多媒体、图表
@@ -167,7 +275,7 @@ var Util = {
   parseMarkdown: function () {
     if (typeof Vditor !== 'function') {
       Util.addScript(
-          'https://file.fishpi.cn/vditor/3.8.13/dist/method.min.js',
+          Label.servePath + '/js/lib/vditor/dist/method.min.js',
           'vditorPreviewScript')
     }
 
@@ -175,17 +283,18 @@ var Util = {
       enable: !Label.luteAvailable,
       lineNumber: Label.showCodeBlockLn,
       style: Label.hljsStyle,
-    }, document);
+    }, document, Label.servePath + '/js/lib/vditor');
 
-    Vditor.codeRender(document.body, Label.langLabel);
-    Vditor.graphvizRender(document.body);
-    Vditor.mathRender(document.body);
-    Vditor.abcRender();
-    Vditor.chartRender();
-    Vditor.mindmapRender();
+    const cdn = Label.servePath + '/js/lib/vditor';
+    Vditor.codeRender(document.body);
+    Vditor.graphvizRender(document.body, cdn);
+    Vditor.mathRender(document.body, { cdn: cdn });
+    Vditor.abcRender(document.body, cdn);
+    Vditor.chartRender(document.body, cdn, 'classic');
+    Vditor.mindmapRender(document.body, cdn, 'classic');
     Vditor.mediaRender(document.body);
-    Vditor.mermaidRender(document.body);
-    Vditor.flowchartRender(document.body);
+    Vditor.mermaidRender(document.body, cdn, 'classic');
+    Vditor.flowchartRender(document.body, cdn);
   },
   /**
    * @description IE6/7，跳转到 kill-browser 页面
@@ -283,7 +392,7 @@ var Util = {
    */
   initDebugInfo: function () {
     /* console.log(
-      '%cBolo%c\n  🎸一款基于Solo的博客系统，专为程序员设计。' + Label.version + ' © ' +
+      '%cVolo%c\n  🎸一个从 Bolo 分支开发的博客系统。' + Label.version + ' © ' +
       (new Date).getFullYear(),
       'font-size:96px;color:#3b3e43', 'font-size:12px;color:rgba(0,0,0,0.38);') */
   },
@@ -367,6 +476,28 @@ var Util = {
     }
     return format
   },
+}
+if (!window.voloContactDisclosureBound && typeof document.addEventListener === 'function') {
+  window.voloContactDisclosureBound = true;
+  const closeContactOutside = function (event) {
+    document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
+      if (!contact.contains(event.target)) contact.open = false;
+    });
+  };
+  const closeContactWithEscape = function (event) {
+    if (event.key !== 'Escape') return;
+    document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
+      contact.open = false;
+      contact.querySelector('summary').focus();
+    });
+  };
+  document.addEventListener('click', closeContactOutside);
+  document.addEventListener('keydown', closeContactWithEscape);
+  window.BoloNavigation?.onLeave(function () {
+    document.removeEventListener('click', closeContactOutside);
+    document.removeEventListener('keydown', closeContactWithEscape);
+    window.voloContactDisclosureBound = false;
+  });
 }
 if (!Cookie) {
   /**

@@ -1,44 +1,36 @@
-name: Upload-Bolo-War-To-Upyun
+name: Upload-Bolo-Netty-Zip-To-Upyun
 
 on:
   release:
     types:
       - published
   workflow_dispatch:
-    inputs:
-      test_tag:
-        description: 'Optional tag for manual upload (will override release tag)'
-        required: false
-        default: ''
+permissions:
+  contents: read
 jobs:
-  upload-war:
+  upload-zip:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Java and Maven
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '17'
+          cache: maven
 
-      - name: Build with Maven (skip tests)
-        run: mvn package -DskipTests -Pci
-
-      - name: Determine tag or fallback
-        id: tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+      - name: Build frontend and standalone distribution
         run: |
-          if [ -n "${{ github.event.inputs.test_tag }}" ]; then
-            echo "Using manual tag: ${{ github.event.inputs.test_tag }}"
-            echo "tag_name=${{ github.event.inputs.test_tag }}" >> $GITHUB_OUTPUT
-          elif [ -n "${{ github.event.release.tag_name }}" ]; then
-            echo "Using release tag: ${{ github.event.release.tag_name }}"
-            echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "No tag found, using default 'manual-run'"
-            echo "tag_name=manual-run" >> $GITHUB_OUTPUT
-          fi
+          corepack enable
+          yarn install --frozen-lockfile --ignore-scripts --non-interactive
+          yarn build
+          mvn --batch-mode --no-transfer-progress -Pci -Dlicense.skip=true verify
 
       - name: Extract version from pom.xml
         id: version
@@ -49,16 +41,20 @@ jobs:
           echo "Extracted version: $version"
           echo "zip_name=$zip_name" >> $GITHUB_OUTPUT
 
-      - name: Zip bolo.war with versioned name
+      - name: Prepare versioned standalone ZIP
+        env:
+          ZIP_NAME: ${{ steps.version.outputs.zip_name }}
         run: |
           mkdir -p zip-output
-          cp target/bolo.war zip-output/
-          cd zip-output
-          zip "${{ steps.version.outputs.zip_name }}" bolo.war
+          cp target/bolo-netty.zip "zip-output/$ZIP_NAME"
 
       - name: Upload bolo_*.zip to UpYun
+        env:
+          ZIP_NAME: ${{ steps.version.outputs.zip_name }}
+          UPLOAD_URL: ${{ secrets.UPYUN_UPLOAD_URL }}
+          UPYUN_OPERATOR: ${{ secrets.UPYUN_OPERATOR }}
+          UPYUN_PASSWORD: ${{ secrets.UPYUN_PASSWORD }}
         run: |
-          echo "Uploading to URL: ${{ secrets.UPYUN_UPLOAD_URL }}/${{ steps.version.outputs.zip_name }}"
-          curl --silent --show-error -T "zip-output/${{ steps.version.outputs.zip_name }}" \
-            ${{ secrets.UPYUN_UPLOAD_URL }}/${{ steps.version.outputs.zip_name }} \
-            -u "${{ secrets.UPYUN_OPERATOR }}:${{ secrets.UPYUN_PASSWORD }}"
+          test -n "$UPLOAD_URL" && test -n "$UPYUN_OPERATOR" && test -n "$UPYUN_PASSWORD"
+          curl --fail-with-body --silent --show-error -T "zip-output/$ZIP_NAME" \
+            "${UPLOAD_URL%/}/$ZIP_NAME" -u "$UPYUN_OPERATOR:$UPYUN_PASSWORD"

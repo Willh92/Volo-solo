@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/88250/solo/commit/4767c0b64eff170a3cf55c9b43cc6a9111f7b8a4",
+  "license": "LICENSE",
+  "models": "See README.md for original model authors and usage terms.",
+  "adaptations": [
+    "Merged Pio/Tia textures into one local assets root",
+    "Rewrote model and texture URLs to bundled relative paths",
+    "Local tips and chat; no third-party runtime services",
+    "Local SDK base, safe storage, WebGL/timer/XHR disposal for PJAX"
+  ],
+  "modelsIncluded": 26
+}

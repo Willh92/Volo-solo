@@ -17,22 +17,24 @@
  */
 package org.b3log.solo.processor;
 
+import org.b3log.solo.util.AdminPaths;
+
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.util.Requests;
 import org.b3log.solo.bolo.tool.MD5Utils;
 import org.b3log.solo.model.Option;
@@ -40,11 +42,14 @@ import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.service.*;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.util.LoginThrottle;
+import org.apache.commons.lang3.StringUtils;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -64,8 +69,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 2.9.5
  */
-@RequestProcessor
+@Singleton
 public class OAuthProcessor {
+    private static final LoginThrottle LOGIN_THROTTLE = new LoginThrottle();
 
     /**
      * Logger.
@@ -119,13 +125,35 @@ public class OAuthProcessor {
      * @param context
      */
     @RequestProcessing(value = "/oauth/bolo/login", method = HttpMethod.POST)
-    public void adminLogin(final RequestContext context) {
-        HttpServletResponse response = context.getResponse();
-        HttpServletRequest request = context.getRequest();
-        String username = request.getParameter("username");
-        String srcPassword = request.getParameter("password");
-        String password = MD5Utils.stringToMD5Twice(srcPassword);
+    public synchronized void adminLogin(final RequestContext context) {
+        final Request request = context.getRequest();
+        final String username = request.getParameter("username");
+        final String srcPassword = request.getParameter("password");
+        context.getResponse().setHeader("Cache-Control", "no-store");
+        final String clientAddress = LoginThrottle.clientAddress(request);
+        final LoginThrottle.Attempt attempt = LOGIN_THROTTLE.acquire(clientAddress, username);
+        if (attempt.retryAfter() > 0) {
+            context.getResponse().setHeader("Retry-After", String.valueOf(attempt.retryAfter()));
+            context.setStatus(429);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "登录尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
+            return;
+        }
+        if ((username != null && username.length() > 128) || (srcPassword != null && srcPassword.length() > 1024)) {
+            loginResult(context, false, null, "用户名或密码格式不正确。", 400);
+            return;
+        }
+        if (StringUtils.isBlank(username) || StringUtils.isEmpty(srcPassword)) {
+            loginResult(context, false, null, "请填写用户名和密码。", 400);
+            return;
+        }
         try {
+            final String password = MD5Utils.stringToMD5Twice(srcPassword);
+            if ((UpgradeService.boloFastMigration || !initService.isInited())
+                    && !srcPassword.matches("(?s)(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}")) {
+                loginResult(context, false, null, "请使用 8–30 位、包含字母和数字的密码。", 400);
+                return;
+            }
             if (UpgradeService.boloFastMigration) {
                 // 快速迁移程序
                 final JSONObject preference = optionQueryService.getPreference();
@@ -136,39 +164,51 @@ public class OAuthProcessor {
                 } else {
                     fastMigrate(currentVer, username, password, context);
                 }
-                context.sendRedirect(Latkes.getServePath() + "/");
+                Solos.login(userQueryService.getAdmin(), context.getResponse());
+                LOGIN_THROTTLE.succeeded(attempt);
+                loginResult(context, true, AdminPaths.panel() + "#main", "迁移完成。", 200);
             } else if (!initService.isInited()) {
                 LOGGER.log(Level.INFO, "Bolo initializing...");
                 final JSONObject initReq = new JSONObject();
                 initReq.put(User.USER_NAME, username);
                 initReq.put(UserExt.USER_B3_KEY, password);
-                initReq.put(UserExt.USER_AVATAR, "https://pic.stackoverflow.wiki/uploadImages/117/136/73/84/2020/08/03/19/59/2c12286b-91a0-478e-ba47-edaa21f19476.png");
+                initReq.put(UserExt.USER_AVATAR, Latkes.getContextPath() + "/images/volo-mark.svg");
                 initReq.put(UserExt.USER_GITHUB_ID, "000000");
                 initService.init(initReq);
-                context.sendRedirect(Latkes.getServePath() + "/");
+                Solos.login(userQueryService.getAdmin(), context.getResponse());
+                LOGIN_THROTTLE.succeeded(attempt);
+                loginResult(context, true, AdminPaths.panel() + "#main", "初始化完成。", 200);
             } else {
-                try {
-                    JSONObject user = userQueryService.getUserByName(username);
-                    String cUser = user.optString(User.USER_NAME);
-                    String cPass = user.optString(UserExt.USER_B3_KEY);
-                    // 非管理员不允许登录
-                    if (!Role.ADMIN_ROLE.equals(user.getString(User.USER_ROLE)) && !Role.DEFAULT_ROLE.equals(user.getString(User.USER_ROLE))) {
-                        context.sendRedirect(Latkes.getServePath() + "/start?status=error");
-                    }
-                    // 用户名密码校验
-                    if (username.equals(cUser) && password.equals(cPass)) {
-                        Solos.login(user, context.getResponse());
-                        LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Bolo auth", username, Requests.getRemoteAddr(request));
-                        context.sendRedirect(Latkes.getServePath() + "/admin-index.do#main");
-                    } else {
-                        context.sendRedirect(Latkes.getServePath() + "/start?status=error");
-                    }
-                } catch (NullPointerException NPE) {
-                    context.sendRedirect(Latkes.getServePath() + "/start?status=error");
+                final JSONObject user = userQueryService.getUserByName(username);
+                if (user == null || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
+                        && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))
+                        || !username.equals(user.optString(User.USER_NAME))
+                        || !password.equals(user.optString(UserExt.USER_B3_KEY))) {
+                    loginResult(context, false, null, "用户名或密码错误。", 401);
+                    return;
                 }
+                Solos.login(user, context.getResponse());
+                LOGIN_THROTTLE.succeeded(attempt);
+                LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Volo auth", username, clientAddress);
+                loginResult(context, true, AdminPaths.panel() + "#main", "登录成功。", 200);
             }
         } catch (final Exception e) {
-            LOGGER.log(Level.WARN, "Can not write cookie", e);
+            LOGGER.log(Level.ERROR, "Bolo login failed", e);
+            loginResult(context, false, null, "暂时无法登录，请稍后重试。", 500);
+        }
+    }
+
+    private void loginResult(final RequestContext context, final boolean success, final String target,
+                             final String message, final int status) {
+        final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
+                || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json");
+        if (json) {
+            context.setStatus(status);
+            final JSONObject result = new JSONObject().put("sc", success).put("code", success ? 0 : 1).put("msg", message);
+            if (success) result.put("redirect", Latkes.getContextPath() + target);
+            context.renderJSON(result);
+        } else {
+            context.sendRedirect(Latkes.getServePath() + (success ? target : AdminPaths.login() + "?status=error"));
         }
     }
 
@@ -185,29 +225,25 @@ public class OAuthProcessor {
     }
 
     private void migrateLow(int version, String username, String password, final RequestContext context) throws SQLException {
-        Connection connection = Connections.getConnection();
-        Statement statement = connection.createStatement();
-        String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
-        // 清空表
-        try {
-            statement.executeUpdate("DELETE FROM `" + tablePrefix + "category`;");
-        } catch (Exception ignored) {
+        final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
+        try (Connection connection = Connections.getConnection()) {
+            try {
+                migrateAdministrator(connection, tablePrefix, username, password, Latkes.getServePath());
+                // Category tables may be absent in older Solo schemas.
+                try (Statement statement = connection.createStatement()) {
+                    for (final String table : List.of("category", "category_tag")) {
+                        try {
+                            statement.executeUpdate("DELETE FROM `" + tablePrefix.replace("`", "``") + table + "`");
+                        } catch (SQLException ignored) {
+                        }
+                    }
+                }
+                connection.commit();
+            } catch (SQLException failure) {
+                try { connection.rollback(); } catch (SQLException rollback) { failure.addSuppressed(rollback); }
+                throw failure;
+            }
         }
-        try {
-            statement.executeUpdate("DELETE FROM `" + tablePrefix + "category_tag`;");
-        } catch (Exception ignored) {
-        }
-        try {
-            statement.executeUpdate("DELETE FROM `" + tablePrefix + "user` WHERE userRole = 'adminRole';");
-        } catch (Exception ignored) {
-        }
-        try {
-            statement.executeUpdate("INSERT INTO `" + tablePrefix + "user` ( `oId`, `userName`, `userURL`, `userRole`, `userAvatar`, `userB3Key`, `userGitHubId` ) VALUES ( 'default', '" + username + "', '" + Latkes.getServePath() + "', 'adminRole', 'https://pic.stackoverflow.wiki/uploadImages/117/136/73/84/2020/08/03/19/59/2c12286b-91a0-478e-ba47-edaa21f19476.png', '" + password + "', 'none' );");
-        } catch (Exception ignored) {
-        }
-        statement.close();
-        connection.commit();
-        connection.close();
         // 改皮肤
         UpgradeService.boloFastMigration = false;
         BeanManager beanManager = BeanManager.getInstance();
@@ -220,8 +256,23 @@ public class OAuthProcessor {
         // 升级
         final UpgradeService upgradeService = beanManager.getReference(UpgradeService.class);
         upgradeService.upgrade();
-        // 跳转
-        context.sendRedirect(Latkes.getServePath() + "/");
+    }
+
+    static void migrateAdministrator(final Connection connection, final String tablePrefix, final String username,
+                                     final String password, final String site) throws SQLException {
+        final String table = "`" + tablePrefix.replace("`", "``") + "user`";
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DELETE FROM " + table + " WHERE userRole = 'adminRole'");
+        }
+        try (PreparedStatement statement = connection.prepareStatement("INSERT INTO " + table
+                + " (oId, userName, userURL, userRole, userAvatar, userB3Key, userGitHubId)"
+                + " VALUES ('default', ?, ?, 'adminRole', ?, ?, 'none')")) {
+            statement.setString(1, username);
+            statement.setString(2, site);
+            statement.setString(3, site + "/images/volo-mark.svg");
+            statement.setString(4, password);
+            statement.executeUpdate();
+        }
     }
 
     private void migrateHigh(int version) throws SQLException, RepositoryException {

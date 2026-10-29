@@ -19,16 +19,16 @@ package org.b3log.solo.bolo.prop;
 
 import io.github.biezhi.ome.OhMyEmail;
 import io.github.biezhi.ome.SendMailException;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.util.Solos;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 
 /**
  * <h3>bolo-solo</h3>
@@ -37,9 +37,13 @@ import javax.servlet.http.HttpServletResponse;
  * @author : https://github.com/adlered
  * @date : 2019-12-20 20:02
  **/
-@RequestProcessor
+@Singleton
 public class MailProcessor {
     private static final Logger LOGGER = Logger.getLogger(MailProcessor.class);
+    private static final java.util.concurrent.ThreadPoolExecutor MAILS = new java.util.concurrent.ThreadPoolExecutor(
+            1, 2, 30, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.ArrayBlockingQueue<>(64), task -> {
+                final Thread thread = new Thread(task, "volo-mail"); thread.setDaemon(true); return thread;
+            });
 
     /**
      * 发送普通邮件
@@ -51,60 +55,38 @@ public class MailProcessor {
      * @throws SendMailException
      */
     public static void localSendMailMethod(String subject, String from, String to, String html) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
+        if (!MailService.isConfigured() || to == null || to.isBlank()) return;
+        try {
+            MAILS.execute(() -> {
+                if (!MailService.isConfigured()) return;
                 try {
-                    OhMyEmail.subject(subject)
-                            .from(from)
-                            .to(to)
-                            .html(html)
-                            .send();
-                    LOGGER.log(Level.INFO, "Mail has sent [subject=" + subject + ", from=" + from + ", to=" + to + ", html=" + html + "]");
-                } catch (SendMailException SME) {
-                    LOGGER.log(Level.INFO, "Mail sent failed [cause=" + SME.getCause() + ", subject=" + subject + ", from=" + from + ", to=" + to + ", html=" + html + "]");
+                    OhMyEmail.subject(subject).from(from).to(to).html(html).send();
+                    LOGGER.log(Level.DEBUG, "Comment notification sent.");
+                } catch (SendMailException failure) {
+                    LOGGER.log(Level.WARN, "Comment notification failed. Check SMTP settings.");
                 }
-            }
-        }).start();
+            });
+        } catch (java.util.concurrent.RejectedExecutionException busy) {
+            LOGGER.log(Level.WARN, "Comment notification queue is full; the comment is already saved.");
+        }
     }
 
     /*
         === 静态方法区 ===
      */
 
-    @RequestProcessing(value = "/prop/mail/send", method = {HttpMethod.GET})
+    @RequestProcessing(value = "/prop/mail/send", method = {HttpMethod.POST})
     public void sendMail(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-
-            return;
-        }
-
-        HttpServletRequest request = context.getRequest();
-        String subject = request.getParameter("subject");
-        String from = request.getParameter("from");
-        String to = request.getParameter("to");
-        String html = request.getParameter("html");
-
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         try {
-            OhMyEmail.subject(subject)
-                    .from(from)
-                    .to(to)
-                    .html(html)
-                    .send();
-
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg("Mail has sent.");
-            LOGGER.log(Level.INFO, "Mail has sent [subject=" + subject + ", from=" + from + ", to=" + to + ", html=" + html + "]");
-
-            return;
-        } catch (SendMailException SME) {
-            LOGGER.log(Level.ERROR, "Send mail failed! Please check your MailBox Settings.");
-
-            context.renderJSON().renderCode(500);
-            context.renderJSON().renderMsg("Send mail failed! Please check your MailBox Settings.");
-
-            return;
-        }
+            final var payload = context.requestJSON();
+            final String subject = payload.optString("subject"), from = payload.optString("from"), to = payload.optString("to"), html = payload.optString("html");
+            if (subject.length() > 200 || from.length() > 200 || to.length() > 254 || !to.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+") || html.length() > 50000) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "邮件参数不正确。"); return;
+            }
+            if (!MailService.isConfigured()) { org.b3log.solo.util.AdminRequests.reject(context, 400, "请先配置通知邮箱。"); return; }
+            localSendMailMethod(subject, from, to, html);
+            context.renderJSON(new org.json.JSONObject().put("sc", true).put("msg", "已加入邮件发送队列。"));
+        } catch (RuntimeException invalid) { org.b3log.solo.util.AdminRequests.reject(context, 400, "邮件请求格式不正确。"); }
     }
 }

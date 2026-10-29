@@ -17,17 +17,17 @@
  */
 package org.b3log.solo.processor;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
-import org.b3log.latke.servlet.DispatcherServlet;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.handler.Handler;
+import org.b3log.solo.web.Routes;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.function.Handler;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
@@ -37,7 +37,7 @@ import org.b3log.solo.service.PermalinkQueryService;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 
 /**
  * Article permalink  handler.
@@ -91,7 +91,8 @@ public class PermalinkHandler implements Handler {
             }
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Processes article permalink handler failed", e);
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
+            context.abort();
 
             return;
         }
@@ -100,10 +101,12 @@ public class PermalinkHandler implements Handler {
         if (Solos.needViewPwd(context, article)) {
             try {
                 context.sendRedirect(Latkes.getServePath() + "/console/article-pwd?articleId=" + article.optString(Keys.OBJECT_ID));
+                context.abort();
 
                 return;
             } catch (final Exception e) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
+                context.abort();
 
                 return;
             }
@@ -113,7 +116,8 @@ public class PermalinkHandler implements Handler {
         final JSONObject preference = optionQueryService.getPreference();
         final boolean allowVisitDraftViaPermalink = preference.getBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
         if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS) && !allowVisitDraftViaPermalink) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
+            context.abort();
 
             return;
         }
@@ -127,7 +131,7 @@ public class PermalinkHandler implements Handler {
      *
      * @param context the specified request context
      * @param article the specified article
-     * @see DispatcherServlet#result(RequestContext)
+     * @see Routes#result(RequestContext)
      */
     private void dispatchToArticleProcessor(final RequestContext context, final JSONObject article) {
         context.attr(Article.ARTICLE, article);

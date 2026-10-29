@@ -17,8 +17,8 @@
  */
 package org.b3log.solo.model.atom;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 
 import java.util.*;
 
@@ -310,15 +310,15 @@ public final class Entry {
         final StringBuilder stringBuilder = new StringBuilder();
 
         stringBuilder.append(START_ENTRY_ELEMENT).append(START_TITLE_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(title));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(title));
         stringBuilder.append(END_TITLE_ELEMENT);
 
         stringBuilder.append(START_AUTHOR_ELEMENT);
         stringBuilder.append(START_NAME_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(author));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(author));
         stringBuilder.append(END_NAME_ELEMENT);
         stringBuilder.append(START_URI_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(uri));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(uri));
         stringBuilder.append(END_URI_ELEMENT);
         stringBuilder.append(END_AUTHOR_ELEMENT);
 
@@ -326,10 +326,10 @@ public final class Entry {
             stringBuilder.append(category.toString());
         }
 
-        stringBuilder.append(LINK_ELEMENT.replace(LINK_VARIABLE, StringEscapeUtils.escapeXml(link)));
+        stringBuilder.append(LINK_ELEMENT.replace(LINK_VARIABLE, StringEscapeUtils.escapeXml11(link)));
 
         stringBuilder.append(START_ID_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(id));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(id));
         stringBuilder.append(END_ID_ELEMENT);
 
         stringBuilder.append(START_UPDATED_ELEMENT);
@@ -338,7 +338,7 @@ public final class Entry {
         stringBuilder.append(END_UPDATED_ELEMENT);
 
         stringBuilder.append(START_SUMMARY_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(summary));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(summary));
         stringBuilder.append(END_SUMMARY_ELEMENT);
 
         stringBuilder.append(END_ENTRY_ELEMENT);

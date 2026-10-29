@@ -27,6 +27,7 @@
  */
 var NexT = {
   init: function () {
+    this.initBackToTop();
     $('.sidebar-toggle').click(function () {
       var $sidebar = $('.sidebar');
       if ($(this).hasClass('sidebar-active')) {
@@ -59,6 +60,12 @@ var NexT = {
     });
 
     $(document).ready(function () {
+      // Fade the content without moving chapters after the reader starts navigating.
+      $('.main').animate({opacity: 1}, 400, function () {
+        if ($('.article__toc li').length > 0 && $(window).width() > 1000) {
+          $('.sidebar-toggle').click();
+        }
+      });
       setTimeout(function () {
         // logo animate
         $('.logo-wrap').css('opacity', 1);
@@ -71,14 +78,6 @@ var NexT = {
             $('.menu').css('opacity', 1).animate({
               'margin-top': '15px'
             });
-            $('.main').css('opacity', 1).animate({
-              'top': '0'
-            }, function () {
-              // 当有文章页面有目录时，回调不放这里，侧边栏就会一片空白
-              if ($('.article__toc li').length > 0 && $(window).width() > 1000) {
-                $('.sidebar-toggle').click();
-              }
-            });
           });
 
 
@@ -88,6 +87,29 @@ var NexT = {
           'right': '0'
         });
       }, 500);
+    });
+  },
+  initBackToTop: function () {
+    var control = document.querySelector('.back-to-top');
+    if (!control) return;
+    control.setAttribute('role', 'button');
+    control.setAttribute('aria-label', '返回顶部');
+    function update () {
+      var visible = window.scrollY > 240;
+      control.classList.toggle('is-visible', visible);
+      control.setAttribute('aria-hidden', String(!visible));
+      control.tabIndex = visible ? 0 : -1;
+      control.inert = !visible;
+    }
+    function onKey (event) {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); Util.goTop(); }
+    }
+    window.addEventListener('scroll', update, {passive: true});
+    control.addEventListener('keydown', onKey);
+    update();
+    window.BoloNavigation?.onLeave(function () {
+      window.removeEventListener('scroll', update);
+      control.removeEventListener('keydown', onKey);
     });
   },
   initArticle: function () {

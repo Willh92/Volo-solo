@@ -19,34 +19,38 @@
 -->
 <#include "../common-template/macro-common_head.ftl"/>
 <!DOCTYPE html>
-<html>
+<html data-bolo-admin-url="${(adminPanelPath!'/admin-index.do')?html}" data-bolo-login-url="${(adminLoginPath!'/start')?html}" data-bolo-admin-pages="${(adminPageBase!'/')?html}">
     <head>
         <@head title="${adminConsoleLabel} - ${blogTitle}">
             <link type="text/css" rel="stylesheet" href="${staticServePath}/scss/admin.css?${staticResourceVersion}" />
+            <link type="text/css" rel="stylesheet" href="${staticServePath}/scss/console-theme.css?${staticResourceVersion}" />
             <link type="text/css" rel="stylesheet" href="${staticServePath}/js/lib/Chart.min.css" />
             <meta name="robots" content="fn__none" />
-            <link href="https://ftp.stackoverflow.wiki/bolo/start/css/font-awesome.min.css" rel="stylesheet">
+            <link href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css" rel="stylesheet">
         </@head>
     </head>
-    <body onhashchange="admin.setCurByHash();">
-        <div class="tip"><span id="loadMsg">${loadingLabel}</span></div>
-        <div class="tip tip-msg"><span id="tipMsg"></span></div>
+    <body class="bolo-console" onhashchange="admin.setCurByHash();">
+        <div class="tip"><span id="tipMsg" role="alert"></span></div>
         <div id="allPanel">
             <div id="top">
-                <a href="${servePath}" target="_blank" class="hover">
-                    ${blogTitle}
+                <a href="${servePath}/" target="_blank" rel="noopener" class="console-brand">
+                    <span class="console-brand-mark">V.</span><span>Volo<small>创作与管理</small></span>
                 </a>
-                <span class="icon-unordered-list top__menu fn__none"
-                      onclick="admin.toggleMenu()"></span>
-                <span class="fn__right">
-                    <a href="${servePath}" title='${indexLabel}'>
-                        <div class="avatar" style="background-image: url(${gravatar})"></div>
-                        ${userName}
+                <button class="console-menu" type="button" onclick="admin.toggleMenu()" aria-label="展开侧栏" aria-controls="tabs" aria-expanded="false"><i class="icon-unordered-list" aria-hidden="true"></i></button>
+                <div class="console-location"><span>WORKSPACE</span><div class="console-title-line"><h1 id="consolePageTitle">${adminIndexLabel}</h1><span id="loadMsg" role="status" aria-live="polite">${loadingLabel}</span></div></div>
+                <div class="console-actions">
+                    <div data-bolo-theme-slot></div>
+                    <div id="consoleAccent"></div>
+                    <a href="${servePath}/" class="console-view-blog" title="${indexLabel}"><i class="fa fa-external-link" aria-hidden="true"></i><span>查看博客</span></a>
+                    <a href="${servePath}/" class="console-user" title="${userName?html}">
+                        <img class="avatar" src="${gravatar?html}" alt="" onerror="this.onerror=null;this.src='${staticServePath}/images/volo-mark.svg'"/>
+                        <span>${userName?html}</span>
                     </a>
-                    <a href='javascript:admin.logout();' title='${logoutLabel}'>${logoutLabel}</a>
-                </span>
+                    <button type="button" class="console-logout" onclick="admin.logout()" title="${logoutLabel}" aria-label="${logoutLabel}"><i class="fa fa-sign-out" aria-hidden="true"></i></button>
+                </div>
             </div>
             <div id="tabs">
+                <div class="console-nav-caption">内容与站点</div>
                 <ul>
                     <li>
                         <div id="tabs_main">
@@ -162,13 +166,14 @@
                     </li>
                     <li>
                         <div>
-                            <a href="https://doc.stackoverflow.wiki/web/#/7?page_id=46" target="_blank">
+                            <a href="https://github.com/Willh92/Volo-solo#readme" target="_blank" rel="noopener noreferrer">
                                 <i class="fa fa-question-circle"></i>
                                 ${helpLabel}
                             </a>
                         </div>
                     </li>
                 </ul>
+                <div class="console-nav-footer"><span class="console-status-dot"></span> VOLO ${boloVersion}</div>
             </div>
             <div class="tabs__bg" onclick="admin.toggleMenu()"></div>
             <div id="tabsPanel">
@@ -243,18 +248,18 @@
                     labels: [
                         <#if tagsTop5?exists && (tagsTop5?size > 0)>
                             <#list tagsTop5 as tag>
-                                "${tag.tagTitle}",
+                                "${tag.tagTitle?js_string}",
                             </#list>
                         </#if>
                     ]
                 };
             </script>
             <div class="footer">
-                Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a> <span id="version">${boloVersion}</span>
+                Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener">Volo</a> <span id="version">${boloVersion}</span>
             </div>
         </div>
         <script src="${staticServePath}/js/lib/compress/admin-lib.min.js"></script>
-        <script src="https://file.fishpi.cn/vditor/3.8.13/dist/index.min.js"></script>
+        <script src="${servePath}/js/lib/vditor/dist/index.min.js?${staticResourceVersion}"></script>
         <script src="${staticServePath}/js/common.js"></script>
         <#if "" == miniPostfix>
         <script src="${staticServePath}/js/admin/admin.js"></script>
@@ -286,6 +291,10 @@
         <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
         <script>
             function noBtnSwal(msg, timer) {
+                if (timer == null) {
+                    swal({text: String(msg == null ? '' : msg), button: '确定'});
+                    return;
+                }
                 if (timer === 0) {
                     swal({
                         text: msg,
@@ -301,9 +310,10 @@
             }
         </script>
         <#include "admin-label.ftl">
-        ${plugins}
+        <script src="${staticServePath}/js/console-theme.js?${staticResourceVersion}"></script>
         <script>
             admin.inited();
         </script>
+        ${plugins}
     </body>
 </html>

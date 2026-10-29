@@ -17,17 +17,17 @@
  */
 package org.b3log.solo.processor.console;
 
-import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Link;
 import org.b3log.solo.service.LinkMgmtService;
@@ -43,7 +43,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.4.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAdminAuthAdvice.class)
 public class LinkConsole {
 
@@ -95,12 +95,12 @@ public class LinkConsole {
             final String linkId = context.pathVar("id");
             linkMgmtService.removeLink(linkId);
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }
@@ -143,13 +143,13 @@ public class LinkConsole {
             final JSONObject requestJSON = context.requestJSON();
             linkMgmtService.updateLink(requestJSON);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -192,13 +192,13 @@ public class LinkConsole {
 
             linkMgmtService.changeOrder(linkId, direction);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -243,12 +243,12 @@ public class LinkConsole {
 
             ret.put(Keys.OBJECT_ID, linkId);
             ret.put(Keys.MSG, langPropsService.get("addSuccLabel"));
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(ret);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("addFailLabel"));
         }
@@ -292,20 +292,20 @@ public class LinkConsole {
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/links/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
             final JSONObject result = linkQueryService.getLinks(requestJSONObject);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
 
             final JSONArray links = result.optJSONArray(Link.LINKS);
             for (int i = 0; i < links.length(); i++) {
                 final JSONObject link = links.optJSONObject(i);
                 String title = link.optString(Link.LINK_TITLE);
-                title = StringEscapeUtils.escapeXml(title);
+                title = StringEscapeUtils.escapeXml11(title);
                 link.put(Link.LINK_TITLE, title);
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -339,17 +339,17 @@ public class LinkConsole {
             final String linkId = context.pathVar("id");
             final JSONObject result = linkQueryService.getLink(linkId);
             if (null == result) {
-                renderer.setJSONObject(new JSONObject().put(Keys.STATUS_CODE, false));
+                renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false));
 
                 return;
             }
 
             renderer.setJSONObject(result);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }

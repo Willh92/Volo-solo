@@ -20,9 +20,9 @@
 <footer class="footer">
   <div class="footer__container">
     © ${year} <a href="${servePath}">${blogTitle}</a> ${footerContent}<br/>
-    Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
-    Theme <a rel="friend" href="https://github.com/zjhch123/solo-skin-emiya" target="_blank">${skinDirName}</a>
-    <sup>[<a href="https://github.com/spiritree/typecho-theme-amaze" target="_blank">ref</a>]</sup> 
+    Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
+    Theme <a rel="friend" href="https://github.com/zjhch123/solo-skin-emiya" target="_blank">${skinDirName?remove_beginning('bolo-')}</a>
+    <sup>[<a href="https://github.com/spiritree/typecho-theme-amaze" target="_blank">ref</a>]</sup>
     by <a href="https://github.com/zjhch123" target="_blank">Jiahao.Zhang</a>
   </div>
 </footer>

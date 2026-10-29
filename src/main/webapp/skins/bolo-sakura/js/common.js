@@ -27,10 +27,97 @@
  */
 var Skin = {
     init: function () {
+        if (typeof LazyLoad !== 'undefined') {
+            window.sakuraLazyLoad = new LazyLoad({elements_selector: '.lazyload'});
+        }
+        document.querySelectorAll('.github-card').forEach(function (card) {
+            var user = card.dataset.user || '';
+            var repo = card.dataset.repo || '';
+            if (!/^[A-Za-z0-9-]{1,39}$/.test(user) || (repo && !/^[A-Za-z0-9_.-]{1,100}$/.test(repo))) return;
+            var link = document.createElement('a');
+            link.href = 'https://github.com/' + user + (repo ? '/' + repo : '');
+            link.textContent = 'GitHub · ' + user + (repo ? '/' + repo : '');
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            card.replaceChildren(link);
+        });
         Skin._initToc()
+        // The WordPress bundle hid posts until its remote integrations initialized.
+        // Keep core navigation and reading independent of those optional services.
+        document.querySelectorAll('.post-list-thumb').forEach(function (post) { post.style.opacity = '1'; });
+        var header = document.querySelector('.site-header');
+        var updateHeader = function () {
+            if (header) header.classList.toggle('yya', window.scrollY > 30);
+            var top = document.querySelector('#moblieGoTop');
+            if (top) top.style.display = window.scrollY > 200 ? 'grid' : 'none';
+        };
+        window.addEventListener('scroll', updateHeader, {passive: true});
+        updateHeader();
+        var menuButtons = document.querySelectorAll('.openNav .iconflat');
+        var setMenuOpen = function (open, restoreFocus) {
+            document.body.classList.toggle('sakura-menu-open', open);
+            menuButtons.forEach(function (button) { button.setAttribute('aria-expanded', String(open)); });
+            if (!open && restoreFocus && menuButtons[0]) menuButtons[0].focus();
+        };
+        menuButtons.forEach(function (button) {
+            button.setAttribute('role', 'button');
+            button.setAttribute('tabindex', '0');
+            button.setAttribute('aria-controls', 'mo-nav');
+            button.setAttribute('aria-expanded', 'false');
+            var toggle = function () {
+                setMenuOpen(!document.body.classList.contains('sakura-menu-open'), false);
+            };
+            button.addEventListener('click', toggle);
+            button.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
+            });
+        });
+        document.querySelectorAll('.sakura-menu-backdrop, #mo-nav a').forEach(function (button) {
+            button.addEventListener('click', function () { setMenuOpen(false, false); });
+        });
+        document.querySelectorAll('#show-nav').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var nav = document.querySelector('.site-top nav');
+                if (nav) nav.classList.toggle('hide');
+            });
+        });
+        var search = document.querySelector('.js-search');
+        var searchTrigger;
+        var closeSearch = function () {
+            if (!search || !search.classList.contains('is-visible')) return;
+            search.classList.remove('is-visible');
+            if (searchTrigger && searchTrigger.isConnected) searchTrigger.focus();
+        };
+        document.querySelectorAll('.js-toggle-search, .search_close').forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (!search) return;
+                if (button.classList.contains('search_close')) { closeSearch(); return; }
+                searchTrigger = button;
+                search.classList.add('is-visible');
+                search.querySelector('input').focus();
+            });
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') closeSearch();
+            if (event.key === 'Escape' && document.body?.classList.contains('sakura-menu-open')) setMenuOpen(false, true);
+        });
+        document.querySelectorAll('.entry-content img').forEach(function (img) {
+            if (img.parentElement.tagName !== 'A' && window.jQuery && jQuery.fn.fancybox) {
+                var url;
+                try { url = new URL(img.currentSrc || img.src, location.href); } catch (error) { return; }
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+                var link = document.createElement('a');
+                link.href = url.href;
+                link.dataset.fancybox = 'article';
+                img.replaceWith(link); link.appendChild(img);
+            }
+        });
+        document.querySelectorAll('img').forEach(function (img) {
+            if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) window.imgError(img);
+        });
     },
     _initToc: function () {
-        $('.entry-content p img:eq(0)').hide();
+        // Every author image remains visible; the cover uses a separate element.
     },
     _initShare: function () {
     },
@@ -39,4 +126,14 @@ var Skin = {
         Skin._initToc()
     },
 }
+window.headertop_down = function () {
+    var content = document.querySelector('#content');
+    if (content) content.scrollIntoView({behavior: 'smooth'});
+};
+window.topFunction = function () { window.scrollTo({top: 0, behavior: 'smooth'}); };
+window.imgError = function (image) {
+    if (image.dataset.voloFallback) return;
+    image.dataset.voloFallback = 'true';
+    image.src = (window.Label ? Label.staticServePath : '') + '/images/volo-mark.svg';
+};
 Skin.init()

@@ -1,6 +1,7 @@
 # Project exclude paths
 /node_modules/
 /target/
+/docs/
 .classpath
 .project
 .settings
@@ -8,4 +9,12 @@
 .vscode/
 /image/
 /temp/
+/ReleasePackages/
+/local-tools/
+/src/main/distribution/geoip/*.xdb
+/src/main/webapp/js/lib/vditor/
+/src/main/webapp/js/lib/font-awesome/
+/src/main/webapp/js/lib/fontawesome/
+/src/main/webapp/js/lib/fancybox/
+/src/main/webapp/js/lib/justifiedGallery/
 src/main/webapp/tmp_favicon

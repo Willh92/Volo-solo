@@ -26,21 +26,12 @@
                 </a>
             </h1>
             <small> &nbsp; ${blogSubtitle}</small>
+            <div class="theme9-header-tools">
+                <div class="skin-theme-slot theme9-mobile" data-bolo-theme-slot></div>
+                <button class="icon-list" type="button" aria-label="${(navigationLabel!'导航菜单')?html}" aria-controls="navigation9iphp" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+            </div>
             <div class="fn-right">
-                <#if interactive == "on">
-                <#if isLoggedIn>
-                    <a class="fn__flex-inline" href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                        <i class="icon-setting"></i>&nbsp;${adminLabel}
-                    </a>
-                    <a class="fn__flex-inline" href="${logoutURL}">
-                        <i class="icon-logout"></i>&nbsp;${logoutLabel}
-                    </a>
-                    <#else>
-                    <a class="fn__flex-inline" href="${servePath}/start">
-                        <i class="icon-login"></i>&nbsp;${startToUseLabel}
-                    </a>
-                </#if>
-                </#if>
+
             </div>
         </div>
     </div>
@@ -53,8 +44,8 @@
                     ${indexLabel}
                 </a>
                 <#list pageNavigations as page>
-                    <a href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                        <#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon}"></#if>${page.pageTitle}
+                    <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                        <#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon?html}"></#if>${page.pageTitle?html}
                     </a>
                 </#list>
                 <#if interactive == "on">
@@ -78,40 +69,21 @@
                     <i class="icon-rss"></i> RSS
                 </a>
             </nav>
-            <#if interactive == "on">
-            <div class="fn-right">
+            <div class="fn-right navigation-tools">
+                <#if interactive == "on">
                 <form class="form" action="${servePath}/search">
                     <input placeholder="${searchLabel}" id="search" type="text" name="keyword"/>
                     <button type="submit"><i class="icon-search"></i></button>
                 </form>
+                </#if>
+                <div class="skin-theme-slot theme9-desktop" data-bolo-theme-slot></div>
             </div>
-            </#if>
         </div>
     </div>
 </header>
 <div class="responsive fn-none">
-    <i class="icon-list"></i>
-    <ul class="list">
-        <#if interactive == "on">
-        <#if isLoggedIn>
-            <li>
-                <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                    <i class="icon-setting"></i> ${adminLabel}
-                </a>
-            </li>
-            <li>
-                <a href="${logoutURL}">
-                    <i class="icon-logout"></i> ${logoutLabel}
-                </a>
-            </li>
-            <#else>
-                <li>
-                    <a href="${servePath}/start">
-                        <i class="icon-login"></i> ${startToUseLabel}
-                    </a>
-                </li>
-        </#if>
-        </#if>
+    <ul class="list" id="navigation9iphp">
+
         <li>
             <a href="${servePath}">
                 <i class="icon-home"></i>
@@ -120,8 +92,8 @@
         </li>
         <#list pageNavigations as page>
             <li>
-                <a href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                    <#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon}"></#if>${page.pageTitle}
+                <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                    <#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon?html}"></#if>${page.pageTitle?html}
                 </a>
             </li>
         </#list>

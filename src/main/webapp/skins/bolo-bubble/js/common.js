@@ -38,28 +38,34 @@ var Skin = {
 
       if ($(window).scrollTop() > $(window).height() / 2 - 20) {
         $('.side__menu').addClass('side__menu--edge')
-        $('#sideTop').removeClass('side__top--bottom')
       } else {
         $('.side__menu').removeClass('side__menu--edge')
-        $('#sideTop').addClass('side__top--bottom')
       }
+      $('#sideTop').toggleClass('is-visible', $(window).scrollTop() > 180)
     })
 
+    var closeMenuTimer
     $('.side__menu').click(function () {
+      clearTimeout(closeMenuTimer)
+      $(this).attr('aria-expanded', 'true')
       $('.side__main').addClass('side__main--show').show()
+      $('.side__close').trigger('focus')
     })
-    $('.side__bg, .side__close').click(function () {
+    function closeMenu () {
+      window.BoloTheme?.closeMenu?.()
+      $('.side__menu').attr('aria-expanded', 'false').trigger('focus')
       $('.side__main').removeClass('side__main--show')
-      setTimeout(function () {
+      clearTimeout(closeMenuTimer)
+      closeMenuTimer = setTimeout(function () {
         $('.side__main').hide()
-      }, 1000)
+      }, 250)
+    }
+    $('.side__bg, .side__close').click(closeMenu)
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && $('.side__main').hasClass('side__main--show')) closeMenu()
     })
     $('#sideTop').click(function () {
-      if ($(this).hasClass('side__top--bottom')) {
-        Util.goBottom()
-      } else {
-        Util.goTop()
-      }
+      Util.goTop()
     })
 
     var timer = 0
@@ -109,16 +115,12 @@ var Skin = {
 
     initCanvas('articleTop')
 
-    if ($(window).width() >= 768) {
+    if ($(window).width() >= 1400) {
       $('.post__toc').css({
         left: document.querySelector('.article__content').
           getBoundingClientRect().right + 20,
         right: 'auto',
         display: 'block',
-      })
-    } else {
-      $('.side__top--toc').click(function () {
-        $('.post__toc').slideToggle()
       })
     }
 

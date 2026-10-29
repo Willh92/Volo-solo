@@ -21,11 +21,11 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
@@ -44,8 +44,6 @@ import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.util.Markdowns;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.jsoup.Jsoup;
-import org.jsoup.safety.Whitelist;
 
 /**
  * Comment query service.
@@ -150,6 +148,10 @@ public class CommentQueryService {
      * @see Pagination
      */
     public JSONObject getComments(final JSONObject requestJSONObject) throws ServiceException {
+        return getComments(requestJSONObject, false);
+    }
+
+    public JSONObject getComments(final JSONObject requestJSONObject, final boolean administrator) throws ServiceException {
         try {
             final JSONObject ret = new JSONObject();
 
@@ -160,7 +162,7 @@ public class CommentQueryService {
             final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Comment.COMMENT_CREATED,
                     SortDirection.DESCENDING);
             final JSONObject result = commentRepository.get(query);
-            final JSONArray comments = result.getJSONArray(Keys.RESULTS);
+            final JSONArray comments = org.b3log.solo.util.QueryResults.array(result);
 
             // Sets comment title and content escaping
             for (int i = 0; i < comments.length(); i++) {
@@ -185,16 +187,17 @@ public class CommentQueryService {
                 comment.put(Common.COMMENT_TITLE, title);
 
                 String commentContent = comment.optString(Comment.COMMENT_CONTENT);
-                commentContent = Markdowns.toHTML(commentContent);
+                commentContent = comment.optBoolean("commentDeleted") ? "<p class=\"comment-tombstone\">这条评论已删除</p>" : Markdowns.toHTML(commentContent);
                 commentContent = Markdowns.clean(commentContent);
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
 
-                String commentName = comment.optString(Comment.COMMENT_NAME);
-                commentName = Jsoup.clean(commentName, Whitelist.none());
-                comment.put(Comment.COMMENT_NAME, commentName);
+                org.b3log.solo.util.CommentNames.apply(comment);
 
                 comment.put(Comment.COMMENT_TIME, comment.optLong(Comment.COMMENT_CREATED));
                 comment.remove(Comment.COMMENT_CREATED);
+                comment.remove(org.b3log.solo.util.CommentOwnership.KEY_HASH);
+                if (!administrator) org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
+                else comment.put("commentRegion", org.b3log.solo.util.IpGeo.region(comment.optString(org.b3log.solo.util.IpAddresses.COMMENT_IP)));
             }
 
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);
@@ -236,26 +239,18 @@ public class CommentQueryService {
                     url = "";
                 }
                 comment.put(Comment.COMMENT_URL, url);
-                comment.put(Common.IS_REPLY, false); // Assumes this comment is not a reply
-
-                if (StringUtils.isNotBlank(comment.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID))) {
-                    // This comment is a reply
-                    comment.put(Common.IS_REPLY, true);
-                }
-
                 String commentContent = comment.optString(Comment.COMMENT_CONTENT);
-                commentContent = Markdowns.toHTML(commentContent);
+                commentContent = comment.optBoolean("commentDeleted") ? "<p class=\"comment-tombstone\">这条评论已删除</p>" : Markdowns.toHTML(commentContent);
                 commentContent = Markdowns.clean(commentContent);
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
 
-                String commentName = comment.optString(Comment.COMMENT_NAME);
-                commentName = Jsoup.clean(commentName, Whitelist.none());
-                comment.put(Comment.COMMENT_NAME, commentName);
+                org.b3log.solo.util.CommentNames.apply(comment);
 
+                org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
                 ret.add(comment);
             }
 
-            return ret;
+            return org.b3log.solo.util.CommentThreads.forDisplay(ret);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets comments failed", e);
             throw new ServiceException(e);

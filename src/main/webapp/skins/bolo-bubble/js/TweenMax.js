@@ -199,12 +199,13 @@ function unselectTris() {
 }
 
 function createTrail() {
+  if (!tris || !tris.length) return;
   unselectTris();
   var currentTri;
   var trailLength = Math.floor(Math.random() * trailMaxLength - 2) + 2;
-  var index = Math.round(Math.random() * tris.length);
+  var index = Math.floor(Math.random() * tris.length);
   startTri = tris[index];
-  if (typeof(startTri.selectedForTrail) != 'undefined') {startTri.selectedForTrail = true};
+  startTri.selectedForTrail = true;
   currentTri = {
     tri: startTri,
     openDir: "side",
@@ -311,6 +312,11 @@ function initCanvas(canvasId) {
   window.addEventListener("resize", handleResize);
   TweenLite.ticker.addEventListener("tick", draw);
   handleResize();
+  if (window.BoloNavigation) window.BoloNavigation.onLeave(function () {
+    window.removeEventListener("resize", handleResize);
+    TweenLite.ticker.removeEventListener("tick", draw);
+    kill();
+  });
 }
 
 

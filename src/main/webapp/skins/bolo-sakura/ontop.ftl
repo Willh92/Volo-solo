@@ -28,7 +28,7 @@
                     <img src="${article.articleImg1URL}">
                 </div>
                 <div class="info">
-                    <p>${article.articleTitle}</p>
+                    <p>${(article.articleTitle)?html}</p>
                 </div>
             </a>
         </div>

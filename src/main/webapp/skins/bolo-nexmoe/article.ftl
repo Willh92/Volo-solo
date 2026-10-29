@@ -43,9 +43,9 @@
             <#if pjax><!---- pjax {#pjax} start ----></#if>
             <div class="nexmoe-post">
                 <div class="nexmoe-post-cover">
-                    <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${article.articleTitle}"
+                    <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${(article.articleTitle)?html}"
                          data-src="${article.articleImg1URL}" class=" ls-is-cached lazyloaded">
-                    <h1>${article.articleTitle}</h1>
+                    <h1>${(article.articleTitle)?html}</h1>
                 </div>
                 <div class="nexmoe-post-meta">
                 <span>
@@ -83,11 +83,6 @@
                         <i class="mdui-list-item-icon iconfont solo-about2"></i>
                         ${article.articleSign.signHTML}
                     </div>
-                </#if>
-            </div>
-            <div class="post__toc">
-                <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-                    <#include "../../common-template/toc.ftl"/>
                 </#if>
             </div>
             <#if interactive == "on">

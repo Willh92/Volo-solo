@@ -29,6 +29,13 @@ var Skin = {
     init: function () {
         Skin._initToc()
         Util.initPjax()
+        $(function () {
+            var top = $('#JELON__backToTop');
+            var updateTop = function () { top.toggleClass('is-visible', window.scrollY > 200); };
+            top.on('click', function () { Util.goTop(); });
+            $(window).on('scroll', updateTop);
+            updateTop();
+        });
     },
     _initToc: function () {
         $('.entry-content p img:eq(0)').hide();

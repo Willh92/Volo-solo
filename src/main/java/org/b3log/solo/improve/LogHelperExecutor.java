@@ -23,6 +23,7 @@ import java.util.Map;
 public class LogHelperExecutor {
 
     public static void submit(final List<Map<String, Object>> logs) {
+        if (!"true".equals(ImproveOptions.doJoinHelpImprovePlan())) return;
         SharedExecutorPool.executor.execute(new LogHelper(logs));
     }
 }

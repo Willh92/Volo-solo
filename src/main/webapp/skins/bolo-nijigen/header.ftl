@@ -31,9 +31,9 @@
         </a>
         <nav class="mobile__hidden header__nav">
             <#list pageNavigations as page>
-                <a href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                    <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon}"></#if>
-                    ${page.pageTitle}
+                <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                    <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon?html}"></#if>
+                    ${page.pageTitle?html}
                 </a>
             </#list>
             <#if interactive=="on">
@@ -63,60 +63,23 @@
             </a>
         </nav>
         <div class="header__login">
-            <#if interactive=="on">
-                <#if isLoggedIn>
-                    <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                        <i class="icon__setting"></i>
-                        ${adminLabel}
-                    </a>
-                    <a href="${logoutURL}">
-                        <i class="icon__logout"></i>
-                        ${logoutLabel}
-                    </a>
-                    <#else>
-                        <a href="${servePath}/start">
-                            <i class="icon__login"></i>
-                            ${startToUseLabel}
-                        </a>
-                </#if>
-            </#if>
+            <div class="skin-theme-slot" data-bolo-theme-slot></div>
         </div>
     </div>
 </header>
 <div class="header__m fn__none">
+    <div class="skin-theme-slot" data-bolo-theme-slot></div>
     <i class="icon__list fn__none" onclick="$(this).next().slideToggle()"></i>
     <main class="module__list fn__none"></main>
-    <i class="icon__more" onclick="$(this).next().slideToggle()"></i>
+    <button type="button" class="icon__more" onclick="$(this).next().slideToggle()" aria-label="${(navigationLabel!'导航菜单')?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
     <main class="module__list">
         <ul>
-            <#if interactive=="on">
-                <#if isLoggedIn>
-                    <li>
-                        <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                            <i class="icon__setting"></i>
-                            ${adminLabel}
-                        </a>
-                    </li>
-                    <li>
-                        <a href="${logoutURL}">
-                            <i class="icon__logout"></i>
-                            ${logoutLabel}
-                        </a>
-                    </li>
-                    <#else>
-                        <li>
-                            <a href="${servePath}/start">
-                                <i class="icon__login"></i>
-                                ${startToUseLabel}
-                            </a>
-                        </li>
-                </#if>
-            </#if>
+
             <#list pageNavigations as page>
                 <li>
-                    <a href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                        <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon}"></#if>
-                        ${page.pageTitle}
+                    <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                        <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon?html}"></#if>
+                        ${page.pageTitle?html}
                     </a>
                 </li>
             </#list>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Latke 3 reads this definition from the classpath root. Access control stays in PublicResourceHandler. -->
+<static-files>
+    <include path="/scss/**"/>
+    <include path="/js/**"/>
+    <include path="/skins/**"/>
+    <!-- Plugin API routes such as /plugins/kanbanniang/assets/list need cookie parsing. -->
+    <include path="/plugins/**/*.*"/>
+    <include path="/images/**"/>
+    <include path="/favicon.ico"/>
+    <include path="/robots.txt"/>
+    <include path="/sw.js"/>
+    <include path="/service-worker.js"/>
+</static-files>

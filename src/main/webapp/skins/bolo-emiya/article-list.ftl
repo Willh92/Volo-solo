@@ -65,8 +65,8 @@
         </div>
         <div class="article__intro">
           <div class="title">
-            <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-              ${article.articleTitle}
+            <a class="skin-list-title" title="${(article.articleTitle)?html}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+              ${(article.articleTitle)?html}
             </a>
             <#if article.articlePutTop>
               <sup>

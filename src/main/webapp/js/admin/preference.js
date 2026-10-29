@@ -25,6 +25,104 @@
 
 /* preference 相关操作 */
 admin.preference = {
+  loadGeoAccess: function () {
+    var mode = document.getElementById('geoAccessMode')
+    if (!mode) return
+    $.ajax({url: Label.servePath + '/console/geo-access', type: 'GET', cache: false,
+      success: function (result) {
+        if (!mode.isConnected) return
+        if (!result.sc) { $('#geoAccessMessage').text(result.msg); return }
+        mode.value = result.mode
+        $('#geoAccessCountries').val(result.countries)
+        $('#geoAccessRegions').val(result.regions)
+        $('#geoAccessUnknown').val(result.unknown)
+        $('#geoAccessCurrent').text('当前连接位置：' + (result.currentRegion || result.currentCountryName) + (result.currentCountry ? '（' + result.currentCountry + '）' : '') + (result.enabled ? '' : '；服务器配置已暂停地区限制'))
+      }, error: function (xhr) { if (mode.isConnected) $('#geoAccessMessage').text(xhr.responseJSON?.msg || '无法读取地区访问规则。') }
+    })
+  },
+  saveGeoAccess: function () {
+    var button = document.getElementById('geoAccessSave')
+    if (!button || button.disabled) return
+    button.disabled = true
+    $.ajax({url: Label.servePath + '/console/geo-access', type: 'PUT', contentType: 'application/json',
+      data: JSON.stringify({mode: $('#geoAccessMode').val(), countries: $('#geoAccessCountries').val(), regions: $('#geoAccessRegions').val(), unknown: $('#geoAccessUnknown').val()}),
+      complete: function () { button.disabled = false },
+      success: function (result) { $('#geoAccessMessage').text(result.msg || '地区规则已保存。'); if (result.sc) admin.preference.loadGeoAccess() },
+      error: function (xhr) { $('#geoAccessMessage').text(xhr.responseJSON?.msg || '地区规则保存失败，请重试。') }
+    })
+  },
+  ipBanPage: 1,
+  ipBanRequest: 0,
+  loadIpBans: function (page) {
+    var list = document.getElementById('ipBanList')
+    if (!list) return
+    var that = this, revision = ++this.ipBanRequest
+    var pager = document.getElementById('ipBanPagination'), total = document.getElementById('ipBanTotal')
+    var query = document.getElementById('ipBanQuery')
+    page = page || this.ipBanPage
+    list.setAttribute('aria-busy', 'true')
+    $.ajax({url: Label.servePath + '/console/ip-bans', type: 'GET', cache: false,
+      data: {page: page, pageSize: 10, keyword: query ? query.value.trim() : ''},
+      complete: function () { if (revision === that.ipBanRequest) list.removeAttribute('aria-busy') },
+      success: function (result) {
+        if (revision !== that.ipBanRequest || !list.isConnected) return
+        list.replaceChildren()
+        if (pager) pager.replaceChildren()
+        if (!result.sc) { list.textContent = result.msg || '无法读取封禁列表。'; return }
+        that.ipBanPage = result.page
+        if (total) total.textContent = '共 ' + result.total + ' 条'
+        if (!result.rules.length) {
+          var empty = document.createElement('p'); empty.className = 'console-ip-ban-empty'
+          empty.textContent = query?.value.trim() ? '没有匹配的封禁规则。' : '暂无封禁规则。'
+          list.append(empty); return
+        }
+        var table = document.createElement('table'), head = document.createElement('thead'), heading = document.createElement('tr'), body = document.createElement('tbody')
+        var labels = ['IP / 网段', '位置', '备注', '添加时间', '操作']
+        table.className = 'console-ip-ban-table'
+        labels.forEach(function (label) { var cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; heading.append(cell) })
+        head.append(heading)
+        result.rules.forEach(function (rule) {
+          var row = document.createElement('tr'), button = document.createElement('button')
+          var date = new Date(rule.created)
+          var values = [rule.range, rule.region || '位置未知', rule.reason || '—', Number.isFinite(date.getTime()) ? date.toLocaleString() : '—']
+          values.forEach(function (value, index) { var cell = document.createElement('td'); cell.dataset.label = labels[index]; cell.textContent = value; row.append(cell) })
+          var actions = document.createElement('td'); actions.dataset.label = labels[4]
+          button.type = 'button'; button.textContent = '解除封禁'
+          button.addEventListener('click', function () { admin.preference.removeIpBan(rule.range) })
+          actions.append(button); row.append(actions); body.append(row)
+        })
+        table.append(head, body); list.append(table)
+        if (pager && result.pageCount > 1) {
+          function navigation(text, target, disabled) {
+            var button = document.createElement('button'); button.type = 'button'; button.textContent = text; button.disabled = disabled
+            button.addEventListener('click', function () { that.loadIpBans(target) }); pager.append(button)
+          }
+          navigation('上一页', result.page - 1, result.page <= 1)
+          var status = document.createElement('span'); status.textContent = result.page + ' / ' + result.pageCount; pager.append(status)
+          navigation('下一页', result.page + 1, result.page >= result.pageCount)
+        }
+      }, error: function (xhr) {
+        if (revision !== that.ipBanRequest || !list.isConnected) return
+        list.textContent = xhr.responseJSON?.msg || '无法读取封禁列表。'
+        if (pager) pager.replaceChildren()
+        if (total) total.textContent = ''
+      }
+    })
+  },
+  addIpBan: function () {
+    $.ajax({url: Label.servePath + '/console/ip-bans', type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({range: $('#ipBanRange').val(), reason: $('#ipBanReason').val()}),
+      success: function (result) { $('#ipBanMessage').text(result.msg); if (result.sc) { $('#ipBanRange').val(''); $('#ipBanReason').val(''); $('#ipBanQuery').val(''); admin.preference.loadIpBans(1) } },
+      error: function (xhr) { $('#ipBanMessage').text(xhr.responseJSON?.msg || '封禁失败，请重试。') }
+    })
+  },
+  removeIpBan: function (range) {
+    if (!confirm('解除 ' + range + ' 的封禁？')) return
+    $.ajax({url: Label.servePath + '/console/ip-bans/remove', type: 'POST', contentType: 'application/json', data: JSON.stringify({range: range}),
+      success: function (result) { $('#ipBanMessage').text(result.msg); if (result.sc) admin.preference.loadIpBans() },
+      error: function (xhr) { $('#ipBanMessage').text(xhr.responseJSON?.msg || '解除封禁失败，请重试。') }
+    })
+  },
   locale: '',
   editorMode: '',
   /*
@@ -32,6 +130,8 @@ admin.preference = {
    */
   init: function () {
     $('#tabPreference').tabs()
+    this.loadIpBans()
+    this.loadGeoAccess()
 
     $.ajax({
       url: Label.servePath + '/console/preference/',
@@ -49,14 +149,14 @@ admin.preference = {
         $.ajax({
           url: Label.servePath + '/plugins/kanbanniang/assets/list',
           type: 'GET',
-          async: false,
           success: function (res) {
+            if (!res || res.sc === false || typeof res.msg !== 'string') return;
             var kanbanniangList = res.msg.split(';');
+            $('#kanbanniangSelector option').not(':first').remove();
             for (var i = 0; i < kanbanniangList.length; i++) {
-              $('#kanbanniangSelector').append(
-                '<option value="' + kanbanniangList[i] + '">' + kanbanniangList[i] + '</option>'
-              );
+              if (kanbanniangList[i]) $('#kanbanniangSelector').append($('<option>').val(kanbanniangList[i]).text(kanbanniangList[i]));
             }
+            $('#kanbanniangSelector').val(kanbanniangList.indexOf(preference.kanbanniangSelector) >= 0 ? preference.kanbanniangSelector : '');
           }
         });
 
@@ -92,7 +192,8 @@ admin.preference = {
 
         $('#sendKey').val(preference.sendKey)
         $('#spam').val(preference.spam)
-        $('#kanbanniangSelector').val(preference.kanbanniangSelector)
+        $('#commentFilterBuiltin').val(preference.commentFilterBuiltin === 'off' ? 'off' : 'on')
+        $('#commentFilterAllow').val(preference.commentFilterAllow || '')
         $('#replyRemind').val(preference.replyRemind)
         $('#sourceTC').text(preference.tuChuangConfig)
         sltd = $('#sourceTC').text().split('<<>>')[0]
@@ -140,7 +241,6 @@ admin.preference = {
         'true' === preference.syncGitHub ? $('#syncGitHub').attr('checked', 'checked') : $('syncGitHub').removeAttr('checked')
         'true' === preference.pullGitHub ? $('#pullGitHub').attr('checked', 'checked') : $('pullGitHub').removeAttr('checked')
         'true' === preference.welfareLuteService ? $('#welfareLuteService').attr('checked', 'checked') : $('#welfareLuteService').removeAttr('checked')
-        'true' === preference.helpImprovePlan ? $('#helpImprovePlan').attr('checked', 'checked') : $('#helpImprovePlan').removeAttr('checked')
 
         $("input:radio[value='" + preference.editorMode + "']").attr('checked', 'true');
         admin.preference.editorMode = preference.editorMode
@@ -264,7 +364,6 @@ admin.preference = {
 
     var requestJSONObject = {
       'preference': {
-        'helpImprovePlan': $("#helpImprovePlan").prop('checked'),
         'enableAutoFlushGitHub': $("#enableAutoFlushGitHub").prop('checked'),
         'enableAutoFlushGitHubProfile': $("#enableAutoFlushGitHubProfile").prop('checked'),
         'welfareLuteService': $("#welfareLuteService").prop('checked'),
@@ -276,6 +375,8 @@ admin.preference = {
         'wafPower': $("#wafPower").val(),
         'interactive': $("#interactiveSwitch").val(),
         'spam': $('#spam').val(),
+        'commentFilterBuiltin': $('#commentFilterBuiltin').val(),
+        'commentFilterAllow': $('#commentFilterAllow').val(),
         'kanbanniangSelector': $('#kanbanniangSelector').val(),
         'replyRemind': $('#replyRemind').val(),
         'tuChuangConfig': $('#sourceTC').text(),

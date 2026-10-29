@@ -17,29 +17,32 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" class="comments__item">
+<li id="${comment.oId}" class="comments__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comments__meta fn__flex">
         <div class="fn__flex-1">
             <#if "http://" == comment.commentURL>
-                ${comment.commentName}
+                ${comment.commentName?html}
             <#else>
-            <a href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+            <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
             </#if>
             <#if comment.isReply>
             @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                 onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 28);"
                 onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-            >${comment.commentOriginalCommentName}</a>
+            >${comment.commentOriginalCommentName?html}</a>
             </#if>
         </div>
         <time>${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
     </div>
     <main class="comments__content fn__clear">
         <div class="vditor-reset">
-        ${comment.commentContent}
+        <div data-comment-content>${comment.commentContent}</div>
         </div>
         <#if article?? && article.commentable>
-            <a class="fn__right breadcrumb" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">${replyLabel}</a>
+            <a class="fn__right breadcrumb" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
         <#else>
          <a class="fn__right breadcrumb" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
         </#if>

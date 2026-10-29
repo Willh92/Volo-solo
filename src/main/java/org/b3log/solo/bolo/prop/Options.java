@@ -23,7 +23,7 @@ import java.util.List;
 
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.model.User;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.OptionRepository;
 import org.json.JSONObject;
@@ -88,6 +88,8 @@ public class Options {
                 Option.ID_C_FISH_KEY,
                 Option.ID_C_HACPAI_USER,
                 Option.ID_C_SPAM,
+                Option.ID_C_COMMENT_FILTER_BUILTIN,
+                Option.ID_C_COMMENT_FILTER_ALLOW,
                 Option.ID_C_INTERACTIVE,
                 Option.ID_C_WAF_POWER,
                 Option.ID_C_WAF_CURRENT_LIMIT_SECOND,
@@ -161,7 +163,7 @@ public class Options {
                         Option.DefaultPreference.DEFAULT_ALLOW_VISIT_DRAFT_VIA_PERMALINK },
                 new Object[] { Option.ID_C_COMMENTABLE, Option.CATEGORY_C_PREFERENCE,
                         Option.DefaultPreference.DEFAULT_COMMENTABLE },
-                new Object[] { Option.ID_C_VERSION, Option.CATEGORY_C_PREFERENCE, SoloServletListener.VERSION },
+                new Object[] { Option.ID_C_VERSION, Option.CATEGORY_C_PREFERENCE, SoloApplication.DATABASE_VERSION },
                 new Object[] { Option.ID_C_ARTICLE_LIST_STYLE, Option.CATEGORY_C_PREFERENCE,
                         Option.DefaultPreference.DEFAULT_ARTICLE_LIST_STYLE },
                 new Object[] { Option.ID_C_FEED_OUTPUT_MODE, Option.CATEGORY_C_PREFERENCE,
@@ -190,6 +192,8 @@ public class Options {
                 new Object[] { Option.ID_C_REPLY_REMIND, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_KANBANNIANG_SELECTOR, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_SPAM, Option.CATEGORY_C_PREFERENCE, "" },
+                new Object[] { Option.ID_C_COMMENT_FILTER_BUILTIN, Option.CATEGORY_C_PREFERENCE, "on" },
+                new Object[] { Option.ID_C_COMMENT_FILTER_ALLOW, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_INTERACTIVE, Option.CATEGORY_C_PREFERENCE, "on" },
                 new Object[] { Option.ID_C_WAF_POWER, Option.CATEGORY_C_PREFERENCE, "on" },
                 new Object[] { Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.CATEGORY_C_PREFERENCE, "180" },

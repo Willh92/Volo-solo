@@ -17,39 +17,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div class="module-panel">
-    <div class="module-header">
-        <h2>${aboutLabel}</h2>
-    </div>
-    <div class="module-body padding12 fn__flex">
-        <div class="about-logo">
-            <a href="https://github.com/adlered/bolo-solo" target="_blank">
-                <img width="128" src="https://pic.stackoverflow.wiki/uploadImages/114/246/231/87/2020/06/06/16/41/3e4a3ce8-8882-4258-9860-a337bf859605.png" alt="Bolo 重塑经典，致敬 Solo" title="Bolo 重塑经典，致敬 Solo" />
-            </a>
-        </div>
-        <div class="about__panel">
-            <div class="about-margin fn__left">
-                您正在使用 菠萝博客 Bolo<br>
-                当前 Bolo 版本：${boloVersion}<br>
-            </div>
-
-            <iframe src="https://ghbtns.com/github-btn.html?user=adlered&repo=bolo-solo&type=star&count=true&size=large"
-                    frameborder="0" scrolling="0" width="160px" height="30px" class="about__iframe"
-                    style="margin: 21px 0 0 20px;border: 0"
-                    class="fn__left"></iframe>
-            <div class="fn__clear"></div>
-            <script type="text/javascript">
-                var version = '${boloVersion}';
-            </script>
-            <b><p id="updateCheck">正在检查版本更新...</p></b>
-        </div>
-    </div>
-    <span class="fn__clear">
-        <div style="margin: 25px 25px 0px 25px">
-            <iframe src="https://doc.stackoverflow.wiki/web/#/7?page_id=91" frameborder="no" border="0" scrolling="auto" style="display: block; height: 550px; width: 100%;"></iframe>
-        </div>
-    </span>
-    <br><br>
-</div>
-
+<section class="volo-about-hero"><span class="volo-about-mark">V.</span><div><small>A SPACE FOR YOUR WORDS</small><h2>Volo</h2><p>记录想法，连接生活。</p><span class="volo-version">当前版本 ${boloVersion}</span></div></section>
+<div class="volo-about-grid"><section class="module-panel"><div class="module-header"><h2>开源项目</h2></div><div class="module-body"><a class="volo-repository" href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">Willh92 / Volo-solo ↗</a><p id="projectDescription">正在从 GitHub 读取仓库信息…</p><div class="volo-repo-stats"><div><strong id="projectStars">—</strong><span>Stars</span></div><div><strong id="projectForks">—</strong><span>Forks</span></div><div><strong id="projectIssues">—</strong><span>Open issues</span></div></div><dl class="volo-repo-details"><div><dt>主要语言</dt><dd id="projectLanguage">—</dd></div><div><dt>默认分支</dt><dd id="projectBranch">—</dd></div><div><dt>许可证</dt><dd id="projectLicense">—</dd></div><div><dt>最近推送</dt><dd id="projectPushed">—</dd></div></dl><p id="projectSyncStatus" class="volo-about-status" role="status">正在连接 GitHub…</p></div></section>
+<div><section class="module-panel"><div class="module-header"><h2>版本与更新</h2></div><div class="module-body"><h3 id="projectRelease">正在读取发布信息…</h3><p id="updateCheck">发布信息以当前仓库的 GitHub Releases 为准。</p><a id="projectReleaseLink" class="volo-about-action" href="https://github.com/Willh92/Volo-solo/releases" target="_blank" rel="noopener noreferrer">查看发布记录 ↗</a></div></section>
+<section class="module-panel"><div class="module-header"><h2>项目来源</h2></div><div class="module-body"><p><strong>Volo 从 Bolo 分支开发。</strong></p><p>上游项目：<a href="https://github.com/bolo-blog/bolo-solo" target="_blank" rel="noopener noreferrer">bolo-blog/bolo-solo ↗</a></p><p>Bolo 基于 <a href="https://github.com/88250/solo" target="_blank" rel="noopener noreferrer">Solo</a> 定制。感谢原项目作者与全部贡献者，保留原有版权及许可证声明。</p><a class="volo-about-action" href="https://github.com/Willh92/Volo-solo/blob/HEAD/LICENSE" target="_blank" rel="noopener noreferrer">查看许可证 ↗</a></div></section></div></div>
 ${plugins}

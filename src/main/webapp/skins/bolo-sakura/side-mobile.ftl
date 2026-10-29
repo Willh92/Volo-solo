@@ -21,34 +21,13 @@
     <div class="m-avatar">
         <img src="${adminUser.userAvatar}">
     </div>
-    <p style="text-align: center; color: #333; font-weight: 900; font-family: 'Ubuntu', sans-serif; letter-spacing: 1.5px">
+    <p class="mobile-subtitle">
         ${blogSubtitle}
     </p>
-    <p>
-    <div>
-        <style>
-            .mobile {
-                text-align: center;
-            }
-
-            .mobile .user__site {
-                width: 16px;
-                height: 16px;
-                display: inline-block;
-            }
-
-            .mobile .user__site svg {
-                width: 16px;
-                height: 16px;
-                vertical-align: middle;
-            }
-        </style>
-        <div class="mobile">
-            <#include "../../common-template/macro-user_site.ftl"/>
-            <@userSite dir=""></@userSite>
-        </div>
+    <div class="mobile">
+        <#include "../../common-template/macro-user_site.ftl"/>
+        <@userSite dir=""></@userSite>
     </div>
-    </p>
     <#if interactive == "on">
     <div class="m-search">
         <form class="m-search-form" method="get" action="${servePath}/search" role="search">
@@ -57,39 +36,32 @@
     </div>
     </#if>
     <ul id="menu-new-1" class="menu">
-        <#if interactive == "on">
-        <#if isLoggedIn>
-            <li><a href="${servePath}/admin-index.do#main"><span class="faa-parent animated-hover"><img src="${gravatar}" width="15px" height="15px" style="border-radius:50%"> ${adminLabel}</span></a>
-        <#else>
-            <li><a href="${servePath}/start"><span class="faa-parent animated-hover"><i
-                            class="fa fa-user faa-horizontal" aria-hidden="true"></i> ${startToUseLabel}</span></a>
-        </#if>
-        </#if>
+
         <li><a href="${servePath}/"><span class="faa-parent animated-hover"><i
                             class="fa fa-home faa-horizontal" aria-hidden="true"></i> 首页</span></a>
         <li><a href="${servePath}/links.html"><span class="faa-parent animated-hover"><i
                             class="fa fa-link faa-horizontal" aria-hidden="true"></i> 友链</span></a>
         <li><a href="${servePath}/follows.html"><span class="faa-parent animated-hover"><i
-                            class="fa link faa-horizontal" aria-hidden="true"></i> 关注</span></a>
+                            class="fa fa-link faa-horizontal" aria-hidden="true"></i> 关注</span></a>
         <li><a href="${servePath}/tags.html"><span class="faa-parent animated-hover"><i
                             class="fa fa-tag faa-horizontal" aria-hidden="true"></i> 标签</span></a>
         <li><a href="${servePath}/archives.html"><span class="faa-parent animated-hover"><i
                             class="fa fa-archive faa-horizontal" aria-hidden="true"></i> 归档</span></a>
         <#list pageNavigations as page>
-            <li><a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><span
+            <li><a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><span
                             class="faa-parent animated-hover">
                                             <#if page.pageIcon?contains("/")>
                                                 <img class="icon faa-horizontal" aria-hidden="true" style="height: 16px; width: 16px;"
-                                                     src="${page.pageIcon}">
+                                                     src="${page.pageIcon?html}">
                                             <#else>
-                                                <i class="fa fa-${page.pageIcon} faa-horizontal" aria-hidden="true"></i>
-                                            </#if> ${page.pageTitle}</span></a></li>
+                                                <i class="fa fa-${page.pageIcon?html} faa-horizontal" aria-hidden="true"></i>
+                                            </#if> ${page.pageTitle?html}</span></a></li>
         </#list>
     </ul>
-    <p style="text-align: center; font-size: 13px; color: #b9b9b9;">
+    <p class="mobile-attribution">
         © ${year} <a href="${servePath}">${blogTitle}</a><br><br>
-        Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a><br>
-        Theme <a rel="friend" href="https://github.com/mashirozx/Sakura" target="_blank">${skinDirName}</a>
+        Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a><br>
+        Theme <a rel="friend" href="https://github.com/mashirozx/Sakura" target="_blank">${skinDirName?remove_beginning('bolo-')}</a>
         by <a rel="friend" href="https://hello.2heng.xin/@mashiro" target="_blank">Mashiro</a><br>
         <span>${viewLabel}</span>
         ${statistic.statisticBlogViewCount}
@@ -102,7 +74,7 @@
         ${footerContent}
     </p>
 </div>
-<a href="#" class="cd-top faa-float animated "></a>
-<button onclick="topFunction()" class="mobile-cd-top" id="moblieGoTop" title="Go to top"><i class="fa fa-chevron-up"
+<button type="button" class="sakura-menu-backdrop" aria-label="关闭菜单" tabindex="-1"></button>
+<button type="button" onclick="topFunction()" class="mobile-cd-top" id="moblieGoTop" title="返回顶部" aria-label="返回顶部"><i class="fa fa-chevron-up"
                                                                                             aria-hidden="true"></i>
 </button>

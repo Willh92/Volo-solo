@@ -17,8 +17,8 @@
  */
 package org.b3log.solo.model.sitemap;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Sitemap URL.
@@ -112,7 +112,7 @@ public final class URL {
         stringBuilder.append(START_URL_ELEMENT);
 
         stringBuilder.append(START_LOC_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(loc));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(loc));
         stringBuilder.append(END_LOC_ELEMENT);
 
         if (StringUtils.isNotBlank(lastMod)) {

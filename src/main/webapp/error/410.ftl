@@ -17,12 +17,5 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<#include "../common-template/macro-common_page.ftl">
-
-<@commonPage "你的请求被防火墙拦截">
-    <h2>访问太快啦! 请稍候重试.</h2>
-    <img class="img-error" src="${staticServePath}/images/shield.png" title="500" alt="500 Internal Server Error!"/>
-    <div class="a-error">
-        <a href="${loginURL}">管理登录</a> | <a href="${servePath}">返回主页</a>
-    </div>
-</@commonPage>
+<#include "../common-template/macro-utility_page.ftl"/>
+<@errorPage code="410" title="这一页已被移除" description="这篇内容已经下线，原来的链接不再可用。" hint="你仍然可以搜索其他文章，或回到首页看看最近的更新。"/>

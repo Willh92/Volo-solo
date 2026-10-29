@@ -19,14 +19,14 @@ package org.b3log.solo.processor.console;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Sign;
 import org.b3log.solo.service.OptionMgmtService;
@@ -43,7 +43,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/hzchendou">hzchendou</a>
  * @since 0.4.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAdminAuthAdvice.class)
 public class PreferenceConsole {
 
@@ -110,11 +110,11 @@ public class PreferenceConsole {
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
             ret.put(Sign.SIGNS, signs);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -178,7 +178,7 @@ public class PreferenceConsole {
         try {
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
-                renderer.setJSONObject(new JSONObject().put(Keys.STATUS_CODE, false));
+                renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false));
 
                 return;
             }
@@ -193,11 +193,11 @@ public class PreferenceConsole {
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
             ret.put(Option.CATEGORY_C_PREFERENCE, preference);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -269,14 +269,18 @@ public class PreferenceConsole {
                 return;
             }
 
+            org.b3log.solo.service.CommentFilterService.validate(preference);
             preferenceMgmtService.updatePreference(preference);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
+        } catch (final IllegalArgumentException invalid) {
+            renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false)
+                    .put(Keys.MSG, invalid.getMessage()));
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -290,7 +294,7 @@ public class PreferenceConsole {
      * @return {@code true} if the specified preference is invalid, returns {@code false} otherwise
      */
     private boolean isInvalid(final JSONObject preference, final JSONObject responseObject) {
-        responseObject.put(Keys.STATUS_CODE, false);
+        responseObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
 
         final StringBuilder errMsgBuilder = new StringBuilder('[' + langPropsService.get("paramSettingsLabel"));
         errMsgBuilder.append(" - ");

@@ -29,31 +29,29 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.model.User;
 import org.b3log.latke.plugin.ViewLoadEventData;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
-import org.b3log.solo.improve.ImproveOptions;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.UserExt;
@@ -64,6 +62,7 @@ import org.b3log.solo.service.ExportService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.UserQueryService;
 import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.AdminPaths;
 import org.b3log.solo.util.PluginUtil;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
@@ -144,6 +143,7 @@ public class AdminConsole {
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer(context, templateName);
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         final Map<String, Object> dataModel = renderer.getDataModel();
+        AdminPaths.fill(dataModel);
         dataModel.putAll(langs);
         final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
         final String userName = currentUser.optString(User.USER_NAME);
@@ -165,8 +165,8 @@ public class AdminConsole {
             dataModel.put(Option.ID_C_LOCALE_STRING, preference.getString(Option.ID_C_LOCALE_STRING));
             dataModel.put(Option.ID_C_BLOG_TITLE, preference.getString(Option.ID_C_BLOG_TITLE));
             dataModel.put(Option.ID_C_BLOG_SUBTITLE, preference.getString(Option.ID_C_BLOG_SUBTITLE));
-            dataModel.put(Common.VERSION, SoloServletListener.VERSION);
-            dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+            dataModel.put(Common.VERSION, SoloApplication.VERSION);
+            dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
             dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
             dataModel.put(Common.B3LOG_ENABLED, "" + PluginUtil.b3logPluginEnabled());
             dataModel.put(Common.FISHPI_ENABLED, "" + PluginUtil.fishpiPluginEnabled());
@@ -209,8 +209,7 @@ public class AdminConsole {
      */
     public void showAdminFunctions(final RequestContext context) {
         final String requestURI = context.requestURI();
-        final String templateName = StringUtils.substringBetween(requestURI, Latkes.getContextPath() + '/', ".")
-                + ".ftl";
+        final String templateName = StringUtils.substringBeforeLast(StringUtils.substringAfterLast(requestURI, "/"), ".") + ".ftl";
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer(context, templateName);
 
         final Locale locale = Latkes.getLocale();
@@ -222,7 +221,7 @@ public class AdminConsole {
         dataModel.putAll(langs);
         Keys.fillRuntime(dataModel);
         dataModel.put(Option.ID_C_LOCALE_STRING, locale.toString());
-        dataModel.put(Option.ID_C_VERSION, SoloServletListener.VERSION);
+        dataModel.put(Option.ID_C_VERSION, SoloApplication.VERSION);
 
         try {
             // Bolo categories
@@ -234,7 +233,7 @@ public class AdminConsole {
         }
 
         // Bolo version
-        dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+        dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
         // 链滴域名设定
         dataModel.put("hacpaiDomain", Global.HACPAI_DOMAIN);
         dataModel.put("fishpiDomain", Global.FISH_PI_DOMAIN);
@@ -282,8 +281,8 @@ public class AdminConsole {
         dataModel.put("fishpiDomain", Global.FISH_PI_DOMAIN);
         dataModel.put(Common.B3LOG_ENABLED, PluginUtil.b3logPluginEnabled());
         dataModel.put(Common.FISHPI_ENABLED, PluginUtil.fishpiPluginEnabled());
-        // 用户体验改进计划
-        dataModel.put(Option.ID_C_HELP_IMPROVE_PLAN, ImproveOptions.doJoinHelpImprovePlan());
+        dataModel.put("securityClientAddress", org.b3log.solo.util.LoginThrottle.clientAddress(context.getRequest()));
+        dataModel.put("securityPeerAddress", org.b3log.solo.util.LoginThrottle.peerAddress(context.getRequest()));
 
         fireFreeMarkerActionEvent(templateName, dataModel);
     }
@@ -294,10 +293,10 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportSQL(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
 
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -319,13 +318,7 @@ public class AdminConsole {
         response.setContentType("application/zip");
         final String fileName = "solo-sql-" + date + ".zip";
         response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-        try {
-            ServletOutputStream out = response.getOutputStream();
-            out.write(zipData);
-            out.flush();
-            out.close();
-        } catch (IOException IOE) {
-        }
+        response.sendBytes(zipData);
     }
 
     /**
@@ -334,9 +327,9 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportJSON(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -361,18 +354,16 @@ public class AdminConsole {
                 IOUtils.write(data, output);
             }
 
-            try (final FileInputStream inputStream = new FileInputStream(ZipUtil.zip(localFile));
-                    final ServletOutputStream outputStream = response.getOutputStream()) {
+            try (final FileInputStream inputStream = new FileInputStream(ZipUtil.zip(localFile))) {
                 final byte[] zipData = IOUtils.toByteArray(inputStream);
                 response.setContentType("application/zip");
                 final String fileName = "solo-json-" + date + ".zip";
                 response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-                outputStream.write(zipData);
-                outputStream.flush();
+                response.sendBytes(zipData);
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
-            context.renderJSON().renderMsg("Export failed, please check log");
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
 
             return;
         }
@@ -384,9 +375,9 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportHexo(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -435,13 +426,10 @@ public class AdminConsole {
                 response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
             }
 
-            try (final ServletOutputStream outputStream = response.getOutputStream()) {
-                outputStream.write(zipData);
-                outputStream.flush();
-            }
+            response.sendBytes(zipData);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
-            context.renderJSON().renderMsg("Export failed, please check log");
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
 
             return;
         }

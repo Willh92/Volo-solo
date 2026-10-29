@@ -17,203 +17,153 @@
  */
 package org.b3log.solo.bolo.tool;
 
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.file.Files;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.ioc.BeanManager;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.Transaction;
-import org.b3log.solo.bolo.SslUtils;
+import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.solo.bolo.pic.util.UploadUtil;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.OptionRepository;
+import org.b3log.solo.util.Uploads;
 import org.json.JSONObject;
 
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-public class PBThread implements Runnable {
-
-    /**
-     * Logger.
-     */
+/** Runs one image migration at a time without retaining a database connection during downloads. */
+public class PBThread {
     private static final Logger LOGGER = Logger.getLogger(PBThread.class);
+    private static final Pattern IMAGE = Pattern.compile("(?<=\\]\\()https://(?:img\\.hacpai\\.com|b3logfile\\.com)/[^\\s)]+(?=\\))");
+    private final AtomicBoolean running = new AtomicBoolean();
+    private volatile String status = "空闲";
 
-    final private String STATUS_SPARE = "<span style='color: green; font-weight: bold'>空闲</span>";
-    final private String STATUS_RUNNING = "<span style='color: red; font-weight: bold'>运行中</span>";
-    final private String STATUS_ERROR = "<span style='color: yellow; font-weight: bold'>有错误，但仍在运行中，请在日志中查看详情并联系维护者</span>";
+    public String getStatus() { return status; }
 
-    private String status = STATUS_SPARE;
-    private boolean lock = false;
-
-    public PBThread() {
+    public boolean start() {
+        if (!running.compareAndSet(false, true)) return false;
+        status = "运行中";
+        try {
+            final Thread worker = new Thread(this::convert, "volo-image-migration");
+            worker.setDaemon(true);
+            worker.start();
+            return true;
+        } catch (RuntimeException exception) {
+            running.set(false);
+            status = "启动失败，请重试";
+            throw exception;
+        }
     }
 
-    public String getStatus() {
-        return status;
-    }
-
-    @Override
-    public void run() {
-        if (!lock) {
-            // 锁定线程
-            lock = true;
-            status = STATUS_RUNNING;
-
-            // 开始处理图片
-            LOGGER.log(Level.INFO, "Converting images...");
-
-            try {
-                final BeanManager beanManager = BeanManager.getInstance();
-                final ArticleRepository articleRepository = beanManager.getReference(ArticleRepository.class);
-                final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
-                final Query query = new Query();
-                final List<JSONObject> articlesResult = articleRepository.getList(query);
-
-                // 两个前缀
-                String suffix_1 = "(\\]\\(https://img.hacpai.com).*?\\)";
-                String prefix_1 = ")";
-                String suffix_2 = "(\\]\\(https://b3logfile.com).*?\\)";
-                String prefix_2 = ")";
-                // 解剖每个文章并重新上传组合
-                for (JSONObject article : articlesResult) {
-                    String oId = article.optString("oId");
-                    String articleTitle = article.optString("articleTitle");
-                    String articleContent = article.optString("articleContent");
-
-                    LOGGER.log(Level.INFO, "Processing article [oId=" + oId + ", articleTitle=" + articleTitle + "]");
-
-                    Pattern pattern_1 = Pattern.compile(suffix_1);
-                    Pattern pattern_2 = Pattern.compile(suffix_2);
-                    Matcher matcher_1 = pattern_1.matcher(articleContent);
-                    Matcher matcher_2 = pattern_2.matcher(articleContent);
-
-                    ArrayList<String> urlList = new ArrayList<>();
-                    while (matcher_1.find()) {
-                        urlList.add(matcher_1.group().replaceAll("\\]\\(", "").replaceAll("\\)", ""));
-                    }
-                    while (matcher_2.find()) {
-                        urlList.add(matcher_2.group().replaceAll("\\]\\(", "").replaceAll("\\)", ""));
-                    }
-
-                    // 逐个处理图片
-                    ArrayList<String> newUrlList = new ArrayList<>();
-                    for (int i = 0; i < urlList.size(); i++) {
-                        String oldUrl = urlList.get(i);
-                        String newUrl = "None";
-                        // 处理
-                        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-                        BufferedOutputStream stream = null;
-                        InputStream inputStream = null;
-                        File file = null;
-
-                        final URL url = new URL(oldUrl);
-                        SslUtils.ignoreSsl();
-                        final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                        conn.setRequestProperty("accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
-                        conn.setRequestProperty("accept-encoding", "gzip, deflate, br");
-                        conn.setRequestProperty("accept-language", "zh-CN,zh;q=0.9,en;q=0.8");
-                        conn.setRequestProperty("cache-control", "no-cache");
-                        conn.setRequestProperty("pragma", "no-cache");
-                        conn.setRequestProperty("referer", "http://localhost:8080/");
-                        conn.setRequestProperty("sec-fetch-dest", "image");
-                        conn.setRequestProperty("sec-fetch-mode", "no-cors");
-                        conn.setRequestProperty("sec-fetch-site", "cross-site");
-                        conn.setRequestProperty("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36");
-                        conn.setConnectTimeout(100);
-                        conn.setReadTimeout(3000);
-                        conn.setDoOutput(true);
-
-                        inputStream = conn.getInputStream();
-                        byte[] buffer = new byte[1024];
-                        int len = 0;
-                        while ((len = inputStream.read(buffer)) != -1) {
-                            outStream.write(buffer, 0, len);
-                        }
-
-                        // 过滤文件名
-                        String date = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-                        String regEx = "\\w+\\.(\\w+)";
-                        Pattern p = Pattern.compile(regEx);
-                        Matcher m = p.matcher(oldUrl.replaceAll("https://img.hacpai.com", "").replaceAll("https://b3logfile.com", ""));
-                        String filename;
-                        if (!m.find()) {
-                            filename = date + ".jpg";
-                        } else {
-                            filename = m.group();
-                        }
-
-                        file = File.createTempFile(filename.split("\\.")[0], "." + filename.split("\\.")[1]);
-                        FileOutputStream fileOutputStream = new FileOutputStream(file);
-                        stream = new BufferedOutputStream(fileOutputStream);
-                        stream.write(outStream.toByteArray());
-
-                        String config;
-                        try {
-                            config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
-                        } catch (Exception e) {
-                            config = "hacpai";
-                        }
-                        try {
-                            newUrl = UploadUtil.upload(config, file);
-                        } catch (Exception e) {
-                            newUrl = oldUrl;
-                        }
-                        if (newUrl.isEmpty()) {
-                            newUrl = oldUrl;
-                        }
-                        newUrl = newUrl.replaceAll("0:0:0:0:0:0:0:1", "localhost");
-
-                        // 保存
-                        newUrlList.add(newUrl);
-                        LOGGER.log(Level.INFO, oldUrl + " >>> " + newUrl);
-                        LOGGER.log(Level.INFO, "Avoid HacPai download limiting, will sleep for 60s/image.");
-                        try {
-                            Thread.sleep(1000 * 60);
-                        } catch (InterruptedException ignored) {
-                        }
-                    }
-
-                    // 替换原文中链接
-                    for (int i = 0; i < urlList.size(); i++) {
-                        articleContent = articleContent.replace(urlList.get(i), newUrlList.get(i));
-                    }
-
-                    final Transaction transaction = articleRepository.beginTransaction();
+    private void convert() {
+        int failures = 0;
+        try {
+            final BeanManager beans = BeanManager.getInstance();
+            final ArticleRepository articles = beans.getReference(ArticleRepository.class);
+            final OptionRepository options = beans.getReference(OptionRepository.class);
+            final List<JSONObject> records = articles.getList(new Query());
+            final JSONObject option = options.get(Option.ID_C_TUCHUANG_CONFIG);
+            final String config = option == null ? "hacpai" : option.optString(Option.OPTION_VALUE);
+            JdbcRepository.dispose();
+            if ("hacpai".equalsIgnoreCase(config)) {
+                status = "未开始：请先选择其他图床";
+                return;
+            }
+            for (JSONObject article : records) {
+                final String original = article.optString(Article.ARTICLE_CONTENT);
+                String content = original;
+                final List<String> urls = IMAGE.matcher(original).results().map(match -> match.group()).distinct().toList();
+                for (String source : urls) {
                     try {
-                        article.put(Article.ARTICLE_CONTENT, articleContent);
-                        articleRepository.update(oId, article, Article.ARTICLE_CONTENT);
-                        transaction.commit();
-                    } catch (final Exception e) {
-                        if (transaction.isActive()) {
-                            transaction.rollback();
+                        final File temporary = download(source);
+                        try {
+                            final String uploaded = UploadUtil.upload(config, temporary);
+                            if (uploaded == null || uploaded.isBlank()) throw new IOException("Empty upload result");
+                            content = content.replace(source, uploaded);
+                        } finally {
+                            Files.deleteIfExists(temporary.toPath());
+                            JdbcRepository.dispose();
                         }
+                    } catch (Exception exception) {
+                        failures++;
+                        status = "运行中，部分图片处理失败，请查看日志";
+                        LOGGER.log(Level.WARN, "An image could not be migrated; its original URL is retained");
                     }
+                    // Respect the upstream image service request limit without holding a JDBC connection.
+                    Thread.sleep(60_000);
                 }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                LOGGER.log(Level.ERROR, "Cannot get articles.");
-                lock = false;
-                status = STATUS_ERROR;
+                if (content.equals(original)) continue;
+                final Transaction transaction = articles.beginTransaction();
                 try {
-                    Thread.sleep(1000 * 60);
-                } catch (InterruptedException ignored) {
+                    final String id = article.optString("oId");
+                    final JSONObject current = articles.get(id);
+                    if (current == null || !original.equals(current.optString(Article.ARTICLE_CONTENT))) {
+                        failures++;
+                        continue; // An author edited the article while downloads were in progress.
+                    }
+                    current.put(Article.ARTICLE_CONTENT, content);
+                    articles.update(id, current, Article.ARTICLE_CONTENT);
+                    transaction.commit();
+                } finally {
+                    if (transaction.isActive()) transaction.rollback();
+                    JdbcRepository.dispose();
                 }
             }
+            status = failures == 0 ? "空闲" : "已完成，部分图片未转换，请查看日志";
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            status = "已停止，可重新开始";
+        } catch (Exception exception) {
+            status = "转换失败，请查看日志";
+            LOGGER.log(Level.ERROR, "Image migration failed");
+        } finally {
+            try { JdbcRepository.dispose(); } finally { running.set(false); }
+        }
+    }
 
-            // 关闭线程
-            lock = false;
-            status = STATUS_SPARE;
-            LOGGER.log(Level.INFO, "Image convert completed.");
+    private static File download(final String source) throws IOException {
+        final URI uri = URI.create(source);
+        if (!"https".equals(uri.getScheme()) || uri.getUserInfo() != null || uri.getPort() != -1
+                || !List.of("img.hacpai.com", "b3logfile.com").contains(uri.getHost())) {
+            throw new IOException("Unsupported image host");
+        }
+        final HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
+        connection.setInstanceFollowRedirects(false);
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(15000);
+        connection.setRequestProperty("User-Agent", "Volo image migration");
+        File temporary = null;
+        try {
+            if (connection.getResponseCode() != 200 || connection.getContentLengthLong() > Uploads.MAX_FILE_SIZE) {
+                throw new IOException("Image download failed or exceeds size limit");
+            }
+            String extension = uri.getPath().toLowerCase().replaceFirst(".*\\.", "");
+            if (!List.of("png", "jpg", "jpeg", "gif", "webp", "bmp").contains(extension)) extension = "jpg";
+            temporary = Files.createTempFile("volo-migration-", "." + extension).toFile();
+            try (InputStream input = connection.getInputStream(); OutputStream output = new FileOutputStream(temporary)) {
+                long size = 0;
+                final byte[] buffer = new byte[8192];
+                int length;
+                while ((length = input.read(buffer)) != -1) {
+                    size += length;
+                    if (size > Uploads.MAX_FILE_SIZE) throw new IOException("Image exceeds size limit");
+                    output.write(buffer, 0, length);
+                }
+            }
+            Uploads.validateImage(temporary);
+            return temporary;
+        } catch (IOException | RuntimeException exception) {
+            if (temporary != null) Files.deleteIfExists(temporary.toPath());
+            throw exception;
+        } finally {
+            connection.disconnect();
         }
     }
 }

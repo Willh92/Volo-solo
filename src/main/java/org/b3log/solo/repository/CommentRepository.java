@@ -19,8 +19,8 @@ package org.b3log.solo.repository;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.cache.CommentCache;
@@ -62,6 +62,12 @@ public class CommentRepository extends AbstractRepository {
      */
     public CommentRepository() {
         super(Comment.COMMENT);
+    }
+
+    @Override
+    public String add(final JSONObject comment) throws RepositoryException {
+        if (comment.isNull("commentDeleted")) comment.put("commentDeleted", false);
+        return super.add(comment);
     }
 
     @Override

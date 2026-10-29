@@ -101,6 +101,7 @@ function scrollToDest (name, offset = 0) {
 };
 
 function loadScript (url, callback) {
+  var active = true
   var script = document.createElement('script')
   script.type = 'text/javascript'
   if (script.readyState) { // IE
@@ -108,16 +109,17 @@ function loadScript (url, callback) {
       if (script.readyState === 'loaded' ||
         script.readyState === 'complete') {
         script.onreadystatechange = null
-        callback()
+        if (active) callback()
       }
     }
   } else { // Others
     script.onload = function () {
-      callback()
+      if (active) callback()
     }
   }
   script.src = url
   document.body.appendChild(script)
+  if (window.BoloNavigation) BoloNavigation.onLeave(function () { active = false; script.onload = script.onreadystatechange = null; script.remove() })
 };
 
 function snackbarShow (text, showAction, duration) {
@@ -134,7 +136,7 @@ function snackbarShow (text, showAction, duration) {
   })
 }
 
-const Cookies = {
+var Cookies = {
   get: function (name) {
     const value = `; ${document.cookie}`
     const parts = value.split(`; ${name}=`)

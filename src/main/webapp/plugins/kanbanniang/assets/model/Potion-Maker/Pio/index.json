@@ -2,9 +2,9 @@
   "model": "model/Potion-Maker/Pio/model.moc",
   "textures": [],
   "layout": {
-    "center_x": 0.0,
+    "center_x": 0,
     "center_y": -0.05,
-    "width": 2.0
+    "width": 2
   },
   "hit_areas_custom": {
     "head_x": [

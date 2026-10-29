@@ -21,13 +21,11 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.advice.ProcessAdvice;
-import org.b3log.latke.servlet.advice.RequestProcessAdviceException;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 
 /**
  * The common auth check before advice for admin console.
@@ -37,26 +35,36 @@ import javax.servlet.http.HttpServletResponse;
  * @since 2.9.5
  */
 @Singleton
-public class ConsoleAuthAdvice extends ProcessAdvice {
+public class ConsoleAuthAdvice implements org.b3log.latke.http.function.Handler {
 
     @Override
-    public void doAdvice(final RequestContext context) throws RequestProcessAdviceException {
+    public void handle(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
         if (null == currentUser) {
+            if (org.b3log.solo.util.AdminRequests.rejectPage(context)) return;
             final JSONObject exception401 = new JSONObject();
             exception401.put(Keys.MSG, "Unauthorized to request [" + context.requestURI() + "], please signin");
-            exception401.put(Keys.STATUS_CODE, HttpServletResponse.SC_UNAUTHORIZED);
+            exception401.put(org.b3log.solo.model.Common.STATUS_CODE, 401);
 
-            throw new RequestProcessAdviceException(exception401);
+            context.setStatus(exception401.getInt(org.b3log.solo.model.Common.STATUS_CODE));
+            context.renderJSON(exception401);
+            context.abort();
+            return;
         }
 
         final String userRole = currentUser.optString(User.USER_ROLE);
         if (Role.VISITOR_ROLE.equals(userRole)) {
+            if (org.b3log.solo.util.AdminRequests.rejectPage(context)) return;
             final JSONObject exception403 = new JSONObject();
             exception403.put(Keys.MSG, "Forbidden to request [" + context.requestURI() + "]");
-            exception403.put(Keys.STATUS_CODE, HttpServletResponse.SC_FORBIDDEN);
+            exception403.put(org.b3log.solo.model.Common.STATUS_CODE, 403);
 
-            throw new RequestProcessAdviceException(exception403);
+            context.setStatus(exception403.getInt(org.b3log.solo.model.Common.STATUS_CODE));
+            context.renderJSON(exception403);
+            context.abort();
+            return;
         }
+        context.handle();
     }
 }

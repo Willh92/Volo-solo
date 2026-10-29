@@ -38,9 +38,9 @@
                                         <main>
                                             <div class="fn-clear">
                                                 <#if "http://" == comment.commentURL>
-                                                    ${comment.commentName}
+                                                    ${comment.commentName?html}
                                                     <#else>
-                                                        <a class="user-name" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+                                                        <a class="user-name" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
                                                 </#if>
                                                 <time class="ft-gray">${comment.commentDate?string("yyyy-MM-dd HH:mm")}</time>
                                                 <a class="reply-btn" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>

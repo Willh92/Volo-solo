@@ -19,8 +19,8 @@ package org.b3log.solo.service;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.SortDirection;
@@ -138,7 +138,10 @@ public class PageQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
-            final JSONArray pages = result.getJSONArray(Keys.RESULTS);
+            final JSONArray pages = org.b3log.solo.util.QueryResults.array(result);
+            for (int index = 0; index < pages.length(); index++) {
+                org.b3log.solo.util.GitHubStats.normalizeNavigationIcon(pages.getJSONObject(index));
+            }
             ret.put(Pagination.PAGINATION, pagination);
             ret.put(Page.PAGES, pages);
 

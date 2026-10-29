@@ -52,8 +52,8 @@
                                 </#if>
                                 <!-- 文章标题 -->
                                 <h3 class="post-title">
-                                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                        ${article.articleTitle!}
+                                    <a class="skin-list-title" title="${(article.articleTitle!)?html}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                        ${(article.articleTitle!)?html}
                                     </a>
                                 </h3>
                             </header>
@@ -81,7 +81,7 @@
                                 <div class="post-thumbnail" data-img="">
                                     <a
                                         href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
-                                        title="${article.articleTitle!}">
+                                        title="${(article.articleTitle!)?html}">
                                         <img class="thumbnail" src="${article.articleImg1URL}" />
                                     </a>
                                 </div>

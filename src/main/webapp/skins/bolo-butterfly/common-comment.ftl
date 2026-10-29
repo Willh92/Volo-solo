@@ -17,27 +17,31 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div class="vcard" id="${comment.oId}" xmlns="http://www.w3.org/1999/html">
+<div class="vcard" id="${comment.oId}" xmlns="http://www.w3.org/1999/html" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class = "vavatar">
-        <img class="vcimg" src="${comment.commentThumbnailURL}">
+        <img data-avatar-seed="${comment.commentName?html}" class="vcimg" src="${comment.commentThumbnailURL?html}">
     </div>
     <div class="vh">
         <div class="vhead">
             <div class = "vcmeta">
                 <#if "http://" == comment.commentURL>
-                    <a href="javascript:void(0);" rel="nofollow">${comment.commentName}</a>
+                    <a href="javascript:void(0);" rel="nofollow">${comment.commentName?html}</a>
                 <#else>
-                    <a class="vnick" rel="nofollow" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+                    <a class="vnick" rel="nofollow" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
                 </#if>
-                <span class="vtime">${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</span>
             </div>
             <#if article.commentable>
-                <a rel="nofollow" class="vat" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">
+                <a rel="nofollow" class="vat" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">
                         <span class = "vicon">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 32C114.6 32 0 125.1 0 240c0 47.6 19.9 91.2 52.9 126.3C38 405.7 7 439.1 6.5 439.5c-6.6 7-8.4 17.2-4.6 26S14.4 480 24 480c61.5 0 110-25.7 139.1-46.3C192 442.8 223.2 448 256 448c141.4 0 256-93.1 256-208S397.4 32 256 32zm0 368c-26.7 0-53.1-4.1-78.4-12.1l-22.7-7.2-19.5 13.8c-14.3 10.1-33.9 21.4-57.5 29 7.3-12.1 14.4-25.7 19.9-40.2l10.6-28.1-20.6-21.8C69.7 314.1 48 282.2 48 240c0-88.2 93.3-160 208-160s208 71.8 208 160-93.3 160-208 160z"></path></svg>
                         </span>
                 </a>
             </#if>
+            <div class="vtime"><time>${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+                <#if (comment.commentIPMasked!'')?has_content>
+                    <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+                </#if>
+            </div>
         </div>
         <div class="ivcon">
                 <span class = "vctext">
@@ -46,12 +50,12 @@
                     <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                        onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 23);"
                        onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-                    >@${comment.commentOriginalCommentName}</a>
+                    >@${comment.commentOriginalCommentName?html}</a>
                 </#if>
                 </span>
             <span>
                 <div class="vcontent">
-                    ${comment.commentContent}
+                    <div data-comment-content>${comment.commentContent}</div>
                 </div>
                 </span>
         </div>

@@ -41,7 +41,7 @@
             <@head title="${article.articleTitle} - ${blogTitle}"
                 description="${article.articleAbstract?html}">
                 <link rel="stylesheet" href="${staticServePath}/js/lib/bulma.min.css" />
-                <link rel="stylesheet" href="https://ftp.stackoverflow.wiki/bolo/fantastic/css/all.min.css">
+                <link rel="stylesheet" href="${staticServePath}/js/lib/fontawesome/css/all.min.css">
                 <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}" />
                 <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/style.css?${staticResourceVersion}" />
                      <link rel="stylesheet" href="${staticServePath}/js/lib/swiper.min.css">
@@ -72,7 +72,7 @@
                                                 </div>
                                             </div>
                                             <h1 class="title is-size-3 is-size-4-mobile has-text-weight-normal">
-                                                ${article.articleTitle}
+                                                ${(article.articleTitle)?html}
                                             </h1>
                                             <style>
                                                 .content .emoji {
@@ -80,7 +80,7 @@
                                                     height: 25px !important;
                                                 }
                                             </style>
-                                            <div id="post-article" class="content post-article">
+                                            <div id="post-article" class="content post-article vditor-reset">
                                                 ${article.articleContent}
                                             </div>
                                             <div class="level is-size-7 is-uppercase">
@@ -110,9 +110,9 @@
                                     </div>
                                     </#if>
                                 </div>
-                                <div class="column is-4-tablet is-3-desktop is-3-widescreen is-3-fullhd  is-hidden-touch  has-order-3 column-right <%= sticky_class(position) %>">
+                                <div class="column is-4-tablet is-3-desktop is-3-widescreen is-3-fullhd  is-hidden-touch  has-order-3 column-right">
                                 <#include "toc-post.ftl">
-                                <div class="card widget">
+                                <div class="card widget" data-article-recommendations>
                                     <div class="card-content">
                                         <article class="media">
                                             <div class="media-content">
@@ -123,7 +123,7 @@
                                         </article>
                                     </div>
                                 </div>
-                                <div class="card widget" id="r2">
+                                <div class="card widget" id="r2" data-article-recommendations>
                                     <div class="card-content">
                                         <article class="media">
                                             <div class="media-content">
@@ -144,37 +144,11 @@
             <#include "footer.ftl">
             <@comment_script oId=article.oId commentable=article.commentable>
                 <#if 0 !=randomArticlesDisplayCount>
-                    page.loadRandomArticles('<h3>${randomArticlesLabel}</h3>');
+                    page.loadRandomArticles('<h3>${randomArticlesLabel?js_string}</h3>');
                 </#if>
                 <#if 0 !=relevantArticlesDisplayCount>
-                    page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel}</h3>');
+                    page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel?js_string}</h3>');
                 </#if>
-                Skin.initArticle()
             </@comment_script>
-            <script>
-                // 延时检测右侧 “相关阅读” 是否为空，如果空则删除空 div，好看些
-                $(function () {
-                                        var tempHtml =
-                                            '<a rel="nofollow" href="javascript:void(0)"><i class="fas fa-search fa-spin"></i> 努力寻找中 ...</a>';
-                                        $('#rArticles').append(tempHtml);
-                                        setTimeout(function () {
-                                            var judgeEmptyShowing = $('#rArticles').html();
-                                            judgeEmptyShowing = judgeEmptyShowing.replace(tempHtml, '');
-                                            $('#rArticles').html(judgeEmptyShowing);
-                                            judgeEmptyShowing = judgeEmptyShowing.replace(/[\r\n]/g,
-                                            "");
-                                            judgeEmptyShowing = judgeEmptyShowing.replace(new RegExp(
-                                                /( )/g), "");
-                                            if (judgeEmptyShowing === '') {
-                                                $('#rArticles').html(
-                                                    '<a href="javascript:void(0)"><i class="fa fa-battery-empty"></i> 什么都没找到</a>'
-                                                );
-                                                setTimeout(function () {
-                                                    $('#r2').fadeOut(1000);
-                                                }, 1000)
-                                            }
-                                        }, 3000)
-                                    })
-            </script>
         </body>
     </html>

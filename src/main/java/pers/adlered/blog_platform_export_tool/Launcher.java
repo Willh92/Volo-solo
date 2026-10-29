@@ -32,13 +32,17 @@ import java.util.List;
  * @date : 2020-05-14
  **/
 public class Launcher {
-    public static void main(String[] args) throws IllegalAccessException, InstantiationException, ClassNotFoundException {
+    public static void main(String[] args) throws Exception {
         List<TranslateResult> list = run("CNBlogs");
         XML.printResult(list);
     }
 
-    public static List<TranslateResult> run(String blogType) throws ClassNotFoundException, IllegalAccessException, InstantiationException {
-        Decompress decompress = new Decompress("temp/file");
+    public static List<TranslateResult> run(String blogType) throws ClassNotFoundException, IllegalAccessException, InstantiationException, java.io.IOException {
+        return run(blogType, "temp/file");
+    }
+
+    public static synchronized List<TranslateResult> run(String blogType, String directory) throws ClassNotFoundException, IllegalAccessException, InstantiationException, java.io.IOException {
+        Decompress decompress = new Decompress(directory);
         decompress.run();
         Class<?> serviceClass = Class.forName("pers.adlered.blog_platform_export_tool.module." + blogType.toLowerCase() + "." + blogType.toUpperCase() + "ModuleServiceImpl");
         ModuleService moduleService = (ModuleService) serviceClass.newInstance();

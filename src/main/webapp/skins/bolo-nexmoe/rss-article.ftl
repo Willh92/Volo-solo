@@ -47,10 +47,10 @@
                             </#if>
                             <div class="nexmoe-post">
                                 <div class="nexmoe-post-cover">
-                                    <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${article.articleTitle}"
+                                    <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${(article.articleTitle)?html}"
                                         data-src="${article.articleImg1URL}" class=" ls-is-cached lazyloaded">
                                     <h1>
-                                        ${article.articleTitle}
+                                        ${(article.articleTitle)?html}
                                     </h1>
                                 </div>
                                 <div class="nexmoe-post-meta">

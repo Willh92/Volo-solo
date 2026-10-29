@@ -27,10 +27,9 @@
  */
 var Skin = {
   initToc: function () {
-    if ($('.article__toc li').length > 0 && $(window).width() > 768) {
-      $('.article__toc').css({
+    if ($('.article__toc li').length > 0 && $(window).width() >= 1200) {
+      $('.reading-toc-disclosure').css({
         right: '50px',
-        'border-right': '1px solid #fff',
         opacity: 1,
       })
       $('#pjax.wrapper').css({

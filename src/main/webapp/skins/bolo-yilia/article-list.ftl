@@ -22,8 +22,8 @@
         <article>
             <header class="fn__flex">
                 <h2 class="fn__flex-1">
-                    <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                        ${article.articleTitle}
+                    <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                        ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
                         <sup>
@@ -54,7 +54,6 @@
             <footer class="article__footer fn__flex">
                 <span class="icon-tag fn__flex-center"></span>
                 <div class="tags fn__flex-1 fn__flex-center">
-                    <span>&nbsp;&nbsp;&nbsp;</span>
                     <#if article.articleCategory?? && article.articleCategory !="">
                         <a class="tag" rel="tag" href="${servePath}/category/${article.categoryURI}">分类：${article.articleCategory}
                         </a>
@@ -65,7 +64,6 @@
                         </a>
                     </#list>
                 </div>
-                <span>&nbsp;&nbsp;&nbsp;</span>
                 <#if interactive=="on">
                     <#if article.articleCommentCount !=0>
                         <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments"

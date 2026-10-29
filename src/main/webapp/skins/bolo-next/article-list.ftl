@@ -23,8 +23,8 @@
         <article class="post-item">
             <header>
                 <h2>
-                    <a class="post-title-link" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                        ${article.articleTitle}
+                    <a class="skin-list-title post-title-link" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                        ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
                         <sup>

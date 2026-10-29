@@ -22,19 +22,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.util.Locales;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.DataModelService;
@@ -61,7 +61,7 @@ import freemarker.template.Template;
  * @author <a href="https://github.com/adlered">gakkiyomi (Bolo Commiter)</a>
  * @since 0.4.6
  */
-@RequestProcessor
+@Singleton
 public class UserTemplateProcessor {
 
     /**
@@ -116,14 +116,14 @@ public class UserTemplateProcessor {
         final String templateName = context.pathVar("name") + ".ftl";
         LOGGER.log(Level.DEBUG, "Shows page [requestURI={0}, templateName={1}]", requestURI, templateName);
 
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, templateName);
 
         final Map<String, Object> dataModel = renderer.getDataModel();
         final Template template = Skins.getSkinTemplate(context, templateName);
         if (null == template) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -137,12 +137,12 @@ public class UserTemplateProcessor {
             dataModelService.fillUsite(dataModel);
             dataModelService.fillUserTemplate(context, template, dataModel, preference);
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
             statisticMgmtService.incBlogViewCount(context, response);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -154,21 +154,21 @@ public class UserTemplateProcessor {
     @RequestProcessing(value = "/admin/usite/refresh", method = HttpMethod.GET)
     public void refreshUsite(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
 
         userMgmtService.refreshUSite();
 
-        context.renderJSON().renderCode(200);
-        context.renderJSON().renderMsg("OK");
+        org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
+        org.b3log.solo.web.JsonResponses.json(context).renderMsg("OK");
     }
 
     @RequestProcessing(value = "/admin/usite/set", method = HttpMethod.POST)
     public void setUsite(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -192,14 +192,14 @@ public class UserTemplateProcessor {
             for (String i : usiteList) {
                 if (!usiteObject.has(i)) {
                     LOGGER.log(Level.ERROR, "Updates usite option failed: Invalid JSON Object.");
-                    context.renderJSON().renderCode(500);
+                    org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
 
                     return;
                 }
             }
         } catch (Exception e) {
             LOGGER.log(Level.ERROR, "Updates usite option failed", e);
-            context.renderJSON().renderCode(500);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
 
             return;
         }
@@ -208,12 +208,12 @@ public class UserTemplateProcessor {
         try {
             optionMgmtService.addOrUpdateOption(usiteOpt);
             LOGGER.log(Level.INFO, "Usite refresh from Local successful: " + usite);
-            context.renderJSON().renderCode(200);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
 
             return;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates usite option failed", e);
-            context.renderJSON().renderCode(500);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
 
             return;
         }
@@ -222,7 +222,7 @@ public class UserTemplateProcessor {
     @RequestProcessing(value = "/admin/usite/get", method = HttpMethod.GET)
     public void getUsite(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -230,11 +230,11 @@ public class UserTemplateProcessor {
         try {
             JSONObject usiteOpt = optionQueryService.getOptionById(Option.ID_C_USITE);
             String usite = usiteOpt.optString(Option.OPTION_VALUE);
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg(usite);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg(usite);
         } catch (Exception e) {
-            context.renderJSON().renderCode(500);
-            context.renderJSON().renderMsg("");
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("");
         }
     }
 }

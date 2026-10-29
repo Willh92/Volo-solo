@@ -22,8 +22,7 @@
     <div id="userPagination" class="fn__margin12 fn__right"></div>
 </div>
 <div class="fn__clear"></div>
-<div class="form form__no-table">
-<div id="userUpdate" class="fn__none form form__no-table">
+<div id="userUpdate" class="fn__none form form__no-table" data-title="${(userProfileLabel!'用户资料')?html}">
     <label for="userNameUpdate">${userName1Label}<span style="color: #991a1a"></span></label>
     <input id="userNameUpdate" type="text"/>
     <label for="userURLUpdate">${userURL1Label}</label>
@@ -32,8 +31,8 @@
     <input id="userAvatarUpdate" type="text"/>
     <label for="userB3KeyUpdate">${passwordLabel}</label>
     <input id="userB3KeyUpdate" type="password" placeholder="${password1Label}"/>
-    <br><br>
-    <button onclick="admin.userList.update();" class="fn__right">${updateLabel}</button>
+
+        <div class="console-form-actions"><button onclick="admin.userList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

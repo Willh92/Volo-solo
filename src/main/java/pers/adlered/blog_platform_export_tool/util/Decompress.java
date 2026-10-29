@@ -17,7 +17,7 @@
  */
 package pers.adlered.blog_platform_export_tool.util;
 
-import org.zeroturnaround.zip.ZipUtil;
+import org.b3log.solo.bolo.tool.ZipFilterUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -37,7 +37,7 @@ public class Decompress {
         Decompress.path = path;
     }
 
-    public void run() {
+    public void run() throws java.io.IOException {
         List<String> unzipFiles = analyze();
         for (String i : unzipFiles) {
             String filename = path + "/" + i;
@@ -45,7 +45,7 @@ public class Decompress {
             i = splitFilename[splitFilename.length - 1];
             System.out.println("Unpacking " + filename);
             if ("zip".equals(i)) {
-                ZipUtil.unpack(new File(filename), new File(path));
+                ZipFilterUtils.unpackFilteredZip(new File(filename), new File(path), null);
             }
         }
         delete(unzipFiles);

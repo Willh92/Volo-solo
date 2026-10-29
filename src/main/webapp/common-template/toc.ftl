@@ -17,10 +17,10 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<ul class="article__toc">
+<ul class="article__toc" aria-label="${tocLabel?html}">
     <#list article.articleToC as item>
         <li class="${item.className}">
-            <a href="#${item.id}">${item.text}</a>
+            <a href="#${item.id?html}" title="${item.text?html}"><span class="reading-toc-label">${item.text?html}</span></a>
         </li>
     </#list>
 </ul>

@@ -21,8 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.b3log.latke.ioc.BeanManager;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Follow;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.InitService;

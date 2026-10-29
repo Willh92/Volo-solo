@@ -60,8 +60,7 @@
 
     <#if settings.auto_theme!true>
     /*light theme*/
-    @media (prefers-color-scheme: light) {
-        :root {
+    :root[data-bolo-theme="light"] {
             --color: #333333;
             --background: #f7f7f7;
             --cardbgcolor: #fff;
@@ -99,12 +98,10 @@
             --toc-dot-active-bg-color: #ebedef;
             --toc-vertical-line-color: #1485FE;
             --toc-item-bg-hover: #1485FE;
-        }
-    }
+}
 
     /* Dark mode */
-    @media (prefers-color-scheme: dark) {
-        :root {
+    :root[data-bolo-theme="dark"] {
             --color: #CCC;
             --background: #2c2a2a !important;
             --cardbgcolor: #343232 !important;
@@ -144,12 +141,10 @@
             --toc-dot-active-color: #1485FE;
             --toc-vertical-line-color: #888;
             --toc-bg-bg-hover: #321;
-        }
-    }
+}
 
     <#else>
-    @media (prefers-color-scheme: light) {
-        :root {
+    :root[data-bolo-theme="light"] {
             --color: #333333;
             --background: #f7f7f7;
             --cardbgcolor: #fff;
@@ -187,8 +182,7 @@
             --toc-dot-active-bg-color: #ebedef;
             --toc-vertical-line-color: #1485FE;
             --toc-item-bg-hover: #1485FE;
-        }
-    }
+}
 
     </#if>
     /* Light mode */

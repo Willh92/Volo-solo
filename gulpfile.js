@@ -30,15 +30,20 @@ const concat = require('gulp-concat')
 const terser = require('gulp-terser')
 const sass = require('gulp-sass')(require('sass'));
 const rename = require('gulp-rename')
-const autoprefixer = require('gulp-autoprefixer')
-const del = require('del')
+let autoprefixer
+let deleteAsync
+
+async function loadTools () {
+  autoprefixer = (await import('gulp-autoprefixer')).default
+  deleteAsync = (await import('del')).deleteAsync
+}
 
 function sassSkinProcess () {
   return gulp.src('./src/main/webapp/skins/*/css/*.scss').
     pipe(sass({
-      outputStyle: 'compressed',
-      includePaths: ['node_modules'],
-    }).on('error', sass.logError)).
+      style: 'compressed',
+      loadPaths: ['node_modules'],
+    })).
     pipe(autoprefixer({
       cascade: false,
     })).
@@ -53,20 +58,52 @@ function sassWatch () {
 function sassCommonProcess () {
   return gulp.src('./src/main/webapp/scss/*.scss').
     pipe(sass({
-      outputStyle: 'compressed',
-      includePaths: ['node_modules'],
-    }).on('error', sass.logError)).
+      style: 'compressed',
+      loadPaths: ['node_modules'],
+    })).
     pipe(autoprefixer({
       cascade: false,
     })).
     pipe(gulp.dest('./src/main/webapp/scss/'))
 }
 
-gulp.task('watch', gulp.series(sassWatch))
+gulp.task('watch', gulp.series(loadTools, vendorAssets, sassWatch))
+
+async function vendorAssets () {
+  const fs = require('node:fs/promises')
+  const path = require('node:path')
+  const webapp = './src/main/webapp'
+  // Vditor appends /dist/... to its cdn option, so preserve the package layout.
+  const vditorDirectory = path.resolve(webapp, 'js/lib/vditor')
+  const expectedVditorDirectory = path.resolve(__dirname, 'src/main/webapp/js/lib/vditor')
+  if (vditorDirectory !== expectedVditorDirectory) throw new Error('Unexpected generated Vditor directory')
+  await fs.rm(vditorDirectory, { recursive: true, force: true })
+  const copies = [
+    ['node_modules/vditor/dist', webapp + '/js/lib/vditor/dist'],
+    ['node_modules/font-awesome/css', webapp + '/js/lib/font-awesome/css'],
+    ['node_modules/font-awesome/fonts', webapp + '/js/lib/font-awesome/fonts'],
+    ['node_modules/@fortawesome/fontawesome-free/css', webapp + '/js/lib/fontawesome/css'],
+    ['node_modules/@fortawesome/fontawesome-free/webfonts', webapp + '/js/lib/fontawesome/webfonts'],
+    ['node_modules/jquery/dist/jquery.min.js', webapp + '/js/lib/jquery/jquery.min.js'],
+    ['node_modules/justifiedGallery/dist', webapp + '/js/lib/justifiedGallery'],
+    ['node_modules/@fancyapps/fancybox/dist', webapp + '/js/lib/fancybox'],
+    ['node_modules/vditor/LICENSE', webapp + '/js/lib/vditor/LICENSE'],
+    ['node_modules/jquery/LICENSE.txt', webapp + '/js/lib/jquery/LICENSE.txt'],
+    ['node_modules/@fortawesome/fontawesome-free/LICENSE.txt', webapp + '/js/lib/fontawesome/LICENSE.txt'],
+    ['node_modules/justifiedGallery/LICENSE', webapp + '/js/lib/justifiedGallery/LICENSE'],
+    ['node_modules/@fontsource/roboto/files/roboto-latin-500-normal.woff2', webapp + '/js/fonts/roboto/Roboto-Medium.woff2'],
+    ['node_modules/@fontsource/roboto/files/roboto-latin-500-normal.woff', webapp + '/js/fonts/roboto/Roboto-Medium.woff'],
+    ['node_modules/@fontsource/roboto/LICENSE', webapp + '/js/fonts/roboto/LICENSE.txt'],
+  ]
+  for (const [source, destination] of copies) {
+    await fs.mkdir(require('node:path').dirname(destination), { recursive: true })
+    await fs.cp(source, destination, { recursive: true })
+  }
+}
 
 function minJS () {
   // minify js
-  return gulp.src('./src/main/webapp/js/*.js').
+  return gulp.src(['./src/main/webapp/js/*.js', '!./src/main/webapp/js/*.min.js']).
     pipe(rename({ suffix: '.min' })).
     pipe(terser({
       output: {
@@ -134,7 +171,7 @@ function miniAdminLibs () {
 function miniPjax () {
   // concat js
   const jsPjax = [
-    './src/main/webapp/js/lib/jquery/jquery-3.1.0.min.js',
+    './src/main/webapp/js/lib/jquery/jquery.min.js',
     './src/main/webapp/js/lib/jquery/jquery.pjax.js',
     './src/main/webapp/js/lib/nprogress/nprogress.js']
   return gulp.src(jsPjax).
@@ -160,12 +197,21 @@ function minSkinJS () {
 }
 
 function cleanProcess () {
-  return del([
+  return deleteAsync([
     './src/main/webapp/js/*.min.js',
     './src/main/webapp/skins/*/js/*.min.js'])
 }
 
+async function compressEditorRuntime () {
+  const fs = require('node:fs/promises')
+  const zlib = require('node:zlib')
+  for (const name of ['index.min.js', 'js/lute/lute.min.js']) {
+    const file = './src/main/webapp/js/lib/vditor/dist/' + name
+    await fs.writeFile(file + '.gz', zlib.gzipSync(await fs.readFile(file), {level: 9}))
+  }
+}
+
 gulp.task('default',
-  gulp.series(cleanProcess, sassSkinProcess, sassCommonProcess,
+  gulp.series(loadTools, cleanProcess, vendorAssets, sassSkinProcess, sassCommonProcess,
     gulp.parallel(minSkinJS, minJS),
-    gulp.parallel(miniPjax, miniAdmin, miniAdminLibs)))
+    gulp.parallel(miniPjax, miniAdmin, miniAdminLibs), compressEditorRuntime))

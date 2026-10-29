@@ -17,6 +17,11 @@
  */
 package org.b3log.solo.model;
 
+import org.owasp.encoder.Encode;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * This class defines all sign model relevant keys.
  *
@@ -39,6 +44,21 @@ public final class Sign {
      * Key of sign HTML.
      */
     public static final String SIGN_HTML = "signHTML";
+
+    private static final Pattern VARIABLES = Pattern.compile("\\{(title|author|url|blog)\\}");
+
+    /** Expands plain-text variables without allowing their values to become HTML or new placeholders. */
+    public static String render(final String template, final String title, final String author,
+            final String url, final String blog) {
+        final Map<String, String> values = Map.of("title", title, "author", author, "url", url, "blog", blog);
+        final Matcher matcher = VARIABLES.matcher(template);
+        final StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(result, Matcher.quoteReplacement(Encode.forHtml(values.get(matcher.group(1)))));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
 
     /**
      * Private constructor.

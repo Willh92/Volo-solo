@@ -18,6 +18,13 @@
 
 -->
 <div class="sidebar">
+
+  <#if article?? && article.articleToC?? && article.articleToC?size gt 0>
+  <section class="sidebar__container sidebar__toc">
+    <#include "../../common-template/disclosure-toc.ftl">
+  </section>
+  </#if>
+
   <#if interactive == "on">
   <section class="sidebar__container">
     <div class="header">
@@ -28,7 +35,7 @@
         <div class="input">
           <input type="text" name="keyword" placeholder="输入关键字搜索">
           <button type="submit"></button>
-        <div>
+        </div>
       </form>
     </div>
   </section>
@@ -83,7 +90,7 @@
     </div>
     <div class="lists">
       <#list mostCommentArticles as article>
-      <a href="${servePath}${article.articlePermalink}">${article.articleTitle}</a>
+      <a href="${servePath}${article.articlePermalink}"><span class="skin-list-title">${(article.articleTitle)?html}</span></a>
       </#list>
     </div>
   </section>
@@ -97,22 +104,11 @@
     </div>
     <div class="lists">
       <#list mostViewCountArticles as article>
-      <a href="${servePath}${article.articlePermalink}">${article.articleTitle}</a>
+      <a href="${servePath}${article.articlePermalink}"><span class="skin-list-title">${(article.articleTitle)?html}</span></a>
       </#list>
     </div>
   </section>
   </#if>
 
-  <#if article??>
-  <section class="sidebar__container article__contents J_article__contents">
-    <div class="header">
-      <span>${articleContent}</span>
-    </div>
-    <div class="contents J_article__contents--container">
-    </div>
-  </section>
-  </#if>
-  <div class="toTop J_backToTop">
-    <img src="${staticServePath}/skins/${skinDirName}/images/top.png" />
-  </div>
 </div>
+<div class="toTop J_backToTop" role="button" tabindex="0" aria-label="${goTopLabel?html}" title="${goTopLabel?html}"><img src="${staticServePath}/skins/${skinDirName}/images/top.png" alt=""/></div>

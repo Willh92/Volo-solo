@@ -20,26 +20,23 @@ package org.b3log.solo.bolo.prop;
 import static pers.adlered.blog_platform_export_tool.Launcher.run;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 
-import org.apache.commons.fileupload.FileItem;
-import org.apache.commons.fileupload.disk.DiskFileItemFactory;
-import org.apache.commons.fileupload.servlet.ServletFileUpload;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.b3log.latke.http.FileUpload;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.Transaction;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.util.Ids;
-import org.b3log.solo.SoloServletListener;
-import org.b3log.solo.bolo.tool.DeleteFolder;
 import org.b3log.solo.bolo.tool.ZipFilterUtils;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
@@ -50,6 +47,8 @@ import org.b3log.solo.service.ImportService;
 import org.b3log.solo.service.InitService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.util.Uploads;
+import org.apache.commons.io.FileUtils;
 import org.json.JSONObject;
 
 import pers.adlered.blog_platform_export_tool.module.TranslateResult;
@@ -63,7 +62,7 @@ import pers.adlered.blog_platform_export_tool.module.TranslateResult;
  * @author : https://github.com/adlered
  * @date : 2020-01-05 13:39
  **/
-@RequestProcessor
+@Singleton
 public class BackupService {
     /**
      * Option query service.
@@ -101,41 +100,26 @@ public class BackupService {
     @Inject
     private ImportService importService;
 
-    @RequestProcessing(value = "/sync/github/repo/do/get", method = HttpMethod.GET)
+    @RequestProcessing(value = "/sync/github/repo/do/get", method = HttpMethod.POST)
     public void syncGitHubRepos(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-
-            return;
-        }
-
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         try {
-            String githubId = context.param("githubId");
-            if (githubId.isEmpty()) {
-                throw new NullPointerException();
+            final String githubId = java.util.Objects.toString(context.param("githubId"), "").strip();
+            if (!githubId.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请填写正确的 GitHub 用户名。");
+                return;
             }
-
-            articleMgmtService.refreshGitHub(githubId);
-
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg("Sync github repos to article successfully. [githubId=" + githubId + "]");
-
-            return;
+            final boolean ok = articleMgmtService.refreshGitHub(githubId);
+            context.setStatus(ok ? 200 : 502);
+            context.renderJSON(new JSONObject().put("sc", ok).put("msg", ok ? "开源项目文章已更新。" : "更新失败，请核对 GitHub 用户名、公开仓库和 API 访问状态。"));
         } catch (final Exception e) {
-            context.sendError(500);
-
-            return;
+            org.b3log.solo.util.AdminRequests.reject(context, 500, "更新开源项目文章失败，请查看本地日志。");
         }
     }
 
-    @RequestProcessing(value = "/prop/backup/github/do/upload", method = { HttpMethod.GET })
+    @RequestProcessing(value = "/prop/backup/github/do/upload", method = HttpMethod.POST)
     public void uploadBackupToGithub(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-
-            return;
-        }
-
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         try {
             boolean enableAutoFlushGitHubProfile;
             try {
@@ -145,22 +129,18 @@ public class BackupService {
             } catch (Exception e) {
                 enableAutoFlushGitHubProfile = false;
             }
-            exportService.exportGitHub(enableAutoFlushGitHubProfile);
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg("Exported backup to GitHub manual successfully.");
-
-            return;
+            final boolean ok = exportService.exportGitHub(enableAutoFlushGitHubProfile);
+            context.setStatus(ok ? 200 : 502);
+            context.renderJSON(new JSONObject().put("sc", ok).put("msg", ok ? "GitHub 备份已完成。" : "GitHub 同步未完成，请检查 Token 的仓库读写权限、公开文章和网络连接。"));
         } catch (final Exception e) {
-            context.sendError(500);
-
-            return;
+            org.b3log.solo.util.AdminRequests.reject(context, 500, "GitHub 同步失败，请查看本地日志。");
         }
     }
 
     @RequestProcessing(value = "/prop/backup/hacpai/do/upload", method = { HttpMethod.GET })
     public void uploadBackupToHacpai(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -168,8 +148,8 @@ public class BackupService {
         try {
             exportService.exportHacPai(true);
 
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg("Exported backup to HacPai manual successfully.");
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("Exported backup to HacPai manual successfully.");
 
             return;
         } catch (final Exception e) {
@@ -181,30 +161,21 @@ public class BackupService {
 
     @RequestProcessing(value = "/import/cnblogs", method = { HttpMethod.POST })
     public void importFromCnblogs(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
-            return;
-        }
-
-        DeleteFolder.delFolder(new File("temp/file/").getAbsolutePath());
-
-        DiskFileItemFactory factory = new DiskFileItemFactory();
-        factory.setRepository(new File("temp/file/"));
-        ServletFileUpload upload = new ServletFileUpload(factory);
-        upload.setHeaderEncoding("UTF-8");
+        Path directory = null;
+        List<FileUpload> itemList = java.util.Collections.emptyList();
         try {
-            List<FileItem> itemList = upload.parseRequest(context.getRequest());
-            for (FileItem item : itemList) {
-                String name = item.getName();
-                File file = new File("temp/file/" + name);
-                item.write(file);
-                item.delete();
+            directory = Files.createTempDirectory("bolo-cnblogs-");
+            itemList = Uploads.files(context.getRequest());
+            for (FileUpload item : itemList) {
+                Uploads.stage(item, directory, "zip", "xml");
             }
-            List<TranslateResult> list = run("CNBlogs");
+            List<TranslateResult> list = run("CNBlogs", directory.toString());
             for (TranslateResult i : list) {
+                Transaction transaction = null;
                 try {
-                    final Transaction transaction = userRepository.beginTransaction();
+                    transaction = userRepository.beginTransaction();
                     final JSONObject article = new JSONObject();
                     final String ret = Ids.genTimeMillisId();
                     article.put(Keys.OBJECT_ID, ret);
@@ -241,61 +212,53 @@ public class BackupService {
 
                     transaction.commit();
                 } catch (Exception e) {
+                    if (transaction != null && transaction.isActive()) {
+                        transaction.rollback();
+                    }
                     e.printStackTrace();
                     continue;
                 }
             }
         } catch (Exception e) {
-            DeleteFolder.delFolder(new File("temp/file/").getAbsolutePath());
-            context.renderJSON().renderMsg("从博客园恢复备份失败，请重试！");
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("从博客园恢复备份失败，请重试！");
 
             return;
+        } finally {
+            FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
         }
 
         System.out.println("博客园文章已全部导入。");
-        DeleteFolder.delFolder(new File("temp/file/").getAbsolutePath());
-        context.renderJSON().renderMsg("从博客园恢复备份成功。");
+        org.b3log.solo.web.JsonResponses.json(context).renderMsg("从博客园恢复备份成功。");
 
         return;
     }
 
     @RequestProcessing(value = "/import/markdown", method = { HttpMethod.POST })
     public void importFromMarkdown(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
-            return;
-        }
-
-        final ServletContext servletContext = SoloServletListener.getServletContext();
-        final String markdownsPath = servletContext.getRealPath("markdowns");
-
-        DeleteFolder.delAllFile(markdownsPath);
-
-        DiskFileItemFactory factory = new DiskFileItemFactory();
-        factory.setRepository(new File(markdownsPath));
-        ServletFileUpload upload = new ServletFileUpload(factory);
-        upload.setHeaderEncoding("UTF-8");
+        Path directory = null;
+        List<FileUpload> itemList = java.util.Collections.emptyList();
         String result = "";
         try {
-            List<FileItem> itemList = upload.parseRequest(context.getRequest());
-            for (FileItem item : itemList) {
-                String name = item.getName();
-                File file = new File(markdownsPath + name);
-                item.write(file);
-                item.delete();
-                ZipFilterUtils.unpackFilteredZip(new File(markdownsPath + name), new File(markdownsPath), null);
-                file.delete();
+            directory = Files.createTempDirectory("bolo-markdown-");
+            final Path articles = Files.createDirectory(directory.resolve("articles"));
+            itemList = Uploads.files(context.getRequest());
+            for (FileUpload item : itemList) {
+                final File file = Uploads.stage(item, directory, "zip");
+                ZipFilterUtils.unpackFilteredZip(file, articles.toFile(), null);
+                Files.delete(file.toPath());
             }
-            result = importService.importMarkdownsSync();
+            result = importService.importMarkdownsSync(articles.toFile());
         } catch (Exception e) {
-            context.renderJSON().renderMsg("从 Markdown zip 恢复备份失败，请重试！" + result);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("从 Markdown zip 恢复备份失败，请重试！" + result);
 
             return;
+        } finally {
+            FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
         }
 
-        DeleteFolder.delAllFile(markdownsPath);
-        context.renderJSON().renderMsg("从 Markdown zip 恢复备份成功。" + result);
+        org.b3log.solo.web.JsonResponses.json(context).renderMsg("从 Markdown zip 恢复备份成功。" + result);
 
         return;
     }

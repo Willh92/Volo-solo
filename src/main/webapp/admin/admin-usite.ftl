@@ -26,17 +26,8 @@
         </li>
     </ul>
 </div>
-<style type="text/css">
-    table.tftable {font-size:12px;color: #545454;width:100%;border-width: 1px;border-color: #729ea5;border-collapse: collapse;}
-    table.tftable th {font-size:14px;background-color: #fdfdfd;border-width: 1px;padding: 20px 0px 20px 20px;border-style: solid;border-color: #efefef;text-align:left;font-weight: bold}
-    table.tftable tr {background-color:#ffffff;}
-    table.tftable td {font-size:12px;border-width: 1px;padding: 5px 0px 5px 20px;border-style: solid;border-color: #efefef;}
-</style>
 <div id="tabUsitePanel" class="sub-tabs-main usite">
     <div id="tabUsitePanel_edit" class="form">
-        <div class="fn__clear">
-            <button onclick="admin.usite.update()" class="fn__right">${updateLabel}</button>
-        </div>
         <div class="fn__clear">
             ${usite1Label}
         </div>
@@ -83,7 +74,7 @@
             </tr>
             <tr>
                 <td><b>${usite7Label}</b></td>
-                <td>https://www.linkedin.com/in/ <input id="usiteLinkedln" type="text" style="width:200px"></td>
+                <td>https://www.linkedin.com/in/ <input id="usiteLinkedIn" type="text" style="width:200px"></td>
             </tr>
             <tr>
                 <td><b>Steam</b></td>
@@ -124,7 +115,7 @@
         </table>
 
         <div class="fn__clear">
-            <button onclick="admin.usite.update()" class="fn__right">${updateLabel}</button>
+            <div class="console-form-actions"><button onclick="admin.usite.update()" class="fn__right">${updateLabel}</button></div>
         </div>
     </div>
 </div>

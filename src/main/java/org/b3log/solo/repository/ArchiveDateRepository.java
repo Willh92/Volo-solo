@@ -17,19 +17,22 @@
  */
 package org.b3log.solo.repository;
 
-import org.apache.commons.lang.time.DateUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.ArchiveDate;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.text.ParseException;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 
 /**
  * Archive date repository.
@@ -67,38 +70,51 @@ public class ArchiveDateRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByArchiveDate(final String archiveDate) throws RepositoryException {
-        long time;
+        if (archiveDate == null || !archiveDate.matches("\\d{4}/(0[1-9]|1[0-2])")) return null;
         try {
-            time = DateUtils.parseDate(archiveDate, new String[]{"yyyy/MM"}).getTime();
-        } catch (final ParseException e) {
+            final YearMonth month = YearMonth.parse(archiveDate.replace('/', '-'));
+            final List<JSONObject> dates = datesInMonth(month);
+            return dates.isEmpty() ? null : dates.get(0);
+        } catch (final DateTimeParseException e) {
             return null;
         }
+    }
 
-        LOGGER.log(Level.TRACE, "Archive date [{0}] parsed to time [{1}]", archiveDate, time);
+    private List<JSONObject> datesInMonth(final YearMonth month) throws RepositoryException {
+        final ZoneId zone = ZoneId.systemDefault();
+        final long start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+        final long end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+        return select("SELECT * FROM " + getName() + " WHERE archiveTime >= ? AND archiveTime < ? ORDER BY archiveTime, oId", start, end);
+    }
 
-        Query query = new Query().setFilter(new PropertyFilter(ArchiveDate.ARCHIVE_TIME, FilterOperator.EQUAL, time)).setPageCount(1);
-        JSONObject result = get(query);
-        JSONArray array = result.optJSONArray(Keys.RESULTS);
-        if (0 == array.length()) {
-            // Try to fix wired timezone issue: https://github.com/b3log/solo/issues/12435
-            try {
-                time = DateUtils.parseDate(archiveDate, new String[]{"yyyy/MM"}).getTime();
-                time += 60 * 1000 * 60 * 8;
-            } catch (final ParseException e) {
-                return null;
-            }
+    /** Resolves all records represented by the same public yyyy/MM link. */
+    public List<String> getMonthArchiveIds(final String archiveDateId) throws RepositoryException {
+        final List<JSONObject> rows = select("SELECT * FROM " + getName() + " WHERE oId = ?", archiveDateId);
+        final List<String> ids = new ArrayList<>();
+        if (rows.isEmpty()) return ids;
+        for (final JSONObject row : datesInMonth(monthOf(rows.get(0)))) ids.add(row.getString(Keys.OBJECT_ID));
+        return ids;
+    }
 
-            LOGGER.log(Level.TRACE, "Fix archive date [{0}] parsed to time [{1}]", archiveDate, time);
+    private static YearMonth monthOf(final JSONObject row) {
+        return YearMonth.from(Instant.ofEpochMilli(row.getLong(ArchiveDate.ARCHIVE_TIME)).atZone(ZoneId.systemDefault()));
+    }
 
-            query = new Query().setFilter(new PropertyFilter(ArchiveDate.ARCHIVE_TIME, FilterOperator.EQUAL, time)).setPageCount(1);
-            result = get(query);
-            array = result.optJSONArray(Keys.RESULTS);
-            if (0 == array.length()) {
-                return null;
-            }
+    /** Public month counts and detail queries use the same union of published articles. */
+    public List<JSONObject> getPublishedArchiveDates() throws RepositoryException {
+        final List<JSONObject> dates = select("SELECT * FROM " + getName() + " ORDER BY archiveTime DESC, oId");
+        final LinkedHashMap<YearMonth, List<JSONObject>> months = new LinkedHashMap<>();
+        for (final JSONObject date : dates) months.computeIfAbsent(monthOf(date), key -> new ArrayList<>()).add(date);
+        final List<JSONObject> result = new ArrayList<>();
+        for (final List<JSONObject> month : months.values()) {
+            final List<String> ids = new ArrayList<>();
+            for (final JSONObject date : month) ids.add(date.getString(Keys.OBJECT_ID));
+            final int count = archiveDateArticleRepository.getPublishedArticleCount(ids);
+            if (count < 0) throw new RepositoryException("Could not count published archive articles");
+            if (count == 0) continue;
+            result.add(month.get(0).put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, count));
         }
-
-        return array.optJSONObject(0);
+        return result;
     }
 
     /**

@@ -18,20 +18,22 @@
 package org.b3log.solo.service;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Article;
 import org.json.JSONObject;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
-import javax.servlet.ServletContext;
+import org.b3log.solo.web.WebResources;
 import java.io.File;
 import java.util.*;
 
@@ -73,7 +75,7 @@ public class ImportService {
      */
     public void importMarkdowns() {
         new Thread(() -> {
-            final ServletContext servletContext = SoloServletListener.getServletContext();
+            final WebResources servletContext = SoloApplication.getWebResources();
             final String markdownsPath = servletContext.getRealPath("markdowns");
             new File(markdownsPath).mkdirs();
             LOGGER.debug("Import directory [" + markdownsPath + "]");
@@ -141,8 +143,13 @@ public class ImportService {
      * 同步导入 Markdown
      */
     public String importMarkdownsSync() {
-        final ServletContext servletContext = SoloServletListener.getServletContext();
+        final WebResources servletContext = SoloApplication.getWebResources();
         final String markdownsPath = servletContext.getRealPath("markdowns");
+        return importMarkdownsSync(new File(markdownsPath));
+    }
+
+    public String importMarkdownsSync(final File directory) {
+        final String markdownsPath = directory.getAbsolutePath();
         LOGGER.debug("Import directory [" + markdownsPath + "]");
 
         final JSONObject admin = userQueryService.getAdmin();
@@ -214,11 +221,20 @@ public class ImportService {
         }
 
         final JSONObject ret = new JSONObject();
-        final Yaml yaml = new Yaml();
+        final LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
+        options.setMaxAliasesForCollections(20);
+        options.setNestingDepthLimit(30);
+        options.setCodePointLimit(1024 * 1024);
+        final Yaml yaml = new Yaml(new SafeConstructor(options));
         Map elems;
 
         try {
-            elems = (Map) yaml.load(frontMatter);
+            final Object loaded = yaml.load(frontMatter);
+            if (!(loaded instanceof Map)) {
+                throw new IllegalArgumentException("Front matter must be a mapping");
+            }
+            elems = (Map) loaded;
         } catch (final Exception e) {
             // treat it as plain markdown
             ret.put(Article.ARTICLE_TITLE, StringUtils.substringBeforeLast(fileName, "."));

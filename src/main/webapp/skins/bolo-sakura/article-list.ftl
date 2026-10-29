@@ -24,7 +24,7 @@
 <article class="post post-list-thumb" itemscope="" itemtype="http://schema.org/BlogPosting">
     <div class="post-thumb">
         <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-            <img class="lazyload" referrerpolicy="origin" src="${article.articleImg1URL}" onerror="imgError(this,3)" data-src="${article.articleImg1URL}">
+            <img class="lazyload" referrerpolicy="origin" src="${article.articleImg1URL}" onerror="if(window.imgError) imgError(this)" data-src="${article.articleImg1URL}">
         </a>
     </div>
     <div class="post-content-wrap">
@@ -33,25 +33,25 @@
                 <#if article.articlePutTop>
                     置顶帖！
                 </#if>
-                <i class="iconfont icon-time"></i>${article.articleCreateDate?string("yyyy年MM月dd日 HH:mm:ss")}
+                <i class="fa fa-clock-o"></i>${article.articleCreateDate?string("yyyy年MM月dd日 HH:mm:ss")}
             </div>
             <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" class="post-title">
-                <h3>${article.articleTitle}</h3>
+                <h3 class="skin-list-title" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</h3>
             </a>
             <div class="post-meta">
-                <span><i class="iconfont icon-attention"></i>${article.articleViewCount} 浏览</span>
+                <span><i class="fa fa-eye"></i>${article.articleViewCount} 浏览</span>
                 <#if interactive == "on">
-                    <span class="comments-number"><i class="iconfont icon-mark"></i><a href="javascript:void(0);">${article.articleCommentCount} 条评论</a></span>
+                    <span class="comments-number"><i class="fa fa-comment-o"></i><a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">${article.articleCommentCount} 条评论</a></span>
                 </#if>
                 <#if article.articleCategory?? && article.articleCategory != "">
-                <span><i class="iconfont icon-file"></i><a href="${servePath}/category/${article.categoryURI}">${article.articleCategory}</a></span>
+                <span><i class="fa fa-folder-o"></i><a href="${servePath}/category/${article.categoryURI}">${article.articleCategory}</a></span>
                 </#if>
             </div>
             <div class="float-content">
                 <p>
                     ${article.articleAbstractText}
                 <div class="post-bottom">
-                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" class="button-normal"><i class="iconfont icon-caidan"></i></a>
+                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" class="button-normal"><i class="fa fa-ellipsis-h"></i></a>
                 </div>
             </div>
         </div>

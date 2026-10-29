@@ -25,7 +25,9 @@
 
 <aside class="sidebar">
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-        <#include "../../common-template/toc.ftl"/>
+        <section class="next-toc-card">
+        <#include "../../common-template/disclosure-toc.ftl"/>
+        </section>
     <#else>
     <section>
         <img class="site-author-image" src="${adminUser.userAvatar}" title="${userName}"/>
@@ -70,27 +72,7 @@
         </div>
 
         <div class="links-of-author">
-            <#if interactive == "on">
-            <#if isLoggedIn>
-            <span class="links-of-author-item">
-                <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                    <i class="icon-setting"></i> ${adminLabel}
-                </a>
-            </span>
 
-            <span class="links-of-author-item">
-                <a href="${logoutURL}">
-                    <i class="icon-logout"></i> ${logoutLabel}
-                </a>
-            </span>
-            <#else>
-            <span class="links-of-author-item">
-                <a href="${servePath}/start">
-                    ${startToUseLabel}
-                </a>
-            </span>
-            </#if>
-            </#if>
         </div>
 
         <#if noticeBoard??>
@@ -104,7 +86,7 @@
             <p class="site-author-name">Links</p>
             <#list links as link>
             <span class="links-of-author-item">
-                <a rel="friend" href="${link.linkAddress}" 
+                <a rel="friend" href="${link.linkAddress}"
                    title="${link.linkDescription}" target="_blank">
                     ${link.linkTitle}
                 </a>
@@ -117,7 +99,7 @@
             <p class="site-author-name">Follows</p>
             <#list follows as follow>
             <span class="links-of-author-item">
-                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" 
+                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}"
                    title="${follow.followDescription}" target="_blank">
                     ${follow.followTitle}
                 </a>

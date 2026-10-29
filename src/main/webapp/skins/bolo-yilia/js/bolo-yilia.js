@@ -35,6 +35,7 @@ var Yilia = {
         this._initToc();
         this.resetTags();
         
+        var topVisible;
         $(window).scroll(function () {
             if ($("article").length > 0 && $("article.post").length === 0) {
                 $("article:not(.show)").each(function () {
@@ -44,10 +45,15 @@ var Yilia = {
                 });
             }
 
-            if ($(window).scrollTop() > $(window).height()) {
+            var visible = $(window).scrollTop() > $(window).height();
+            if (visible) {
                 $(".icon-goup").show();
             } else {
                 $(".icon-goup").hide();
+            }
+            if (visible !== topVisible) {
+                topVisible = visible;
+                window.BoloTheme?.syncControls?.();
             }
 
             if ($("article.post").length === 1) {
@@ -62,6 +68,78 @@ var Yilia = {
             return false;
         }
         $('.side .toc-btn').show();
+        this.toggleToc(window.innerWidth >= 1200, true);
+        var panel = document.querySelector('.side .toc');
+        var links = Array.from(panel.querySelectorAll('.article__toc a'));
+        if (window.BoloTOC) BoloTOC.refresh();
+        var frame = 0;
+        function update() {
+            frame = 0;
+            var range = document.documentElement.scrollHeight - window.innerHeight;
+            var progress = range > 0 ? Math.min(100, Math.max(0, Math.round(window.scrollY / range * 100))) : 100;
+            panel.querySelector('.yilia-toc-progress').setAttribute('aria-valuenow', progress);
+            panel.querySelector('.yilia-toc-progress span').style.width = progress + '%';
+        }
+        function schedule() { if (!frame) frame = requestAnimationFrame(update); }
+        window.addEventListener('scroll', schedule, {passive: true});
+        var desktop = window.innerWidth >= 1200;
+        function resize() {
+            var next = window.innerWidth >= 1200;
+            if (next !== desktop) { desktop = next; Yilia.toggleToc(next, true); }
+            schedule();
+        }
+        window.addEventListener('resize', resize);
+        links.forEach(function (link) {
+            link.addEventListener('click', function () {
+                if (window.innerWidth < 1200) Yilia.toggleToc(false);
+            });
+        });
+        if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+            window.removeEventListener('scroll', schedule);
+            window.removeEventListener('resize', resize);
+            if (frame) cancelAnimationFrame(frame);
+            if (panel._yiliaTocAnimation) {
+                panel._yiliaTocAnimation.onfinish = null;
+                panel._yiliaTocAnimation.cancel();
+                panel._yiliaTocAnimation = null;
+            }
+        });
+        update();
+    },
+    toggleToc: function (open, immediate) {
+        var side = document.querySelector('.side');
+        var panel = side && side.querySelector('.toc');
+        if (!panel) return;
+        var hidden = panel.hidden;
+        var style = !hidden && window.getComputedStyle ? window.getComputedStyle(panel) : null;
+        var fromOpacity = style ? style.opacity : '0';
+        var fromTransform = style ? style.transform : 'translateY(8px)';
+        if (panel._yiliaTocAnimation) {
+            panel._yiliaTocAnimation.onfinish = null;
+            panel._yiliaTocAnimation.cancel();
+            panel._yiliaTocAnimation = null;
+        }
+        var button = side.querySelector('.toc-btn');
+        if (button) button.setAttribute('aria-expanded', String(open));
+        function finish() {
+            panel.hidden = !open;
+            side.classList.toggle('yilia-toc-open', open);
+            panel._yiliaTocAnimation = null;
+            if (window.BoloTheme) BoloTheme.refresh();
+            if (!open && button) button.focus();
+        }
+        var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (immediate || reduced || !panel.animate || (!open && hidden)) { finish(); return; }
+        // Hide the profile before revealing the card; keep it hidden until the closing animation ends.
+        panel.hidden = false;
+        side.classList.add('yilia-toc-open');
+        if (window.BoloTheme) BoloTheme.refresh();
+        var animation = panel.animate([
+            {opacity: hidden ? '0' : fromOpacity, transform: hidden ? 'translateY(8px)' : fromTransform},
+            {opacity: open ? '1' : '0', transform: open ? 'none' : 'translateY(6px)'}
+        ], {duration: open ? 180 : 140, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'both'});
+        panel._yiliaTocAnimation = animation;
+        animation.onfinish = function () { if (panel._yiliaTocAnimation === animation) { finish(); animation.cancel(); } };
     },
     resetTags: function () {
         $("a.tag").each(function (i) {

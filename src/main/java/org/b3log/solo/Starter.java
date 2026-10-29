@@ -19,38 +19,24 @@ package org.b3log.solo;
 
 import org.apache.commons.cli.*;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.util.Markdowns;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.util.log.Log;
-import org.eclipse.jetty.util.log.Slf4jLog;
-import org.eclipse.jetty.webapp.WebAppContext;
-
-import java.io.File;
 
 /**
- * Solo with embedded Jetty, <a href="https://github.com/b3log/solo/issues/12037">standalone mode</a>.
+ * Volo with Latke 3 and Netty (Java 17 or later).
  * <ul>
- * <li>Windows: java -cp "WEB-INF/lib/*;WEB-INF/classes" org.b3log.solo.Starter</li>
- * <li>Unix-like: java -cp "WEB-INF/lib/*:WEB-INF/classes" org.b3log.solo.Starter</li>
+ * <li>Windows: java -cp "WEB-INF/classes;WEB-INF/lib/*;." org.b3log.solo.Starter</li>
+ * <li>Unix-like: java -cp "WEB-INF/classes:WEB-INF/lib/*:." org.b3log.solo.Starter</li>
  * </ul>
  *
  * @author <a href="http://88250.b3log.org">Liang Ding (Solo Author)</a>
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 1.2.0
  */
-public final class Starter {
-
-    static {
-        try {
-            Log.setLog(new Slf4jLog());
-        } catch (final Exception e) {
-            e.printStackTrace();
-        }
-    }
+public final class Starter extends org.b3log.latke.http.BaseServer {
 
     /**
      * Main.
@@ -65,6 +51,8 @@ public final class Starter {
         final Option listenPortOpt = Option.builder("lp").longOpt("listen_port").argName("LISTEN_PORT").
                 hasArg().desc("listen port, default is 8080").build();
         options.addOption(listenPortOpt);
+        options.addOption(Option.builder("ls").longOpt("listen_socket").argName("SOCKET_PATH[,MODE]")
+                .hasArg().desc("Unix socket path and optional octal mode (default 0660); overrides listenSocket and disables TCP").build());
 
         final Option serverSchemeOpt = Option.builder("ss").longOpt("server_scheme").argName("SERVER_SCHEME").
                 hasArg().desc("browser visit protocol, default is http").build();
@@ -106,10 +94,10 @@ public final class Starter {
         CommandLine commandLine;
 
         final boolean isWindows = System.getProperty("os.name").toLowerCase().contains("windows");
-        final String cmdSyntax = isWindows ? "java -cp \"WEB-INF/lib/*;WEB-INF/classes\" org.b3log.solo.Starter"
-                : "java -cp \"WEB-INF/lib/*:WEB-INF/classes\" org.b3log.solo.Starter";
-        final String header = "\nSolo 是一款小而美的博客系统，专为程序员设计。\n\n";
-        final String footer = "\n提需求或报告缺陷请到项目网站: https://github.com/b3log/solo\n\n";
+        final String cmdSyntax = isWindows ? "java -cp \"WEB-INF/classes;WEB-INF/lib/*;.\" org.b3log.solo.Starter"
+                : "java -cp \"WEB-INF/classes:WEB-INF/lib/*:.\" org.b3log.solo.Starter";
+        final String header = "\nVolo 是基于 Bolo 的博客系统，使用 Java 17 和 Netty。\n\n";
+        final String footer = "\n提需求或报告缺陷请到项目网站: https://github.com/Willh92/Volo-solo\n\n";
         try {
             commandLine = commandLineParser.parse(options, args);
         } catch (final ParseException e) {
@@ -130,6 +118,7 @@ public final class Starter {
         }
 
         try {
+            Latkes.setScanPath("org.b3log.solo");
             Latkes.init();
         } catch (final Exception e) {
             logger.log(Level.ERROR, "Latke init failed, please configure latke.props or run with args, visit https://" + Global.HACPAI_DOMAIN + "/article/1492881378588 for more details");
@@ -171,39 +160,31 @@ public final class Starter {
             Markdowns.LUTE_AVAILABLE = true;
         }
 
-        String webappDirLocation = "src/main/webapp/"; // POM structure in dev env
-        final File file = new File(webappDirLocation);
-        if (!file.exists()) {
-            webappDirLocation = "."; // production environment
+        final String socketPath = commandLine.getOptionValue("listen_socket", Latkes.getLocalProperty("listenSocket"));
+        if (socketPath != null && !socketPath.isBlank() && commandLine.hasOption("listen_port")) {
+            throw new IllegalArgumentException("Choose either --listen_socket/listenSocket or --listen_port");
         }
-
-        final int port = Integer.valueOf(portArg);
-        final Server server = new Server(port);
-        final WebAppContext root = new WebAppContext();
-        root.setParentLoaderPriority(true); // Use parent class loader
-        root.setContextPath("/");
-        root.setDescriptor(webappDirLocation + "/WEB-INF/web.xml");
-        root.setResourceBase(webappDirLocation);
-        server.setHandler(root);
-        try {
-            server.start();
-        } catch (final Exception e) {
-            logger.log(Level.ERROR, "Server start failed", e);
-
-            System.exit(-1);
+        if (socketPath != null && !socketPath.isBlank()
+                && !io.netty.channel.epoll.Epoll.isAvailable() && !io.netty.channel.kqueue.KQueue.isAvailable()) {
+            throw new IllegalStateException("Latke's Unix listener requires the Linux epoll or macOS kqueue native transport");
         }
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                server.stop();
-            } catch (final Exception e) {
-                logger.log(Level.ERROR, "Server stop failed", e);
-
-                System.exit(-1);
-            }
-        }));
-
-        server.join();
+        final int port = Integer.parseInt(portArg);
+        final org.b3log.solo.web.UnixSocketSupport socket = org.b3log.solo.web.UnixSocketSupport.open(socketPath);
+        final SoloApplication application = new SoloApplication();
+        final Starter server = new Starter();
+        try (socket) {
+            Latkes.setEnabledSession(true);
+            application.initialize();
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                server.shutdown();
+                if (socket != null) {
+                    try { socket.close(); } catch (java.io.IOException e) { logger.log(Level.ERROR, "Socket cleanup failed", e); }
+                }
+                application.shutdown();
+            }));
+            if (socket == null) server.start(port);
+            else socket.listen(path -> server.start(path), server::shutdown);
+        }
     }
 
     /**

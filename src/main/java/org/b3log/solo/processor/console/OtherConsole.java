@@ -19,13 +19,13 @@ package org.b3log.solo.processor.console;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.service.ArchiveDateMgmtService;
 import org.b3log.solo.service.TagMgmtService;
 import org.json.JSONObject;
@@ -37,7 +37,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 3.4.0
  */
-@RequestProcessor
+@Singleton
 public class OtherConsole {
 
     /**
@@ -86,7 +86,7 @@ public class OtherConsole {
         try {
             archiveDateMgmtService.removeUnusedArchiveDates();
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Removes unused archives failed", e);
@@ -118,7 +118,7 @@ public class OtherConsole {
         try {
             tagMgmtService.removeUnusedTags();
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Removes unused tags failed", e);

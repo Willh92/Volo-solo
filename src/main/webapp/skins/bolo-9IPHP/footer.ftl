@@ -22,13 +22,13 @@
     <a href="${servePath}">${blogTitle}</a>
     ${footerContent}
     <br/>
-    Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
+    Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
     <span class="ft-warn">&heartsuit;</span>
-    Theme ${skinDirName}
+    Theme ${skinDirName?remove_beginning('bolo-')}
     <sup>[<a href="https://github.com/9IPHP/9IPHP" target="_blank">ref</a>]</sup>
     by <a href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
 </footer>
-<div class="icon-up" onclick="Util.goTop()"></div>
+<button class="icon-up" type="button" onclick="Util.goTop()" aria-label="${goTopLabel?html}" title="${goTopLabel?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
 <script src="${staticServePath}/js/lib/compress/pjax.min.js"></script>
 <script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>

@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -41,7 +41,7 @@
     <div class="article__item">
         <h2 class="article__title">
             <a rel="bookmark" href="${servePath}${article.articlePermalink}">
-            ${article.articleTitle}
+            ${(article.articleTitle)?html}
             </a>
             <#if article.articlePutTop>
             <sup>
@@ -96,7 +96,7 @@
             <#if previousArticlePermalink??>
                 <a href="${servePath}${previousArticlePermalink}" rel="prev" class="fn__flex-1">
                     <strong>OLDER</strong>
-                    ${previousArticleTitle}
+                    ${(previousArticleTitle)?html}
                 </a>
             <#else>
                 <a class="fn__flex-1">&nbsp;</a>
@@ -115,7 +115,7 @@
         <div id="randomArticles" class="article__near"></div>
     </#if>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-        <#include "../../common-template/toc.ftl"/>
+        <#include "../../common-template/disclosure-toc.ftl"/>
     </#if>
     <#if pjax><!---- pjax {#pjax} end ----></#if>
 </div>

@@ -17,29 +17,31 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div id="${comment.oId}">
+<div id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comment-panel">
         <div class="left">
         <#if "http://" == comment.commentURL>
-        ${comment.commentName}
+        ${comment.commentName?html}
         <#else>
-            <a href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+            <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
         </#if>
         <#if comment.isReply>&nbsp;@
             <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 20);"
-               onmouseout="page.hideComment('${comment.commentOriginalCommentId}')">${comment.commentOriginalCommentName}</a>
+               onmouseout="page.hideComment('${comment.commentOriginalCommentId}')">${comment.commentOriginalCommentName?html}</a>
         </#if>
         </div>
     <#if article.commentable>
-        <div class="right">
-            <a rel="nofollow" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}');">${replyLabel}</a>
-            &nbsp;|&nbsp;
-        ${comment.commentDate2?string("yyyy-MM-dd HH:mm:ss")}
-        </div>
+        <a class="comment-reply" rel="nofollow" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
     </#if>
+        <div class="right comment-meta">
+            <time>${comment.commentDate2?string("yyyy-MM-dd HH:mm:ss")}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
+        </div>
         <span class="clear"></span>
-        <div class="vditor-reset">${comment.commentContent}</div>
+        <div class="vditor-reset"><div data-comment-content>${comment.commentContent}</div></div>
     </div>
     <span class="clear"></span>
 </div>

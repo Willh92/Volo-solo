@@ -20,15 +20,14 @@ package org.b3log.solo.processor.console;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
-import org.b3log.solo.processor.KanBanNiangProcessor;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.service.PluginMgmtService;
 import org.b3log.solo.service.PluginQueryService;
 import org.b3log.solo.util.Solos;
@@ -44,7 +43,7 @@ import java.util.Map;
  * @author <a href="https://ld246.com/member/mainlove">Love Yao</a>
  * @since 0.4.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAdminAuthAdvice.class)
 public class PluginConsole {
 
@@ -94,13 +93,6 @@ public class PluginConsole {
         final String status = requestJSONObject.getString(Plugin.PLUGIN_STATUS);
         final JSONObject result = pluginMgmtService.setPluginStatus(pluginId, status);
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                KanBanNiangProcessor.downloadKBNResource();
-            }
-        }).start();
-
         renderer.setJSONObject(result);
     }
 
@@ -144,11 +136,11 @@ public class PluginConsole {
             final JSONObject result = pluginQueryService.getPlugins(requestJSONObject);
 
             renderer.setJSONObject(result);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -173,7 +165,7 @@ public class PluginConsole {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             final JsonRenderer JsonRenderer = new JsonRenderer();
             JsonRenderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));

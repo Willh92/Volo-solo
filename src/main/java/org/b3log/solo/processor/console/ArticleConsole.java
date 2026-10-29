@@ -17,21 +17,21 @@
  */
 package org.b3log.solo.processor.console;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
@@ -43,7 +43,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.latke.http.Request;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -141,8 +141,8 @@ public class ArticleConsole {
         context.setRenderer(renderer);
         final JSONObject result = new JSONObject();
         renderer.setJSONObject(result);
-        result.put(Keys.STATUS_CODE, true);
-        final HttpServletRequest request = context.getRequest();
+        result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+        final Request request = context.getRequest();
         String strN = context.param("n");
         if (!Strings.isNumeric(strN)) {
             strN = "6";
@@ -202,13 +202,13 @@ public class ArticleConsole {
         try {
             final String articleId = context.pathVar("id");
             final JSONObject result = articleQueryService.getArticle(articleId);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             JSONObject cateS = null;
             try {
                 JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                int size = cate.optJSONArray("rslts").length();
-                cateS = (JSONObject) cate.optJSONArray("rslts").get(size - 1);
+                int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
                 result.put("category", cateS.optString("category_oId"));
             } catch (JSONException | NullPointerException e) {
                 result.put("category", "");
@@ -218,7 +218,7 @@ public class ArticleConsole {
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         } catch (RepositoryException RE) { RE.printStackTrace(); }
@@ -281,20 +281,20 @@ public class ArticleConsole {
             }
 
             final JSONObject result = articleQueryService.getArticles(requestJSONObject);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
 
             final JSONArray articles = result.optJSONArray(Article.ARTICLES);
             for (int i = 0; i < articles.length(); i++) {
                 final JSONObject article = articles.optJSONObject(i);
                 String title = article.optString(Article.ARTICLE_TITLE);
-                title = StringEscapeUtils.escapeXml(title);
+                title = StringEscapeUtils.escapeXml11(title);
                 article.put(Article.ARTICLE_TITLE, title);
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -325,7 +325,7 @@ public class ArticleConsole {
 
         try {
             if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
-                ret.put(Keys.STATUS_CODE, false);
+                ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
 
                 return;
@@ -339,14 +339,14 @@ public class ArticleConsole {
             // 删除文章
             articleMgmtService.removeArticle(articleId);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject();
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }
@@ -375,7 +375,7 @@ public class ArticleConsole {
             final String articleId = context.pathVar("id");
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
-                ret.put(Keys.STATUS_CODE, false);
+                ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
 
                 return;
@@ -383,14 +383,14 @@ public class ArticleConsole {
 
             articleMgmtService.cancelPublishArticle(articleId);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("unPulbishSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject();
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("unPulbishFailLabel"));
         }
     }
@@ -416,7 +416,7 @@ public class ArticleConsole {
         renderer.setJSONObject(ret);
         if (!Solos.isAdminLoggedIn(context)) {
             ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
-            ret.put(Keys.STATUS_CODE, false);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
 
             return;
         }
@@ -424,14 +424,14 @@ public class ArticleConsole {
         try {
             final String articleId = context.pathVar("id");
             articleMgmtService.topArticle(articleId, false);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("cancelTopSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject();
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("cancelTopFailLabel"));
         }
     }
@@ -457,7 +457,7 @@ public class ArticleConsole {
         renderer.setJSONObject(ret);
         if (!Solos.isAdminLoggedIn(context)) {
             ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
-            ret.put(Keys.STATUS_CODE, false);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
 
             return;
         }
@@ -465,14 +465,14 @@ public class ArticleConsole {
         try {
             final String articleId = context.pathVar("id");
             articleMgmtService.topArticle(articleId, true);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("putTopSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject();
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("putTopFailLabel"));
         }
     }
@@ -524,7 +524,7 @@ public class ArticleConsole {
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
-                ret.put(Keys.STATUS_CODE, false);
+                ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
 
                 return;
             }
@@ -535,9 +535,9 @@ public class ArticleConsole {
             articleMgmtService.updateArticle(requestJSONObject);
 
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final ServiceException e) {
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, e.getMessage());
         }
@@ -592,11 +592,11 @@ public class ArticleConsole {
             final String articleId = articleMgmtService.addArticle(requestJSONObject);
             ret.put(Keys.OBJECT_ID, articleId);
             ret.put(Keys.MSG, langPropsService.get("addSuccLabel"));
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             renderer.setJSONObject(ret);
         } catch (final ServiceException e) {
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, e.getMessage());
         }

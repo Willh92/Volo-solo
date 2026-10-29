@@ -17,18 +17,18 @@
  */
 package org.b3log.solo.processor;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.util.Locales;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.service.DataModelService;
@@ -37,8 +37,8 @@ import org.b3log.solo.service.UserQueryService;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 import java.util.Map;
 
 /**
@@ -48,7 +48,7 @@ import java.util.Map;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.4.5
  */
-@RequestProcessor
+@Singleton
 public class ErrorProcessor {
 
     /**
@@ -88,7 +88,11 @@ public class ErrorProcessor {
      */
     @RequestProcessing(value = "/error/{statusCode}", method = {HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE})
     public void showErrorPage(final RequestContext context) {
-        final String statusCode = context.pathVar("statusCode");
+        final String requestedStatus = context.pathVar("statusCode");
+        final String statusCode = requestedStatus != null && java.util.Set.of("401", "403", "404", "410", "429", "500").contains(requestedStatus)
+                ? requestedStatus : "404";
+        context.setStatus(Integer.parseInt(statusCode));
+        context.setHeader("Cache-Control", "no-store");
         if (StringUtils.equals("GET", context.method())) {
             final String requestURI = context.requestURI();
             final String templateName = statusCode + ".ftl";
@@ -109,12 +113,16 @@ public class ErrorProcessor {
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Shows error page failed", e);
 
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.setRenderer(null);
+                context.setStatus(Integer.parseInt(statusCode));
+                context.getResponse().setContentType("text/plain; charset=UTF-8");
+                context.sendBytes(("HTTP " + statusCode).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                context.abort();
             }
 
             Solos.addGoogleNoIndex(context);
         } else {
-            context.renderJSON().renderMsg(statusCode);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg(statusCode);
         }
     }
 }

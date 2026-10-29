@@ -45,6 +45,11 @@
         </div>
     </div>
     <div class="list-content">
+        <#if article?? && article.articleToC?? && article.articleToC?size gt 0>
+        <nav class="nexmoe-toc" aria-label="${tocLabel?html}">
+            <#include "../../common-template/toc.ftl">
+        </nav>
+        </#if>
         <ul class="nexmoe-list mdui-list header__nav" mdui-collapse="{accordion: true}">
             <a class="nexmoe-list-item mdui-list-item mdui-ripple" href="${servePath}/" title="${blogTitle}">
                 <i class="mdui-list-item-icon iconfont solo-home"></i>
@@ -77,15 +82,15 @@
                 <div class="mdui-list-item-content">时间线</div>
             </a>
             <#list pageNavigations as page>
-                <a class="nexmoe-list-item mdui-list-item mdui-ripple" href="${page.pagePermalink}"
-                    title="${page.pageTitle}" target="${page.pageOpenTarget}">
+                <a class="nexmoe-list-item mdui-list-item mdui-ripple" href="${page.pagePermalink?html}"
+                    title="${page.pageTitle?html}" target="${page.pageOpenTarget?html}">
                     <#if page.pageIcon?contains("/")>
-                        <img class="mdui-list-item-icon" src="${page.pageIcon}">
+                        <img class="mdui-list-item-icon" src="${page.pageIcon?html}">
                         <#else>
-                            <i class="mdui-list-item-icon iconfont solo-${page.pageIcon}"></i>
+                            <i class="mdui-list-item-icon iconfont solo-${page.pageIcon?html}"></i>
                     </#if>
                     <div class="mdui-list-item-content">
-                        ${page.pageTitle}
+                        ${page.pageTitle?html}
                     </div>
                 </a>
             </#list>
@@ -104,21 +109,7 @@
                 <a href="${servePath}/rss.xml" title="RSS">
                     <i class="mdui-list-item-icon iconfont solo-rss"></i>
                 </a>
-                <#if interactive=="on">
-                    <#if isLoggedIn>
-                        <a href="${servePath}/admin-index.do#main" target="_blank"
-                            title="${adminLabel}">
-                            <i class="mdui-list-item-icon iconfont solo-spin"></i>
-                        </a>
-                        <#else>
-                            <a href="${servePath}/start" title="${startToUseLabel}">
-                                <i class="mdui-list-item-icon iconfont solo-logout"></i>
-                                <div class="mdui-list-item-content">
-                                    ${startToUseLabel}
-                                </div>
-                            </a>
-                    </#if>
-                </#if>
+                <div class="skin-theme-slot" data-bolo-theme-slot data-bolo-theme-persistent></div>
             </div>
         </div>
         <div class="nexmoe-widget-wrap">
@@ -218,9 +209,9 @@
         </a> <br />
         ${footerContent}
         <br>
-        Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a> <br>
+        Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a> <br>
         Theme <a rel="friend" href="https://github.com/InkDP/solo-nexmoe" target="_blank">
-            ${skinDirName}
+            ${skinDirName?remove_beginning('bolo-')}
         </a>
         by <a rel="friend" href="https://www.inkdp.cn" target="_blank">InkDP</a>
     </div>

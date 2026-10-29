@@ -72,29 +72,32 @@
     </div>
     <script>
         $(function () {
-            setInterval(function () {
+            function refreshMigrationStatus() {
+                if (!window.location.hash.startsWith('#tools/others/move')) return;
                 $.ajax({
                     url: Label.servePath + "/PBC/status",
                     type: "GET",
                     cache: false,
                     success: function (result, textStatus) {
-                        $("#status").html(result.msg);
+                        $("#status").text(result.msg);
                     }
                 });
-            }, 10000)
+            }
+            refreshMigrationStatus();
+            const migrationStatusTimer = setInterval(refreshMigrationStatus, 10000);
+            window.addEventListener('hashchange', refreshMigrationStatus);
+            if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+                clearInterval(migrationStatusTimer);
+                window.removeEventListener('hashchange', refreshMigrationStatus);
+            });
         });
     </script>
     <div id="tabOthersPanel_log" class="fn__none form">
-        <div class="fn__clear">
-            <button onclick="admin.others.getLog()" class="fn__right">${RefreshLabel}</button>
+        <div class="console-log-summary">
+            <span>${others2Label} <strong id="memFree"></strong></span>
+            <div class="console-log-actions"><span><span id="now"></span> ${others3Label}</span><button onclick="admin.others.getLog()">${RefreshLabel}</button></div>
         </div>
-        <span style="float: left">${others2Label} <span id="memFree" style="font-weight: bold"></span></span><span style="float: right"><span id="now"></span> ${others3Label}</span>
-        <div class="fn__clear"></div>
-        <table id="logList">
-        </table>
-        <div class="fn__clear">
-            <button onclick="admin.others.getLog()" class="fn__right">${RefreshLabel}</button>
-        </div>
+        <div class="console-log-output"><table id="logList"></table></div>
     </div>
     <div id="tabOthersPanel_import" class="fn__none">
         <h3>${others4Label}</h3>
@@ -102,17 +105,22 @@
         <p><b>${others5Label}</b></p>
         <br>
         <form id="fileUploadForm" enctype="multipart/form-data">
-            <input name="file" type="file" name="fileUpload" id="backupUpload" accept=".xml,.zip,.dat" multiple="multiple">
+            <input name="file" type="file" id="backupUpload" accept=".xml,.zip,.dat">
         </form>
         <br>
+        ${others8Label}
         <script type="text/javascript">
             function uploadFile(name) {
+                if (uploadFile.pending) return;
                 if ($("#backupUpload").val() !== "") {
-                    $("#" + name).html("${others6Label}");
+                    const button = $("#" + name), original = button.text();
+                    const buttons = $("#cnblogs, #markdown");
+                    uploadFile.pending = true;
+                    buttons.prop("disabled", true);
+                    button.text("${others6Label?js_string}");
                     let formData = new FormData($("#fileUploadForm")[0]);
                     let options = {
-                        url: "${staticServePath}/import/" + name,
-                        async: "false",
+                        url: Label.servePath + "/import/" + name,
                         type: 'POST',
                         data: formData,
                         dataType: 'json',
@@ -120,14 +128,20 @@
                         processData: false,
                         contentType: false,
                         success: function (result) {
-                            //返回数据后你的后续处理
-                            alert(result.msg);
-                            location.reload();
+                            noBtnSwal(result.msg);
+                        },
+                        error: function (xhr) {
+                            noBtnSwal(xhr.responseJSON && xhr.responseJSON.msg || xhr.status + ": " + xhr.statusText);
+                        },
+                        complete: function () {
+                            uploadFile.pending = false;
+                            buttons.prop("disabled", false);
+                            button.text(original);
                         }
                     };
                     $.ajax(options);
                 } else {
-                    alert("${others7Label}");
+                    noBtnSwal("${others7Label?js_string}");
                 }
             }
 
@@ -141,95 +155,94 @@
             });
         </script>
 
-        <br>
-        ${others8Label}
     </div>
     <div id="tabOthersPanel_commentSync" class="fn__none form">
         <script type="text/javascript">
             $.ajax({
                 url: Label.servePath + '/article/commentSync/getList',
                 type: 'GET',
-                async: false,
                 success: function(res) {
-                    let data = res.data;
-                    for(i = 0; i < data.length; i++) {
+                    let data = res.data || [];
+                    for(let i = 0; i < data.length; i++) {
                         let oId = data[i].oId;
                         let title = data[i].title;
                         <#if b3logEnabled>
-                        $("#localArticleList").append("<option value=\"" +  oId + "\">" + title + "</option>");
+                        $("#localArticleList").append($("<option>").val(oId).text(title));
                         </#if>
                         <#if fishpiEnabled>
-                        $("#localArticleList2").append("<option value=\"" +  oId + "\">" + title + "</option>");
+                        $("#localArticleList2").append($("<option>").val(oId).text(title));
                          </#if>
                     }
                 }
             });
-            <#if b3logEnabled>
-            function commentSync() {
-                let locale = $("#localArticleList").val();
-                let remote = $("#remoteArticleID").val();
-                let symphony = $("#symphony").val();
+            function requestCommentSync(button, url, payload) {
+                if (button.disabled) return;
+                if (!/^\d+$/.test(payload.localArticleId || '') || !/^\d+$/.test(payload.remoteArticleId || '')
+                        || (payload.symphony !== undefined && !payload.symphony.trim())) {
+                    noBtnSwal("${syncFieldsRequiredLabel?js_string}");
+                    return;
+                }
+                button.disabled = true;
+                const original = button.textContent;
+                button.textContent = "${loadingLabel?js_string}";
                 $.ajax({
-                    url: Label.servePath + '/article/commentSync/' + locale + '/' + remote + "/" + symphony,
-                    type: 'GET',
-                    async: false,
-                    success: function(res) {
-                        alert(res.msg);
-                    }
+                    url: Label.servePath + url,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify(payload),
+                    success: function (res) { noBtnSwal(res.msg); },
+                    error: function (xhr) { noBtnSwal(xhr.responseJSON && xhr.responseJSON.msg || xhr.status + ": " + xhr.statusText); },
+                    complete: function () { button.disabled = false; button.textContent = original; }
+                });
+            }
+            <#if b3logEnabled>
+            function commentSync(button) {
+                requestCommentSync(button, '/article/commentSync', {
+                    localArticleId: $("#localArticleList").val(),
+                    remoteArticleId: $("#remoteArticleID").val(),
+                    symphony: $("#symphony").val()
                 });
             }
             </#if>
             <#if fishpiEnabled>
-            function commentFishpiSync() {
-                let locale = $("#localArticleList2").val();
-                let remote = $("#remoteArticleID2").val();
-                $.ajax({
-                    url: Label.servePath + '/article/fishpi/commentSync/' + locale + '/' + remote,
-                    type: 'GET',
-                    async: false,
-                    success: function(res) {
-                        alert(res.msg);
-                    }
+            function commentFishpiSync(button) {
+                requestCommentSync(button, '/article/fishpi/commentSync', {
+                    localArticleId: $("#localArticleList2").val(),
+                    remoteArticleId: $("#remoteArticleID2").val()
                 });
             }
             </#if>
         </script>
         <#if b3logEnabled>
-            <br>
-            ${others9Label}
-            <br>
-            <b>${others10Label}</b><br>
-            https://${hacpaiDomain}/article/ <input id="remoteArticleID" type="text" style="width: 200px">
-            <br>
-            <b>${others11Label}</b>
-            <br>
-            <select id="localArticleList">
-            </select>
-            <br><br>
-            <b>${others12Label}</b>
-            <br>
-            ${others13Label}
-            <br>
-            <input id="symphony" type="text">
-            <br><br>
-            <button onclick="commentSync()">${others14Label}</button>
+            <section class="console-sync-section">
+                <div class="console-sync-help">${others9Label}</div>
+                <div class="console-sync-field">
+                    <label for="remoteArticleID">${remoteArticleIdLabel!'远端文章编号'}</label>
+                    <div class="console-sync-remote"><span>https://${hacpaiDomain}/article/</span><input id="remoteArticleID" type="text" inputmode="numeric"></div>
+                </div>
+                <div class="console-sync-field"><label for="localArticleList">${others11Label}</label><select id="localArticleList"></select></div>
+                <div class="console-sync-help" id="symphonyHelp">${others13Label}</div>
+                <div class="console-sync-row">
+                    <div class="console-sync-field"><label for="symphony">${others12Label}</label><input id="symphony" type="password" autocomplete="off" aria-describedby="symphonyHelp"></div>
+                    <button id="syncB3log" onclick="commentSync(this)">${others14Label}</button>
+                </div>
+            </section>
         </#if>
         <#if fishpiEnabled>
-            <br><br>
-            <br>
-            ${others91Label}
-            <br>
-            <b>${others10Label}</b><br>
-            https://${fishpiDomain}/article/ <input id="remoteArticleID2" type="text" style="width: 200px">
-            <br>
-            <b>${others11Label}</b>
-            <br>
-            <select id="localArticleList2">
-            </select>
-            <br><br>
-        <button onclick="commentFishpiSync()">${others14Label}</button>    
+            <section class="console-sync-section">
+                <div class="console-sync-help">${others91Label}</div>
+                <div class="console-sync-field">
+                    <label for="remoteArticleID2">${remoteArticleIdLabel!'远端文章编号'}</label>
+                    <div class="console-sync-remote"><span>https://${fishpiDomain}/article/</span><input id="remoteArticleID2" type="text" inputmode="numeric"></div>
+                </div>
+                <div class="console-sync-row">
+                    <div class="console-sync-field"><label for="localArticleList2">${others11Label}</label><select id="localArticleList2"></select></div>
+                    <button id="syncFishpi" onclick="commentFishpiSync(this)">${others14Label}</button>
+                </div>
+            </section>
         </#if>
-        
+
     </div>
 </div>
 ${plugins}

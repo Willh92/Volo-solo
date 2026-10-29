@@ -17,39 +17,41 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li class="comment even thread-even depth-1" id="${comment.oId}">
+<li class="comment even thread-even depth-1" id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="contents">
         <div class="comment-arrow">
             <div class="main shadow">
                 <div class="commentinfo">
-                    <section class="commeta">
-                        <div class="left">
+                    <section class="commeta thread-comment-header">
+                        <div class="left comment-author">
                             <#if "http://" == comment.commentURL>
-                                <a href="javascript:void(0);" rel="nofollow">${comment.commentName}</a>
+                                <a href="javascript:void(0);" rel="nofollow">${comment.commentName?html}</a>
                             <#else>
-                                <a href="${comment.commentURL}" rel="nofollow">${comment.commentName}</a>
+                                <a href="${comment.commentURL?html}" rel="nofollow">${comment.commentName?html}</a>
                             </#if>
                             <#if comment.isReply>
                                 @
                                 <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                                    onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 23);"
                                    onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-                                >${comment.commentOriginalCommentName}</a>
+                                >${comment.commentOriginalCommentName?html}</a>
                             </#if>
                         </div>
                         <#if article.commentable>
-                            <a class="fn-right" href=""></a>
-                            <a rel="nofollow" class="comment-reply-link" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">${replyLabel}</a>
+                            <a rel="nofollow" class="comment-reply-link" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
                         </#if>
-                        <div class="right">
+                        <div class="right comment-details">
                             <div class="info">
                                 <time datetime="${comment.commentDate2?string("yyyy-MM-dd")}">${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
                             </div>
                         </div>
                     </section>
                 </div>
                 <div class="body">
-                    ${comment.commentContent}
+                    <div data-comment-content>${comment.commentContent}</div>
                 </div>
             </div>
             <div class="arrow-left">

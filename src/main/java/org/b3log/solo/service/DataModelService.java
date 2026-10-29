@@ -29,16 +29,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.model.Role;
@@ -52,14 +52,14 @@ import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Dates;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Templates;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.bolo.prop.Options;
 import org.b3log.solo.model.ArchiveDate;
@@ -265,7 +265,7 @@ public class DataModelService {
             }
 
             final JSONObject articlesResult = articleRepository.get(query);
-            List<JSONObject> articles = CollectionUtils.jsonArrayToList(articlesResult.optJSONArray(Keys.RESULTS));
+            List<JSONObject> articles = CollectionUtils.jsonArrayToList(org.b3log.solo.util.QueryResults.array(articlesResult));
             articles.forEach(article -> article.put("isRss", false));
             final int pageCount = articlesResult.optJSONObject(Pagination.PAGINATION)
                     .optInt(Pagination.PAGINATION_PAGE_COUNT);
@@ -452,7 +452,8 @@ public class DataModelService {
 
         try {
             LOGGER.debug("Filling archive dates....");
-            final List<JSONObject> archiveDates = archiveDateRepository.getArchiveDates();
+            final List<JSONObject> archiveDates = archiveDateRepository.getPublishedArchiveDates();
+            archiveDates.removeIf(date -> date.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT) <= 0);
             final List<JSONObject> archiveDates2 = new ArrayList<>();
             dataModel.put(ArchiveDate.ARCHIVE_DATES, archiveDates2);
             if (archiveDates.isEmpty()) {
@@ -622,12 +623,14 @@ public class DataModelService {
             LOGGER.debug("Filling recent comments....");
             final int recentCommentDisplayCnt = preference.getInt(Option.ID_C_RECENT_COMMENT_DISPLAY_CNT);
             final List<JSONObject> recentComments = commentRepository.getRecentComments(recentCommentDisplayCnt);
+            recentComments.removeIf(comment -> comment.optBoolean("commentDeleted"));
             for (final JSONObject comment : recentComments) {
+                org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
                 String commentContent = comment.optString(Comment.COMMENT_CONTENT);
                 commentContent = Markdowns.toHTML(commentContent);
                 commentContent = Markdowns.clean(commentContent);
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
-                comment.put(Comment.COMMENT_NAME, comment.getString(Comment.COMMENT_NAME));
+                org.b3log.solo.util.CommentNames.apply(comment);
                 comment.put(Comment.COMMENT_URL, comment.getString(Comment.COMMENT_URL));
                 comment.put(Common.IS_REPLY, false);
                 comment.put(Comment.COMMENT_T_DATE, new Date(comment.optLong(Comment.COMMENT_CREATED)));
@@ -652,10 +655,16 @@ public class DataModelService {
      * @param preference the specified preference
      */
     public void fillFaviconURL(final Map<String, Object> dataModel, final JSONObject preference) {
+        dataModel.put("appearanceAccent", org.b3log.solo.util.SiteAppearance.current());
         if (null == preference) {
-            dataModel.put(Common.FAVICON_URL, Option.DefaultPreference.DEFAULT_FAVICON_URL);
+            dataModel.put(Common.FAVICON_URL, Latkes.getContextPath() + Option.DefaultPreference.DEFAULT_FAVICON_URL);
         } else {
-            dataModel.put(Common.FAVICON_URL, preference.optString(Option.ID_C_FAVICON_URL));
+            String favicon = preference.optString(Option.ID_C_FAVICON_URL);
+            if (favicon.isBlank() || favicon.equals(Option.DefaultPreference.DEFAULT_FAVICON_URL)
+                    || favicon.endsWith("/3e4a3ce8-8882-4258-9860-a337bf859605.png")) {
+                favicon = Latkes.getContextPath() + Option.DefaultPreference.DEFAULT_FAVICON_URL;
+            }
+            dataModel.put(Common.FAVICON_URL, favicon);
         }
     }
 
@@ -907,8 +916,8 @@ public class DataModelService {
             final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
             dataModel.put(Option.ID_C_BLOG_TITLE, blogTitle);
             dataModel.put("blogHost", Latkes.getServePath());
-            dataModel.put(Common.VERSION, SoloServletListener.VERSION);
-            dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+            dataModel.put(Common.VERSION, SoloApplication.VERSION);
+            dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
             dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
             dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
             String footerContent = "";
@@ -1023,7 +1032,7 @@ public class DataModelService {
             // 链滴域名设定
             dataModel.put("hacpaiDomain", Global.HACPAI_DOMAIN);
             dataModel.put("fishpiDomain", Global.FISH_PI_DOMAIN);
-            final String skinDirName = (String) context.attr(Keys.TEMAPLTE_DIR_NAME);
+            final String skinDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
             dataModel.put(Option.ID_C_SKIN_DIR_NAME, skinDirName);
             Keys.fillRuntime(dataModel);
             fillMinified(dataModel);
@@ -1188,6 +1197,7 @@ public class DataModelService {
         try {
             LOGGER.debug("Filling page navigations....");
             final List<JSONObject> pages = pageRepository.getPages();
+            pages.forEach(org.b3log.solo.util.GitHubStats::normalizeNavigationIcon);
             dataModel.put(Common.PAGE_NAVIGATIONS, pages);
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Fills page navigations failed", e);
@@ -1267,20 +1277,18 @@ public class DataModelService {
 
             fillCategory(article);
 
+            article.put("articleCategory", "");
+            article.put("categoryURI", "");
             try {
                 JSONObject cate = categoryTagRepository.getByTagId(article.optString("oId"), 1, Integer.MAX_VALUE);
-                int size = cate.optJSONArray("rslts").length();
-                JSONObject cateS = (JSONObject) cate.optJSONArray("rslts").get(size - 1);
+                int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
                 String categoryOId = cateS.optString("category_oId");
                 cateS = categoryQueryService.getCategory(categoryOId);
-                article.put("articleCategory", cateS.opt("categoryTitle"));
-                try {
-                    article.put("categoryURI", cateS.opt("categoryURI"));
-                } catch (JSONException | NullPointerException e) {
-                    article.put("categoryURI", cateS.opt(""));
-                }
+                article.put("articleCategory", cateS.optString("categoryTitle"));
+                article.put("categoryURI", cateS.optString("categoryURI"));
             } catch (JSONException | NullPointerException e) {
-                article.put("articleCategory", "");
+                // Uncategorized and legacy categories retain the empty display values.
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Sets article extra properties failed", e);

@@ -17,13 +17,16 @@
  */
 package org.b3log.solo.service;
 
+import org.b3log.solo.util.AdminPaths;
+import org.b3log.solo.model.Common;
+
 import java.util.List;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.FilterOperator;
@@ -170,7 +173,7 @@ public class UserQueryService {
         final List<Integer> pageNums = Paginator.paginate(currentPageNum, pageSize, pageCount, windowSize);
         pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
         pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
-        final JSONArray users = result.optJSONArray(Keys.RESULTS);
+        final JSONArray users = org.b3log.solo.util.QueryResults.array(result);
         ret.put(User.USERS, users);
 
         return ret;
@@ -234,9 +237,9 @@ public class UserQueryService {
      */
     public String getLoginURL(final String redirectURL) {
         String to = Latkes.getServePath();
-        to = URLs.encode(to + redirectURL);
+        to = URLs.encode(to + (Common.ADMIN_INDEX_URI.equals(redirectURL) ? AdminPaths.panel() + "#main" : redirectURL));
 
-        return Latkes.getContextPath() + "/start?referer=" + to;
+        return Latkes.getContextPath() + AdminPaths.login() + "?referer=" + to;
     }
 
     /**

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+  <Properties>
+    <!-- Preserve -Dbase.dir=...; otherwise use the deployment directory. -->
+    <Property name="baseDir">${sys:base.dir:-.}</Property>
+  </Properties>
+  <Appenders>
+    <Console name="stdout" target="SYSTEM_OUT">
+      <PatternLayout charset="UTF-8" pattern="[%p %d{MM-dd HH:mm:ss} %20.20c %3.4L] %m%n"/>
+    </Console>
+    <Ram name="ramAppender"/>
+    <RollingFile name="file" fileName="${baseDir}/logs/solo.log"
+                 filePattern="${baseDir}/logs/solo.log.%i" append="true">
+      <PatternLayout charset="UTF-8" pattern="[%-5p]-[%d{yyyy-MM-dd HH:mm:ss}]-[%c:%L]: %m%n"/>
+      <Policies><SizeBasedTriggeringPolicy size="50 MB"/></Policies>
+      <DefaultRolloverStrategy min="1" max="5" fileIndex="min"/>
+    </RollingFile>
+  </Appenders>
+  <Loggers>
+    <Logger name="org.b3log.solo" level="INFO"/>
+    <Logger name="org.b3log.latke" level="WARN"/>
+    <Logger name="org.b3log.latke.util.freemarker.Templates" level="ERROR"/>
+    <Logger name="org.b3log.latke.repository.jdbc.util" level="WARN"/>
+    <Logger name="org.b3log.latke.util.Crypts" level="ERROR"/>
+    <Logger name="io.netty" level="WARN"/>
+    <Logger name="freemarker" level="WARN"/>
+    <Logger name="com.zaxxer.hikari" level="WARN"/>
+    <Logger name="com.alibaba" level="WARN"/>
+    <Logger name="noModule" level="ERROR"/>
+    <Root level="INFO" includeLocation="true">
+      <AppenderRef ref="stdout"/>
+      <AppenderRef ref="ramAppender"/>
+      <AppenderRef ref="file"/>
+    </Root>
+  </Loggers>
+</Configuration>

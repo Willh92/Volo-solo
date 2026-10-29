@@ -44,21 +44,22 @@ admin.pluginList = {
                 style: "padding-left: 12px;",
                 text: Label.statusLabel,
                 index: "status",
-                minWidth: 80
+                width: 100
             }, {
                 style: "padding-left: 12px;",
                 text: Label.authorLabel,
                 index: "author",
-                width: 200
+                minWidth: 240
             }, {
                 style: "padding-left: 12px;",
                 text: Label.versionLabel,
                 index: "version",
-                width: 120
+                width: 80
             }]);
 
         this.tablePagination.initPagination();
         $("#pluginSetting").dialog({
+            title: Label.settingLabel,
             width: 700,
             height: 180,
             "modal": true,

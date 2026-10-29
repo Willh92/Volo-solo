@@ -44,11 +44,9 @@ var Skin = {
       if ($(window).scrollTop() > $banner.height()) {
         $navbar.addClass('pin')
         $('.main-wrap').parent().css('margin-top', '81px')
-        $('.article__toc').css('position', 'fixed')
       } else {
         $navbar.removeClass('pin')
         $('.main-wrap').parent().css('margin-top', '0')
-        $('.article__toc').css('position', 'inherit')
       }
     })
 
@@ -69,8 +67,11 @@ var Skin = {
       }
     })
 
-    $('.responsive .icon-list').click(function () {
-      $('.responsive .list').slideToggle()
+    $('.theme9-header-tools .icon-list').click(function () {
+      var button = $(this)
+      $('.responsive .list').stop(true, true).slideToggle(160, function () {
+        button.attr('aria-expanded', $(this).is(':visible') ? 'true' : 'false')
+      })
     })
   },
   initToc: function () {

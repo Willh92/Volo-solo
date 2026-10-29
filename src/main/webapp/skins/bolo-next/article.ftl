@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -42,7 +42,7 @@
             <article class="posts-expand">
                 <header class="post-header">
                     <h2 class="post-title">
-                        ${article.articleTitle}
+                        ${(article.articleTitle)?html}
                         <#if article.articlePutTop>
                             <sup>
                                 ${topArticleLabel}
@@ -94,15 +94,15 @@
                         <#if previousArticlePermalink??>
                             <div class="post-nav-prev post-nav-item fn-right">
                                 <a href="${servePath}${previousArticlePermalink}" rel="prev"
-                                   title="${previousArticleTitle}">
-                                    ${previousArticleTitle} >
+                                   title="${(previousArticleTitle)?html}">
+                                    ${(previousArticleTitle)?html} >
                                 </a>
                             </div>
                         </#if>
                         <#if nextArticlePermalink??>
                             <div class="post-nav-next post-nav-item fn-left">
-                                <a href="${servePath}${nextArticlePermalink}" rel="next" title="${nextArticleTitle}">
-                                    < ${nextArticleTitle}
+                                <a href="${servePath}${nextArticlePermalink}" rel="next" title="${(nextArticleTitle)?html}">
+                                    < ${(nextArticleTitle)?html}
                                 </a>
                             </div>
                         </#if>

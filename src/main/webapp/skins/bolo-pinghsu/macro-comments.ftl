@@ -19,7 +19,7 @@
 -->
 <#macro comments commentList article>
 <div class="comment__title">
-    Responses
+    ${commentLabel}
 </div>
 
     <#if article.commentable>

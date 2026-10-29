@@ -26,11 +26,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
@@ -45,7 +45,7 @@ import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
@@ -55,6 +55,7 @@ import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Sign;
 import org.b3log.solo.model.Tag;
 import org.b3log.solo.repository.ArchiveDateArticleRepository;
+import org.b3log.solo.repository.ArchiveDateRepository;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.repository.TagArticleRepository;
@@ -132,6 +133,9 @@ public class ArticleQueryService {
     @Inject
     private ArchiveDateArticleRepository archiveDateArticleRepository;
 
+    @Inject
+    private ArchiveDateRepository archiveDateRepository;
+
     /**
      * Statistic query service.
      */
@@ -189,7 +193,7 @@ public class ArticleQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, (Object) pageNums);
 
-            final List<JSONObject> articles = CollectionUtils.jsonArrayToList(result.optJSONArray(Keys.RESULTS));
+            final List<JSONObject> articles = CollectionUtils.jsonArrayToList(org.b3log.solo.util.QueryResults.array(result));
             ret.put(Article.ARTICLES, (Object) articles);
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Searches articles error", e);
@@ -219,8 +223,7 @@ public class ArticleQueryService {
 
         try {
             // 重点！找标签
-            final JSONArray categoryTags = categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE)
-                    .optJSONArray(Keys.RESULTS);
+            final JSONArray categoryTags = org.b3log.solo.util.QueryResults.array(categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE));
             if (categoryTags.length() <= 0) {
                 return ret;
             }
@@ -307,7 +310,7 @@ public class ArticleQueryService {
             final Query query = new Query().setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters))
                     .setPageCount(1).addSort(Keys.OBJECT_ID, SortDirection.DESCENDING);
             final List<JSONObject> articles = new ArrayList<>();
-            final JSONArray articleArray = articleRepository.get(query).optJSONArray(Keys.RESULTS);
+            final JSONArray articleArray = org.b3log.solo.util.QueryResults.array(articleRepository.get(query));
             for (int i = 0; i < articleArray.length(); i++) {
                 final JSONObject article = articleArray.optJSONObject(i);
                 article.put(Article.ARTICLE_CREATE_TIME, article.optLong(Article.ARTICLE_CREATED));
@@ -633,7 +636,7 @@ public class ArticleQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
-            final JSONArray articles = result.getJSONArray(Keys.RESULTS);
+            final JSONArray articles = org.b3log.solo.util.QueryResults.array(result);
             JSONArray excludes = requestJSONObject.optJSONArray(Keys.EXCLUDES);
             excludes = null == excludes ? new JSONArray() : excludes;
 
@@ -648,8 +651,8 @@ public class ArticleQueryService {
                 try {
                     JSONObject cateS = null;
                     JSONObject cate = categoryTagRepository.getByTagId(article.optString("oId"), 1, Integer.MAX_VALUE);
-                    int size = cate.optJSONArray("rslts").length();
-                    cateS = (JSONObject) cate.optJSONArray("rslts").get(size - 1);
+                    int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                    cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
                     String categoryOId = cateS.optString("category_oId");
                     cateS = categoryQueryService.getCategory(categoryOId);
                     article.put("articleCategory", cateS.opt("categoryTitle"));
@@ -684,41 +687,20 @@ public class ArticleQueryService {
     public JSONObject getArticlesByTag(final String tagId, final int currentPageNum, final int pageSize)
             throws ServiceException {
         try {
-            JSONObject result = tagArticleRepository.getByTagId(tagId, currentPageNum, pageSize);
-            if (null == result) {
-                return null;
-            }
-            final JSONArray tagArticleRelations = result.getJSONArray(Keys.RESULTS);
-            if (0 == tagArticleRelations.length()) {
-                return null;
-            }
-            final JSONObject pagination = result.optJSONObject(Pagination.PAGINATION);
-
-            final Set<String> articleIds = new HashSet<>();
-            for (int i = 0; i < tagArticleRelations.length(); i++) {
-                final JSONObject tagArticleRelation = tagArticleRelations.getJSONObject(i);
-                final String articleId = tagArticleRelation.getString(Article.ARTICLE + "_" + Keys.OBJECT_ID);
-                articleIds.add(articleId);
-            }
-
-            final List<JSONObject> retArticles = new ArrayList<>();
-
-            final Query query = new Query().setFilter(CompositeFilterOperator.and(
-                    new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, articleIds),
-                    new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL,
-                            Article.ARTICLE_STATUS_C_PUBLISHED)))
-                    .setPageCount(1).addSort(Keys.OBJECT_ID, SortDirection.DESCENDING);
-            final List<JSONObject> articles = articleRepository.getList(query);
+            if (currentPageNum < 1 || pageSize < 1) throw new IllegalArgumentException("Invalid pagination");
+            final int count = tagArticleRepository.getPublishedArticleCount(tagId);
+            if (count < 0) throw new RepositoryException("Could not count published tag articles");
+            final List<JSONObject> articles = tagArticleRepository.getPublishedArticles(tagId, currentPageNum, pageSize);
             for (final JSONObject article : articles) {
                 article.put(Article.ARTICLE_CREATE_TIME, article.getLong(Article.ARTICLE_CREATED));
                 article.put(Article.ARTICLE_T_CREATE_DATE, new Date(article.getLong(Article.ARTICLE_CREATED)));
                 article.put(Article.ARTICLE_T_UPDATE_DATE, new Date(article.optLong(Article.ARTICLE_UPDATED)));
-                retArticles.add(article);
             }
+            final JSONObject pagination = new JSONObject();
+            pagination.put(Pagination.PAGINATION_PAGE_COUNT, (int) ((count + (long) pageSize - 1) / pageSize));
             final JSONObject ret = new JSONObject();
             ret.put(Pagination.PAGINATION, pagination);
-            ret.put(Keys.RESULTS, (Object) retArticles);
-
+            ret.put(Keys.RESULTS, (Object) articles);
             return ret;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets articles by tag [id=" + tagId + "] failed", e);
@@ -736,59 +718,34 @@ public class ArticleQueryService {
      * @return a list of articles, returns an empty list if not found
      * @throws ServiceException service exception
      */
-    private static Map<String, Object> pairs = new HashMap<>();
 
     public List<JSONObject> getArticlesByArchiveDate(final String archiveDateId, final int currentPageNum,
             final int pageSize) throws ServiceException {
         try {
-            final List<JSONObject> ret = new ArrayList<>();
-            final String query = "SELECT\n" +
-                    "\t*\n" +
-                    "FROM\n" +
-                    "\tb3_solo_article AS a,\n" +
-                    "\tb3_solo_archivedate_article aa\n" +
-                    "WHERE\n" +
-                    "\taa.archiveDate_oId = ?\n" +
-                    "AND a.oId = aa.article_oId\n" +
-                    "AND a.articleStatus = 0\n" +
-                    "ORDER BY\n" +
-                    "\ta.oId DESC\n" +
-                    "LIMIT ?,\n" +
-                    " ?";
-            final List<JSONObject> articles = articleRepository.select(query, archiveDateId,
-                    (currentPageNum - 1) * pageSize, pageSize);
+            if (currentPageNum < 1 || pageSize < 1) throw new IllegalArgumentException("Invalid pagination");
+            final List<String> archiveIds = archiveDateRepository.getMonthArchiveIds(archiveDateId);
+            if (archiveIds.isEmpty()) return Collections.emptyList();
+            final List<Object> params = new ArrayList<>();
+            params.add(Article.ARTICLE_STATUS_C_PUBLISHED);
+            params.addAll(archiveIds);
+            params.add(pageSize);
+            params.add((long) (currentPageNum - 1) * pageSize);
+            final String query = "SELECT a.* FROM " + articleRepository.getName()
+                    + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + archiveDateArticleRepository.getName()
+                    + " AS r WHERE r.article_oId = a.oId AND r.archiveDate_oId IN ("
+                    + String.join(",", Collections.nCopies(archiveIds.size(), "?")) + "))"
+                    + " ORDER BY a.oId DESC LIMIT ? OFFSET ?";
+            final List<JSONObject> articles = articleRepository.select(query, params.toArray());
             for (final JSONObject article : articles) {
                 article.put(Article.ARTICLE_CREATE_TIME, article.getLong(Article.ARTICLE_CREATED));
                 article.put(Article.ARTICLE_T_CREATE_DATE, new Date(article.getLong(Article.ARTICLE_CREATED)));
                 article.put(Article.ARTICLE_T_UPDATE_DATE, new Date(article.optLong(Article.ARTICLE_UPDATED)));
-                if (compareArticles(article)) {
-                    ret.add(article);
-                }
             }
-            pairs = new HashMap<>();
-
-            return ret;
+            return articles;
         } catch (final Exception e) {
-            pairs = new HashMap<>();
 
             LOGGER.log(Level.ERROR, "Gets articles by archive date [id=" + archiveDateId + "] failed", e);
             throw new ServiceException(e);
-        }
-    }
-
-    public boolean compareArticles(JSONObject article) {
-        String pair = article.optString("articlePermalink");
-        // pair 为空，显示所有
-        if (pair.isEmpty()) {
-            return true;
-        }
-        // 校验 pair
-        if (!pairs.containsKey(pair)) {
-            pairs.put(pair, null);
-            return true;
-        } else {
-            // 已经包含，不允许再录入
-            return false;
         }
     }
 
@@ -830,64 +787,28 @@ public class ArticleQueryService {
     public List<JSONObject> getRelevantArticles(final JSONObject article, final JSONObject preference) {
         try {
             final int displayCnt = preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT);
-            final String[] tagTitles = article.getString(Article.ARTICLE_TAGS_REF).split(",");
-            final int maxTagCnt = displayCnt > tagTitles.length ? tagTitles.length : displayCnt;
-            final String articleId = article.getString(Keys.OBJECT_ID);
-
-            final List<JSONObject> articles = new ArrayList<>();
-
-            for (int i = 0; i < maxTagCnt; i++) { // XXX: should average by tag?
-                final String tagTitle = tagTitles[i];
-                final JSONObject tag = tagRepository.getByTitle(tagTitle);
-                final String tagId = tag.getString(Keys.OBJECT_ID);
-                final JSONObject result = tagArticleRepository.getByTagId(tagId, 1, displayCnt);
-                final JSONArray tagArticleRelations = result.getJSONArray(Keys.RESULTS);
-
-                final int relationSize = displayCnt < tagArticleRelations.length() ? displayCnt
-                        : tagArticleRelations.length();
-
-                for (int j = 0; j < relationSize; j++) {
-                    final JSONObject tagArticleRelation = tagArticleRelations.getJSONObject(j);
-                    final String relatedArticleId = tagArticleRelation
-                            .getString(Article.ARTICLE + "_" + Keys.OBJECT_ID);
-
-                    if (articleId.equals(relatedArticleId)) {
-                        continue;
-                    }
-
-                    final JSONObject relevant = articleRepository.get(relatedArticleId);
-
-                    if (Article.ARTICLE_STATUS_C_PUBLISHED != relevant.optInt(Article.ARTICLE_STATUS)) {
-                        continue;
-                    }
-
-                    boolean existed = false;
-
-                    for (final JSONObject relevantArticle : articles) {
-                        if (relevantArticle.getString(Keys.OBJECT_ID).equals(relevant.getString(Keys.OBJECT_ID))) {
-                            existed = true;
-                        }
-                    }
-
-                    if (!existed) {
-                        articles.add(relevant);
-                    }
-                }
+            if (displayCnt <= 0) return Collections.emptyList();
+            final List<String> tagTitles = new ArrayList<>();
+            for (final String value : article.optString(Article.ARTICLE_TAGS_REF).split(",")) {
+                final String title = value.trim();
+                if (!title.isEmpty() && !tagTitles.contains(title)) tagTitles.add(title);
+                if (tagTitles.size() >= displayCnt) break;
             }
-
-            removeUnusedProperties(articles);
-
-            if (displayCnt > articles.size()) {
-                return articles;
-            }
-
-            final List<Integer> randomIntegers = CollectionUtils.getRandomIntegers(0, articles.size() - 1, displayCnt);
-            final List<JSONObject> ret = new ArrayList<>();
-            for (final int index : randomIntegers) {
-                ret.add(articles.get(index));
-            }
-
-            return ret;
+            if (tagTitles.isEmpty()) return Collections.emptyList();
+            final List<Object> params = new ArrayList<>();
+            params.add(Article.ARTICLE_STATUS_C_PUBLISHED);
+            params.add(article.getString(Keys.OBJECT_ID));
+            params.addAll(tagTitles);
+            params.add((int) Math.min(Integer.MAX_VALUE, (long) displayCnt * tagTitles.size()));
+            final String query = "SELECT a.articleTitle, a.articlePermalink FROM " + articleRepository.getName()
+                    + " AS a WHERE a.articleStatus = ? AND a.oId <> ? AND EXISTS (SELECT 1 FROM "
+                    + tagArticleRepository.getName() + " AS r JOIN " + tagRepository.getName()
+                    + " AS t ON t.oId = r.tag_oId WHERE r.article_oId = a.oId AND t.tagTitle IN ("
+                    + String.join(",", Collections.nCopies(tagTitles.size(), "?")) + "))"
+                    + " ORDER BY a.oId DESC LIMIT ?";
+            final List<JSONObject> articles = articleRepository.select(query, params.toArray());
+            Collections.shuffle(articles);
+            return new ArrayList<>(articles.subList(0, Math.min(displayCnt, articles.size())));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets relevant articles failed", e);
 
@@ -989,7 +910,7 @@ public class ArticleQueryService {
             throws ServiceException {
         try {
             final JSONObject ret = articleRepository.getByAuthorId(authorId, currentPageNum, pageSize);
-            final JSONArray articles = ret.getJSONArray(Keys.RESULTS);
+            final JSONArray articles = org.b3log.solo.util.QueryResults.array(ret);
             for (int i = 0; i < articles.length(); i++) {
                 final JSONObject article = articles.getJSONObject(i);
                 article.put(Article.ARTICLE_CREATE_TIME, article.getLong(Article.ARTICLE_CREATED));
@@ -1081,6 +1002,8 @@ public class ArticleQueryService {
             Stopwatchs.end();
         }
 
+        article.put(Article.ARTICLE_COVER_URL, StringUtils.isBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+                ? Article.getArticleCoverURL(abstractContent + "\n" + content) : "");
         Stopwatchs.end();
     }
 

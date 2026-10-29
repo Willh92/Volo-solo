@@ -18,18 +18,23 @@
 
 -->
 <#setting locale="en_US">
-<li id="${comment.oId}" class="item">
+<li id="${comment.oId}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="user-comment">
-        <div class="user-comment-header">
-            <a class="post-name" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+        <div class="user-comment-header thread-comment-header">
+            <span class="comment-author">
+            <a class="post-name" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
             <#if comment.isReply>
-                @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"><span class="post-name">${comment.commentOriginalCommentName}</span></a>
+                @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"><span class="post-name">${comment.commentOriginalCommentName?html}</span></a>
             </#if>
-            <span class="post-time">${comment.commentDate2?string["MMM d, yyyy"]}</span>
+            </span>
+            <span class="post-time comment-details"><time datetime="${comment.commentDate2?string('yyyy-MM-dd')}">${comment.commentDate2?string["MMM d, yyyy"]}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if></span>
             <#if article?? && article.commentable>
-                <span class="reply" onclick="page.toggleEditor('${comment.oId}', '${comment.commentName}')">回复</span>
+                <a class="reply comment-reply-link" rel="nofollow" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
             </#if>
         </div>
-        <div class="user-comment-body">${comment.commentContent}</div>
+        <div class="user-comment-body"><div data-comment-content>${comment.commentContent}</div></div>
     </div>
 </li>

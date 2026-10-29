@@ -34,15 +34,22 @@ admin.others = {
     $('#loadMsg').text('');
 
     admin.others.getLog();
-    setInterval(admin.others.getLog, 5000);
+    clearInterval(this.pollTimer);
+    const pollTimer = setInterval(admin.others.getLog, 5000);
+    this.pollTimer = pollTimer;
+    if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(pollTimer); });
   },
 
   getLog: () => {
+    if (!window.location.hash.includes('others')) return;
     $.ajax({
       url: Label.servePath + '/admin/logs',
       cache: false,
       timeout: 2000,
+      dataType: 'json',
       success: function (result) {
+        if (!result || !Array.isArray(result.result)) return;
+        const escape = value => $('<span>').text(String(value == null ? '' : value)).html();
         let json = result.result;
         let free = (result.freeMemNow / (1024 * 1024)).toFixed(2) + ' MB';
         $('#memFree').html(free);
@@ -53,31 +60,22 @@ admin.others = {
           if (rId > lastOthers) {
             let rDate = r.date;
             let rLevel = r.level;
-            let rSrc = r.name + ':' + r.lineNumber;
-            let msg = r.message;
+            let rSrc = escape(r.name + ':' + r.lineNumber);
+            let msg = escape(r.message);
+            if (r.throwable) {
+              msg += '<br>' + escape(r.throwable.class + ': ' + r.throwable.message);
+              for (const line of r.throwable.stackTrace || []) msg += '<br>' + escape(line);
+            }
             let buildStart = '<tbody class="table-oddRow"><tr class="table-hasExpend">';
             rDate = rDate.substring(0, 19);
-            let build1 = '';
-            if (rLevel === 'WARN') {
-              build1 = '<td style="width: 40px; vertical-align: top"><span style="color: #f8ba0b; font-weight: bold">' + rLevel + '</span></td>';
-            } else if (rLevel === 'INFO') {
-              build1 = '<td style="width: 40px; vertical-align: top"><span style="color: #00bbff; font-weight: bold">' + rLevel + '</span></td>';
-            } else if (rLevel === 'ERROR') {
-              build1 = '<td style="width: 40px; vertical-align: top"><span style="color: #dd1144" font-weight: bold">' + rLevel + '</span></td>';
-            } else {
-              build1 = '<td style="width: 40px; vertical-align: top"><span style="color: #1ea0c3" font-weight: bold">' + rLevel + '</span></td>';
-            }
-            let build2 = '<td style="width: 135px; vertical-align: top"><span style="color: #4caf50; font-weight: bold">' + rDate + '</span></td>';
-            let build3 = '<td style="vertical-align: top"><span style="word-wrap: break-word; white-space: normal; word-break: break-all"><span style="color: #4caf50; font-weight: bold">' + rSrc + '</span><br>' + msg + '</span></td>';
+            const levelClass = ['WARN','INFO','ERROR'].includes(rLevel) ? rLevel.toLowerCase() : 'other';
+            let build1 = '<td style="width: 40px; vertical-align: top"><span class="console-log-level console-log-level--' + levelClass + '">' + escape(rLevel) + '</span></td>';
+            let build2 = '<td style="width: 135px; vertical-align: top"><span class="console-log-time">' + escape(rDate) + '</span></td>';
+            let build3 = '<td style="vertical-align: top"><span style="overflow-wrap: anywhere"><span class="console-log-source">' + rSrc + '</span><br>' + msg + '</span></td>';
             let buildEnd = '</tr></tbody>';
             let res = buildStart + build1 + build2 + build3 + buildEnd;
-            if (r.throwable !== undefined) {
-              res += r.throwable.class + ': ' + r.throwable.message + '<br>';
-              for (let j = 0; j < r.throwable.stackTrace.length; j++) {
-                res += r.throwable.stackTrace[j] + '<br>';
-              }
-            }
             $('#tabOthersPanel_log #logList').prepend(res);
+            $('#tabOthersPanel_log #logList').children('tbody').slice(300).remove();
             lastOthers = rId;
           }
         }
@@ -206,13 +204,20 @@ admin.others = {
    * XXX: Not used this function yet.
    */
   pbstart: function () {
+    var button = $("#tabOthersPanel_move button");
+    if (button.prop("disabled")) return;
+    button.prop("disabled", true);
     $.ajax({
       url: Label.servePath + "/PBC/run",
-      type: "GET",
-      cache: false,
-      success: function (result, textStatus) {
-        $("#tipMsg").text("请求已提交");
-      }
+      type: "POST",
+      success: function (result) {
+        $("#tipMsg").text(result.msg);
+        $("#status").text("运行中");
+      },
+      error: function (xhr) {
+        $("#tipMsg").text(xhr.responseJSON && xhr.responseJSON.msg || xhr.status + ": " + xhr.statusText);
+      },
+      complete: function () { button.prop("disabled", false); }
     });
   }
 };

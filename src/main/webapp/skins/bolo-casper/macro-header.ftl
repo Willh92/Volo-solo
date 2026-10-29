@@ -36,8 +36,8 @@
         </a>
 
         <#list pageNavigations as page>
-            <a class="fn__flex-inline" href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                <#if page.pageIcon != ''><img src="${page.pageIcon}"></#if> ${page.pageTitle}
+            <a class="fn__flex-inline" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                <#if page.pageIcon != ''><img src="${page.pageIcon?html}"></#if> ${page.pageTitle?html}
             </a>
         </#list>
 
@@ -53,21 +53,7 @@
             <a rel="alternate" href="${servePath}/rss.xml">
                 RSS
             </a>
-
-            <#if interactive == "on">
-            <#if isLoggedIn>
-            <a href="${servePath}/admin-index.do#main">
-                ${adminLabel}
-            </a>
-            <a href="${logoutURL}">
-                ${logoutLabel}
-            </a>
-            <#else>
-            <a rel="alternate" href="${servePath}/start">
-                ${startToUseLabel}
-            </a>
-            </#if>
-            </#if>
+            <div class="skin-theme-slot" data-bolo-theme-slot></div>
         </div>
     </nav>
 </header>

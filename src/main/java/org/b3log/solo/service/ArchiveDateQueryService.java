@@ -19,8 +19,8 @@ package org.b3log.solo.service;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
@@ -65,7 +65,12 @@ public class ArchiveDateQueryService {
      * @return published article count, returns {@code -1} if occurred an exception
      */
     public int getArchiveDatePublishedArticleCount(final String archiveDateId) {
-        return archiveDateArticleRepository.getPublishedArticleCount(archiveDateId);
+        try {
+            return archiveDateArticleRepository.getPublishedArticleCount(archiveDateRepository.getMonthArchiveIds(archiveDateId));
+        } catch (final RepositoryException error) {
+            LOGGER.log(Level.ERROR, "Gets archive month count failed", error);
+            return -1;
+        }
     }
 
     /**
@@ -76,7 +81,7 @@ public class ArchiveDateQueryService {
      */
     public List<JSONObject> getArchiveDates() throws ServiceException {
         try {
-            return archiveDateRepository.getArchiveDates();
+            return archiveDateRepository.getPublishedArchiveDates();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Gets archive dates failed", e);
             throw new ServiceException("Gets archive dates failed");
@@ -108,7 +113,7 @@ public class ArchiveDateQueryService {
                 return null;
             }
 
-            final int articleCount = archiveDateArticleRepository.getPublishedArticleCount(archiveDate.optString(Keys.OBJECT_ID));
+            final int articleCount = getArchiveDatePublishedArticleCount(archiveDate.optString(Keys.OBJECT_ID));
             archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, articleCount);
             ret.put(ArchiveDate.ARCHIVE_DATE, archiveDate);
 

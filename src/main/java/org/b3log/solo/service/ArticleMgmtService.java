@@ -17,16 +17,16 @@
  */
 package org.b3log.solo.service;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
@@ -203,30 +203,30 @@ public class ArticleMgmtService {
     /**
      * Refreshes GitHub repos. 同步拉取 GitHub 仓库 https://github.com/b3log/solo/issues/12514
      */
-    public void refreshGitHub(String githubId) {
+    public boolean refreshGitHub(String githubId) {
         if (!initService.isInited()) {
-            return;
+            return false;
         }
 
         final JSONObject preference = optionQueryService.getPreference();
         if (null == preference) {
-            return;
+            return false;
         }
 
         JSONObject admin;
         try {
             admin = userRepository.getAdmin();
         } catch (final Exception e) {
-            return;
+            return false;
         }
 
         if (null == admin) {
-            return;
+            return false;
         }
 
         final JSONArray gitHubRepos = GitHubs.getGitHubRepos(githubId);
         if (null == gitHubRepos || gitHubRepos.length() == 0) {
-            return;
+            return false;
         }
 
         JSONObject githubReposOpt = optionQueryService.getOptionById(Option.ID_C_GITHUB_REPOS);
@@ -241,12 +241,12 @@ public class ArticleMgmtService {
             optionMgmtService.addOrUpdateOption(githubReposOpt);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates github repos option failed", e);
-            return;
+            return false;
         }
 
         final StringBuilder contentBuilder = new StringBuilder();
-        String stats = "\n![Github Stats](https://github-readme-stats.vercel.app/api?username={username}&show_icons=true) \n\n";
-        stats = stats.replace("{username}", githubId);
+        String stats = "\n![GitHub Stats](" + Latkes.getContextPath() + "/github-stats/"
+                + java.net.URLEncoder.encode(githubId, java.nio.charset.StandardCharsets.UTF_8) + ".svg)\n\n";
         contentBuilder.append("![GitHub Repo](/images/github_repo.jpg)\n\n");
         contentBuilder.append("## Github Stats\n").append(stats);
         contentBuilder.append("## 所有开源项目\n");
@@ -260,12 +260,11 @@ public class ArticleMgmtService {
             final String stars = repo.optString("githubrepoStargazersCount");
             final String forks = repo.optString("githubrepoForksCount");
             final String lang = repo.optString("githubrepoLanguage");
-            final String hp = repo.optString("githubrepoHomepage");
-            contentBuilder.append("| [").append(name).append("](").append(url).append(") | ")
-                .append(desc).append(" | ")
+            contentBuilder.append("| [").append(gitHubTableText(name)).append("](").append(url).append(") | ")
+                .append(gitHubTableText(desc)).append(" | ")
                 .append(stars).append(" | ")
                 .append(forks).append(" | ")
-                .append(lang).append("|\n");
+                .append(gitHubTableText(lang)).append("|\n");
         }
         final String content = contentBuilder.toString();
 
@@ -298,6 +297,9 @@ public class ArticleMgmtService {
                 addArticle(addArticleReq);
             } else {
                 article.put(Article.ARTICLE_CONTENT, content);
+                article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(content));
+                article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(content));
+                article.put(Article.ARTICLE_UPDATED, System.currentTimeMillis());
 
                 final String articleId = article.optString(Keys.OBJECT_ID);
                 final Transaction transaction = articleRepository.beginTransaction();
@@ -314,18 +316,25 @@ public class ArticleMgmtService {
                 page.put(Page.PAGE_TITLE, "我的开源");
                 page.put(Page.PAGE_OPEN_TARGET, "_self");
                 page.put(Page.PAGE_PERMALINK, permalink);
-                page.put(Page.PAGE_ICON, Latkes.getServePath() + "/images/github-icon.png");
+                page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
                 pageRepository.add(page);
             } else {
                 page.put(Page.PAGE_OPEN_TARGET, "_self");
-                page.put(Page.PAGE_ICON, Latkes.getServePath() + "/images/github-icon.png");
+                page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
                 pageRepository.update(page.optString(Keys.OBJECT_ID), page);
             }
             transaction.commit();
             LOGGER.log(Level.INFO, "My github repos page has been generated.");
+            return true;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates github repos page failed", e);
+            return false;
         }
+    }
+
+    private static String gitHubTableText(final String text) {
+        return text.replace("\\", "\\\\").replace("|", "\\|").replace("[", "\\[").replace("]", "\\]")
+                .replace("<", "&lt;").replace(">", "&gt;").replace('\r', ' ').replace('\n', ' ');
     }
 
     /**
@@ -466,6 +475,8 @@ public class ArticleMgmtService {
 
             processTagsForArticleUpdate(oldArticle, article);
 
+            // Normalize the date before deriving its archive month.
+            fillAutoProperties(oldArticle, article);
             archiveDate(article);
 
             if (!oldArticle.getString(Article.ARTICLE_PERMALINK).equals(permalink)) { // The permalink has been updated
@@ -474,7 +485,6 @@ public class ArticleMgmtService {
             }
 
             // Fill auto properties
-            fillAutoProperties(oldArticle, article);
             // Set date
             article.put(ARTICLE_UPDATED, oldArticle.getLong(ARTICLE_UPDATED));
             final long now = System.currentTimeMillis();
@@ -1000,11 +1010,15 @@ public class ArticleMgmtService {
         }
 
         final String articleId = article.optString(Keys.OBJECT_ID);
-        if (null == archiveDateArticleRepository.getByArticleId(articleId)) {
+        final JSONObject existingRelation = archiveDateArticleRepository.getByArticleId(articleId);
+        if (null == existingRelation) {
             final JSONObject archiveDateArticleRelation = new JSONObject();
             archiveDateArticleRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.optString(Keys.OBJECT_ID));
             archiveDateArticleRelation.put(Article.ARTICLE + "_" + Keys.OBJECT_ID, articleId);
             archiveDateArticleRepository.add(archiveDateArticleRelation);
+        } else if (!archiveDate.getString(Keys.OBJECT_ID).equals(existingRelation.optString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID))) {
+            existingRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.getString(Keys.OBJECT_ID));
+            archiveDateArticleRepository.update(existingRelation.getString(Keys.OBJECT_ID), existingRelation);
         }
     }
 

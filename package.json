@@ -1,20 +1,31 @@
 {
-  "name": "Solo",
-  "version": "4.0.0",
-  "description": " 一款小而美的博客系统，专为程序员设计。",
-  "homepage": "https://github.com/b3log/solo",
+  "name": "volo-solo",
+  "version": "3.0.0",
+  "description": "Volo, a Java blog forked from bolo-blog/bolo-solo.",
+  "homepage": "https://github.com/Willh92/Volo-solo",
   "repository": {
     "type": "git",
-    "url": "git://github.com/b3log/solo.git"
+    "url": "https://github.com/Willh92/Volo-solo.git"
   },
   "bugs": {
-    "url": "https://github.com/b3log/solo/issues"
+    "url": "https://github.com/Willh92/Volo-solo/issues"
   },
   "license": "AGPLv3",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "yarn@1.22.22",
+  "resolutions": {
+    "source-map-js": "1.2.2"
+  },
   "scripts": {
     "dev": "gulp watch",
-    "build": "gulp"
+    "build": "gulp",
+    "verify:appearance": "node scripts/verify-appearance.mjs",
+    "verify:admin": "node scripts/verify-admin.mjs",
+    "verify:navigation": "node scripts/verify-navigation.mjs",
+    "verify:kanbanniang": "node scripts/verify-kanbanniang.mjs"
   },
   "author": "Daniel <dl882509@gmail.com> (http://88250.b3log.org) & Vanessa <v@b3log.org> (http://vanessa.b3log.org)",
   "maintainers": [
@@ -28,16 +39,22 @@
     }
   ],
   "devDependencies": {
-    "del": "^5.1.0",
-    "gulp": "^4.0.2",
-    "gulp-autoprefixer": "^7.0.1",
-    "gulp-concat": "^2.6.1",
-    "gulp-rename": "^1.4.0",
-    "gulp-sass": "^5.1.0",
-    "gulp-terser": "^1.2.0"
+    "del": "8.0.1",
+    "gulp": "5.0.1",
+    "gulp-autoprefixer": "10.0.0",
+    "gulp-concat": "2.6.1",
+    "gulp-rename": "2.1.0",
+    "gulp-sass": "6.0.1",
+    "gulp-terser": "2.1.0"
   },
   "dependencies": {
-    "sass": "^1.51.0",
-    "vditor": "^3.8.5"
+    "@fancyapps/fancybox": "3.5.7",
+    "@fontsource/roboto": "5.3.0",
+    "@fortawesome/fontawesome-free": "7.3.1",
+    "font-awesome": "4.7.0",
+    "jquery": "3.7.1",
+    "justifiedGallery": "3.8.1",
+    "sass": "1.107.0",
+    "vditor": "4.0.1"
   }
 }

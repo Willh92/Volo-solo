@@ -42,8 +42,8 @@ var GLOBAL_CONFIG = {
     fancybox: true,
     Snackbar: undefined,
     justifiedGallery: {
-        js: 'https://ftp.stackoverflow.wiki/bolo/Justified-Gallery/dist/js/jquery.justifiedGallery.min.js',
-        css: 'https://ftp.stackoverflow.wiki/bolo/Justified-Gallery/dist/css/justifiedGallery.min.css'
+        js: '' + Label.staticServePath + '/js/lib/justifiedGallery/js/jquery.justifiedGallery.min.js',
+        css: '' + Label.staticServePath + '/js/lib/justifiedGallery/css/justifiedGallery.min.css'
     },
     baiduPush: true,
     highlightCopy: true,

@@ -16,11 +16,11 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>pers.adlered</groupId>
     <artifactId>bolo</artifactId>
-    <packaging>war</packaging>
-    <name>Bolo</name>
-    <version>v2.6.4-stable</version>
+    <packaging>jar</packaging>
+    <name>Volo</name>
+    <version>3.0.0</version>
     <description>
-        本地化、稳定精致的 Java 博客系统 - 菠萝博客。
+        Volo — 从 bolo-blog/bolo-solo 分支开发的 Java 博客系统。
     </description>
     <inceptionYear>2019</inceptionYear>
 
@@ -87,43 +87,142 @@
 
     <issueManagement>
         <system>GitHub Issues</system>
-        <url>https://github.com/bolo-blog/bolo-solo/issues</url>
+        <url>https://github.com/Willh92/Volo-solo/issues</url>
     </issueManagement>
 
     <scm>
-        <url>https://github.com/bolo-blog/bolo-solo</url>
+        <url>https://github.com/Willh92/Volo-solo</url>
     </scm>
 
     <properties>
-        <org.b3log.latke.version>2.5.8</org.b3log.latke.version>
+        <org.b3log.latke.version>3.5.1</org.b3log.latke.version>
 
-        <slf4j.version>1.7.28</slf4j.version>
-        <jsoup.version>1.12.1</jsoup.version>
-        <flexmark.version>0.62.2</flexmark.version>
-        <jetty.version>9.4.12.v20180830</jetty.version>
-        <commons-cli.version>1.3.1</commons-cli.version>
-        <commons-codec.version>1.10</commons-codec.version>
+        <slf4j.version>2.0.20</slf4j.version>
+        <jsoup.version>1.23.2</jsoup.version>
+        <flexmark.version>0.64.8</flexmark.version>
+        <commons-cli.version>1.11.0</commons-cli.version>
+        <commons-codec.version>1.23.0</commons-codec.version>
         <emoji-java.version>5.1.0</emoji-java.version>
-        <jodd.version>6.0.5</jodd.version>
-        <owasp.version>1.2.2</owasp.version>
-        <snakeyaml.version>1.18</snakeyaml.version>
+        <jodd.version>6.3.0</jodd.version>
+        <owasp.version>1.3.1</owasp.version>
+        <snakeyaml.version>2.7</snakeyaml.version>
         <user-agent-utils.version>1.21</user-agent-utils.version>
-        <servlet.version>3.1.0</servlet.version>
 
         <license-maven-plugin.version>3.0</license-maven-plugin.version>
-        <maven-surefire-plugin.version>2.22.1</maven-surefire-plugin.version>
-        <maven-war-plugin.version>3.2.2</maven-war-plugin.version>
+        <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
         <coveralls-maven-plugin.version>4.3.0</coveralls-maven-plugin.version>
-        <jacoco-maven-plugin.version>0.8.2</jacoco-maven-plugin.version>
-        <testng.version>6.1.1</testng.version>
-        <mysql-connector-java.version>8.0.18</mysql-connector-java.version>
+        <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
+        <testng.version>7.10.2</testng.version>
+        <mysql-connector-java.version>9.7.0</mysql-connector-java.version>
+        <jackson.version>2.22.4</jackson.version>
+        <httpclient.version>4.5.14</httpclient.version>
+        <tencent-sdk.version>3.2.49</tencent-sdk.version>
 
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <!-- Keep transitive dependencies on maintained versions, including Latke's dependencies. -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>1.67.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>33.7.2-jre</version>
+            </dependency>
+            <dependency>
+                <groupId>org.freemarker</groupId>
+                <artifactId>freemarker</artifactId>
+                <version>2.3.35</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>2.22.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.javassist</groupId>
+                <artifactId>javassist</artifactId>
+                <version>3.33.0-GA</version>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>2.5.252</version>
+            </dependency>
+            <dependency>
+                <groupId>org.json</groupId>
+                <artifactId>json</artifactId>
+                <version>20260814</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.jettison</groupId>
+                <artifactId>jettison</artifactId>
+                <version>1.5.4</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>4.12.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>logging-interceptor</artifactId>
+                <version>4.12.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>1.86</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tencentcloudapi</groupId>
+                <artifactId>tencentcloud-sdk-java-common</artifactId>
+                <version>${tencent-sdk.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tencentcloudapi</groupId>
+                <artifactId>tencentcloud-sdk-java-kms</artifactId>
+                <version>3.2.48</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
+        <dependency>
+            <groupId>com.maxmind.db</groupId>
+            <artifactId>maxmind-db</artifactId>
+            <version>4.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.houbb</groupId>
+            <artifactId>sensitive-word</artifactId>
+            <version>0.29.5</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lionsoul</groupId>
+            <artifactId>ip2region</artifactId>
+            <version>3.3.7</version>
+        </dependency>
         <dependency>
             <groupId>org.b3log</groupId>
             <artifactId>latke-core</artifactId>
@@ -135,15 +234,25 @@
             <version>2.1.0</version>
         </dependency>
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>${servlet.version}</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.21.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+            <version>1.15.0</version>
         </dependency>
 
         <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
             <version>${mysql-connector-java.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mariadb.jdbc</groupId>
+            <artifactId>mariadb-java-client</artifactId>
+            <version>4.0.0</version>
         </dependency>
 
         <dependency>
@@ -171,11 +280,6 @@
             <version>${jsoup.version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-log4j12</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>
@@ -215,11 +319,6 @@
             <version>${commons-cli.version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-webapp</artifactId>
-            <version>${jetty.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.jodd</groupId>
@@ -257,56 +356,56 @@
             <version>0.0.4</version>
         </dependency>
 
-        <dependency>
-            <groupId>commons-fileupload</groupId>
-            <artifactId>commons-fileupload</artifactId>
-            <version>1.3.3</version>
-        </dependency>
-
         <!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.5.11</version>
+            <version>${httpclient.version}</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpmime -->
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpmime</artifactId>
-            <version>4.5.11</version>
+            <version>${httpclient.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.qiniu</groupId>
             <artifactId>qiniu-java-sdk</artifactId>
-            <version>[7.2.0, 7.2.99]</version>
+            <version>7.19.0</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.8.6</version>
+            <version>2.15.0</version>
         </dependency>
 
         <dependency>
             <groupId>com.aliyun.oss</groupId>
             <artifactId>aliyun-sdk-oss</artifactId>
-            <version>3.8.0</version>
+            <version>3.18.5</version>
         </dependency>
 
         <dependency>
             <groupId>com.upyun</groupId>
             <artifactId>java-sdk</artifactId>
-            <version>4.2.0</version>
+            <version>4.2.3</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>junit</groupId>
+                    <artifactId>junit</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.zeroturnaround/zt-zip -->
         <dependency>
             <groupId>org.zeroturnaround</groupId>
             <artifactId>zt-zip</artifactId>
-            <version>1.14</version>
+            <version>1.18.3</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -315,17 +414,16 @@
             </exclusions>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/rome/rome -->
-        <dependency>
-            <groupId>rome</groupId>
-            <artifactId>rome</artifactId>
-            <version>0.9</version>
-        </dependency>
-
         <dependency>
             <groupId>com.qcloud</groupId>
             <artifactId>cos_api</artifactId>
-            <version>5.6.37</version>
+            <version>5.6.283</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 
@@ -352,11 +450,21 @@
 
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+            </plugin>
+            <plugin>
                 <groupId>org.eluder.coveralls</groupId>
                 <artifactId>coveralls-maven-plugin</artifactId>
                 <version>${coveralls-maven-plugin.version}</version>
                 <configuration>
-                    <repoToken>PmmgdTzVuYQAsiOHNZ67bNDuqwDRSKvlm</repoToken>
+                    <repoToken>${env.COVERALLS_REPO_TOKEN}</repoToken>
                 </configuration>
             </plugin>
 
@@ -443,25 +551,34 @@
             </plugin>
 
             <plugin>
-                <groupId>org.eclipse.jetty</groupId>
-                <artifactId>jetty-maven-plugin</artifactId>
-                <version>${jetty.version}</version>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
                 <configuration>
-                    <httpConnector>
-                        <port>8080</port>
-                    </httpConnector>
-                    <stopKey>stop</stopKey>
-                    <stopPort>4501</stopPort>
-                    <webAppConfig>
-                        <contextPath>/</contextPath>
-                    </webAppConfig>
+                    <mainClass>org.b3log.solo.Starter</mainClass>
                 </configuration>
             </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>${maven-war-plugin.version}</version>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <configuration>
+                    <descriptors><descriptor>src/assembly/distribution.xml</descriptor></descriptors>
+                    <finalName>bolo</finalName>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>standalone-netty-distribution</id>
+                        <phase>package</phase>
+                        <goals><goal>single</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
 
         </plugins>
@@ -482,14 +599,14 @@
             <repositories>
                 <repository>
                     <id>aliyun</id>
-                    <url>http://maven.aliyun.com/nexus/content/groups/public</url>
+                    <url>https://maven.aliyun.com/repository/public</url>
                 </repository>
             </repositories>
 
             <pluginRepositories>
                 <pluginRepository>
                     <id>aliyun</id>
-                    <url>http://maven.aliyun.com/nexus/content/groups/public</url>
+                    <url>https://maven.aliyun.com/repository/public</url>
                 </pluginRepository>
             </pluginRepositories>
         </profile>

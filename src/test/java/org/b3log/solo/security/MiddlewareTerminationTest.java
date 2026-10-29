@@ -1,0 +1,117 @@
+package org.b3log.solo.security;
+
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.b3log.latke.Keys;
+import org.b3log.latke.Latkes;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.function.Handler;
+import org.b3log.solo.bolo.waf.WAF;
+import org.b3log.solo.bolo.waf.WAFstorage;
+import org.b3log.solo.processor.InitCheckHandler;
+import org.b3log.solo.processor.console.ConsoleAdminAuthAdvice;
+import org.b3log.solo.processor.console.ConsoleAuthAdvice;
+import org.b3log.solo.util.AdminPaths;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
+
+public class MiddlewareTerminationTest {
+    @Test public void expiredPanelSessionsReturnForbiddenWithoutRunningTheController() throws Exception {
+        try {
+            for (String prefix : new String[]{"", "/private-panel"}) {
+                for (String contextPath : new String[]{"", "/blog"}) {
+                    LatkeTestSupport.configure();
+                    final Properties local = new Properties();
+                    local.setProperty("adminPath", prefix);
+                    Latkes.setLocalProps(local);
+                    Latkes.setContextPath(contextPath);
+                    for (String suffix : new String[]{"", "/"}) {
+                        try (Exchange exchange = new Exchange(contextPath + AdminPaths.panel() + suffix)) {
+                            exchange.run(new ConsoleAuthAdvice());
+                            Assert.assertEquals(exchange.raw.status().code(), 403);
+                            Assert.assertNull(exchange.raw.headers().get("Location"));
+                            Assert.assertEquals(exchange.raw.headers().get("Cache-Control"), "no-store");
+                        }
+                    }
+                }
+            }
+        } finally { LatkeTestSupport.configure(); }
+    }
+
+    @Test public void deniedManagementApisNeverRunTheirNextHandler() throws Exception {
+        LatkeTestSupport.configure();
+        for (Handler guard : new Handler[]{new ConsoleAuthAdvice(), new ConsoleAdminAuthAdvice()}) {
+            try (Exchange exchange = new Exchange("/console/preference/")) {
+                exchange.run(guard);
+                Assert.assertEquals(exchange.raw.status().code(), 401);
+            }
+        }
+    }
+
+    @Test public void exhaustedPageBudgetsStopBeforeDownstreamWork() throws Exception {
+        LatkeTestSupport.configure();
+        final boolean oldPower = WAF.POWER;
+        final SimpleCurrentLimiter oldLimiter = WAFstorage.currentLimiter;
+        try {
+            WAFstorage.currentLimiter = new SimpleCurrentLimiter(180, 1);
+            WAF.POWER = true;
+            Assert.assertTrue(WAF.in("198.51.100.88", "/first.html"));
+            try (Exchange exchange = new Exchange("/blocked.html")) {
+                exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
+                exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { return false; } });
+                Assert.assertEquals(exchange.raw.status().code(), 429);
+                Assert.assertEquals(exchange.raw.headers().get("Cache-Control"), "no-store");
+            }
+        } finally {
+            WAF.POWER = oldPower;
+            WAFstorage.currentLimiter = oldLimiter;
+        }
+    }
+
+    @Test public void ipBansAndUnavailableRulesStopBeforeControllers() throws Exception {
+        LatkeTestSupport.configure();
+        try (Exchange exchange = new Exchange("/article/comments")) {
+            exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
+            exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { return true; } });
+            Assert.assertEquals(exchange.raw.status().code(), 403);
+            Assert.assertNull(exchange.raw.headers().get("Location"));
+        }
+        try (Exchange exchange = new Exchange("/article/comments")) {
+            exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
+            exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { throw new IllegalStateException("Unavailable rule store"); } });
+            Assert.assertEquals(exchange.raw.status().code(), 503);
+        }
+    }
+
+    private static final class Exchange implements AutoCloseable {
+        private final DefaultFullHttpRequest http;
+        private final DefaultFullHttpResponse raw = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        private final RequestContext context;
+
+        Exchange(final String path) {
+            http = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
+            final Request request = new Request(null, http) {
+                @Override public String getRemoteAddr() { return "198.51.100.88"; }
+            };
+            context = new RequestContext(request, new Response(null, raw));
+        }
+
+        void run(final Handler guard) {
+            final AtomicInteger downstreamCalls = new AtomicInteger();
+            context.addHandler(guard);
+            context.addHandler(ignored -> downstreamCalls.incrementAndGet());
+            context.handle();
+            Assert.assertEquals(downstreamCalls.get(), 0, "A terminal response must stop the real Latke handler chain");
+        }
+
+        @Override public void close() { http.release(); raw.release(); }
+    }
+}

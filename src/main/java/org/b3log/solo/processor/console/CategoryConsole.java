@@ -19,21 +19,21 @@ package org.b3log.solo.processor.console;
 
 import java.util.List;
 
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.latke.http.Request;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Common;
@@ -53,7 +53,7 @@ import org.json.JSONObject;
  * @author <a href="https://ld246.com/member/lzh984294471">lzh984294471</a>
  * @since 2.0.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAdminAuthAdvice.class)
 public class CategoryConsole {
 
@@ -123,13 +123,13 @@ public class CategoryConsole {
 
             categoryMgmtService.changeOrder(categoryId, direction);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -164,7 +164,7 @@ public class CategoryConsole {
             final String categoryId = context.pathVar("id");
             final JSONObject result = categoryQueryService.getCategory(categoryId);
             if (null == result) {
-                renderer.setJSONObject(new JSONObject().put(Keys.STATUS_CODE, false));
+                renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false));
 
                 return;
             }
@@ -183,11 +183,11 @@ public class CategoryConsole {
             }
 
             renderer.setJSONObject(result);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -218,12 +218,12 @@ public class CategoryConsole {
             final String categoryId = context.pathVar("id");
             categoryMgmtService.removeCategory(categoryId);
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }
@@ -271,7 +271,7 @@ public class CategoryConsole {
             final JSONObject targetCategory = categoryQueryService.getCategory(categoryId);
             JSONObject mayExist = categoryQueryService.getByTitle(title);
             if (null != mayExist && !mayExist.optString(Keys.OBJECT_ID).equals(categoryId)) {
-                final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 renderer.setJSONObject(jsonObject);
                 jsonObject.put(Keys.MSG, langPropsService.get("duplicatedCategoryLabel"));
 
@@ -290,13 +290,13 @@ public class CategoryConsole {
                 uri = URLs.encode(uri);
                 mayExist = categoryQueryService.getByURI(uri);
                 if (null != mayExist && !mayExist.optString(Keys.OBJECT_ID).equals(categoryId)) {
-                    final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                    final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                     renderer.setJSONObject(jsonObject);
                     jsonObject.put(Keys.MSG, langPropsService.get("duplicatedCategoryURILabel"));
                     return;
                 }
                 if (255 <= StringUtils.length(uri)) {
-                    final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                    final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                     renderer.setJSONObject(jsonObject);
                     jsonObject.put(Keys.MSG, langPropsService.get("categoryURITooLongLabel"));
                     return;
@@ -311,11 +311,11 @@ public class CategoryConsole {
             categoryMgmtService.updateCategory(categoryId, category);
             ret.put(Keys.OBJECT_ID, categoryId);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -361,7 +361,7 @@ public class CategoryConsole {
             final String title = requestJSONObject.optString(Category.CATEGORY_TITLE, "Category");
             JSONObject mayExist = categoryQueryService.getByTitle(title);
             if (null != mayExist) {
-                final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 renderer.setJSONObject(jsonObject);
                 jsonObject.put(Keys.MSG, langPropsService.get("duplicatedCategoryLabel"));
 
@@ -375,14 +375,14 @@ public class CategoryConsole {
             uri = URLs.encode(uri);
             mayExist = categoryQueryService.getByURI(uri);
             if (null != mayExist) {
-                final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 renderer.setJSONObject(jsonObject);
                 jsonObject.put(Keys.MSG, langPropsService.get("duplicatedCategoryURILabel"));
 
                 return;
             }
             if (255 <= StringUtils.length(uri)) {
-                final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+                final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 renderer.setJSONObject(jsonObject);
                 jsonObject.put(Keys.MSG, langPropsService.get("categoryURITooLongLabel"));
 
@@ -400,11 +400,11 @@ public class CategoryConsole {
 
             ret.put(Keys.OBJECT_ID, categoryId);
             ret.put(Keys.MSG, langPropsService.get("addSuccLabel"));
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -444,25 +444,25 @@ public class CategoryConsole {
         context.setRenderer(renderer);
 
         try {
-            final HttpServletRequest request = context.getRequest();
+            final Request request = context.getRequest();
             final String requestURI = context.requestURI();
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/categories/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
             final JSONObject result = categoryQueryService.getCategoris(requestJSONObject);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
 
             final JSONArray categories = result.optJSONArray(Category.CATEGORIES);
             for (int i = 0; i < categories.length(); i++) {
                 final JSONObject category = categories.optJSONObject(i);
                 String title = category.optString(Category.CATEGORY_TITLE);
-                title = StringEscapeUtils.escapeXml(title);
+                title = StringEscapeUtils.escapeXml11(title);
                 category.put(Category.CATEGORY_TITLE, title);
             }
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }

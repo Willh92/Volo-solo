@@ -17,26 +17,35 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<style>
-    #broadcast {
-        display: block;
-        height: 550px;
-        width: 100%;
-    }
-</style>
 <div id="notice">
+    <aside class="console-onboarding" hidden role="status"><div><strong>欢迎使用 <span class="console-onboarding-version">Volo</span></strong><p>开始写作，或在站点设置中调整博客外观。</p></div><button type="button">不再提醒</button></aside>
+    <script>
+        $(function () {
+            var notice = document.querySelector('.console-onboarding');
+            if (!notice || $.cookie('neverShowVer') === boloVersion) return;
+            notice.querySelector('.console-onboarding-version').textContent = 'Volo ' + boloVersion;
+            notice.hidden = false;
+            notice.querySelector('button').addEventListener('click', function () {
+                $.cookie('neverShowVer', boloVersion, {expires: 222, path: '/'});
+                notice.hidden = true;
+            });
+        });
+    </script>
+    <section class="console-welcome"><small>YOUR WRITING SPACE</small><h2>让每一次表达，都有归处。</h2><p>整理想法，记录生活，继续你的创作。</p><div class="console-shortcuts"><a href="#article/article" onclick="admin.article.prePost()">＋ 写一篇文章</a><a href="#article/article-list">管理文章</a><a href="#tools/preference">站点设置</a></div></section>
     <div class="module-panel">
         <div class="module-header">
             <h2>数据</h2>
         </div>
-        <div class="module-body padding12">
+        <div class="module-body padding12 console-chart-grid">
             <div style="width: 32%; display: inline-table;">
                 <canvas id="articleCountChart"></canvas>
                 <script type="text/javascript">
                     Chart.defaults.global.animation.duration = 2000;
 
-                    let options = {
+                    var options = {
                         responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {yAxes: [{ticks: {beginAtZero: true, precision: 0, maxTicksLimit: 6}}]},
                         title: {
                             display: true,
                             text: '每月文章数量统计'
@@ -50,7 +59,7 @@
                             intersect: true
                         }
                     };
-                    let ctx = document.getElementById("articleCountChart").getContext("2d");
+                    var ctx = document.getElementById("articleCountChart").getContext("2d");
                     var categoryCountChart = new Chart(ctx, {
                         type: 'line',
                         data: data1,
@@ -62,8 +71,7 @@
             <div style="width: 32%; display: inline-table;">
                 <canvas id="categoryCountChart"></canvas>
                 <script type="text/javascript">
-                    function getRandomColor() { var letters = '0123456789ABCDEF'.split(''); var color = '#'; for (var i = 0; i < 6; i++ ) { color += letters[Math.floor(Math.random() * 16)]; } return color; }
-                    let data3 = {
+                    var data3 = {
                         datasets: [
                             {
                                 label: [
@@ -76,26 +84,22 @@
                                     </#if>
                                     </#list>
                                 ],
-                                backgroundColor: [
-                                    <#list categories as category>
-                                    <#if category.categoryPublishedArticleCount != 0>
-                                    Chart.helpers.color(getRandomColor()).alpha(0.5).rgbString(),
-                                    </#if>
-                                    </#list>
-                                ],
+                                backgroundColor: '#638e7c',
                             }
                         ],
 
                         labels: [
                             <#list categories as category>
                                 <#if category.categoryPublishedArticleCount != 0>
-                                    "${category.categoryTitle}",
+                                    "${category.categoryTitle?js_string}",
                                 </#if>
                             </#list>
                         ]
                     };
-                    let options = {
+                    var options = {
                         responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {yAxes: [{ticks: {beginAtZero: true, precision: 0, maxTicksLimit: 6}}]},
                         title: {
                             display: true,
                             text: '分类使用率'
@@ -104,26 +108,33 @@
                             display: false
                         }
                     };
-                    let ctx = document.getElementById("categoryCountChart").getContext("2d");
-                    var tagsTop5Chart = new Chart(ctx, {
+                    var ctx = document.getElementById("categoryCountChart").getContext("2d");
+                    if (data3.labels.length) new Chart(ctx, {
                         type: 'bar',
                         data: data3,
                         options: options
                     });
+                    else {
+                        var empty = document.createElement('p');
+                        empty.className = 'console-chart-empty';
+                        empty.innerHTML = '分类使用率<span>暂无分类数据</span>';
+                        ctx.canvas.replaceWith(empty);
+                    }
                 </script>
             </div>
 
             <div style="width: 32%; display: inline-table;">
                 <canvas id="tagsTop5Chart"></canvas>
                 <script type="text/javascript">
-                    let options = {
+                    var options = {
                         responsive: true,
+                        maintainAspectRatio: false,
                         title: {
                             display: true,
                             text: '标签 Top5'
                         }
                     };
-                    let ctx = document.getElementById("tagsTop5Chart").getContext("2d");
+                    var ctx = document.getElementById("tagsTop5Chart").getContext("2d");
                     var tagsTop5Chart = new Chart(ctx, {
                         type: 'doughnut',
                         data: data2,
@@ -139,9 +150,7 @@
         </div>
         <div class="module-body padding12">
             <div id="noticeList" style="background: none;">
-                <script>
-                    $("#noticeList").load("https://ftp.stackoverflow.wiki/bolo/boardcast.html");
-                </script>
+                <a href="https://github.com/Willh92/Volo-solo/releases" target="_blank" rel="noopener noreferrer">查看 Volo 更新</a>
             </div>
         </div>
     </div>
@@ -154,46 +163,4 @@
         </div>
     </div>
 </div>
-<style>
-    .tripscon {
-        padding: 10px 10px 10px 10px;
-    }
-</style>
-<script type="text/javascript">
-    var key = 'neverShowVer';
-
-    $(function () {
-        var isShowTips = true;
-        if ($.cookie(key)) {
-            if ($.cookie(key) === boloVersion) {
-                isShowTips = false;
-            }
-        }
-        if (isShowTips) {
-            showTips();
-        }
-    });
-
-    function neverShowTips() {
-        $.removeCookie(key);
-        $.cookie(key, boloVersion, { expires: 222, path: '/' });
-        $('.trips').remove();
-    }
-
-    function showTips() {
-        var config = {
-            content: "欢迎使用菠萝博客 " + boloVersion + "！<br>" +
-                "<a href='javascript:neverShowTips()'>不再提醒</a>",
-            type: "html",
-            alignTo: ["right","top"],
-            trigger: "show",
-            isclose: false,
-            color: ["#B2E281","#B2E281"]
-        };
-        $("#tabToolsTitle").showTips(config);
-    }
-</script>
-<div id="mainPanel1">
-</div>
-<div id="mainPanel2"></div>
-${plugins}
+<script>window.dispatchEvent(new Event('bolo:console-charts-ready'));</script>

@@ -25,14 +25,13 @@
     <div class="fn__none"></div>
     <br/>
 
-    Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
+    Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
     <div class="fn__none"></div>
     &nbsp; &heartsuit;  &nbsp;
-    Theme ${skinDirName}
+    Theme ${skinDirName?remove_beginning('bolo-')}
     <sup>[<a href="https://github.com/ZEROKISEKI/hexo-theme-gal" target="_blank">ref</a>]</sup>
     by <a href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
 </footer>
-<div class="icon-up" onclick="Util.goTop()"></div>
 
 <script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}" charset="utf-8"></script>

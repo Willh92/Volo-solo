@@ -27,7 +27,7 @@
                     id="searchForm"
                     method="GET"
                     action="${servePath}/search"
-                    target="_blank">
+                    target="_self">
                     <input
                         id="searchKeyword"
                         type="text"

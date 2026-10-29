@@ -17,23 +17,20 @@
  */
 package org.b3log.solo.util;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
-import org.b3log.solo.bolo.pic.util.UploadUtil;
-import org.b3log.solo.bolo.prop.Options;
-import org.b3log.solo.model.Option;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -70,14 +67,14 @@ public final class Images {
      * @return processed content
      */
     public static String qiniuImgProcessing(final String html) {
-        String ret = html;
-        final String[] imgSrcs = StringUtils.substringsBetween(html, "<img src=\"", "\"");
+        String ret = GitHubStats.rewriteImages(html);
+        final String[] imgSrcs = StringUtils.substringsBetween(ret, "<img src=\"", "\"");
         if (null == imgSrcs) {
             return ret;
         }
 
         for (final String imgSrc : imgSrcs) {
-            if (StringUtils.contains(imgSrc, ".gif") || StringUtils.containsIgnoreCase(imgSrc, "imageView")) {
+            if (!canProcessImage(imgSrc)) {
                 continue;
             }
 
@@ -96,69 +93,87 @@ public final class Images {
      * @return image URL
      */
     public static String imageSize(final String imageURL, final int width, final int height) {
-        if (StringUtils.containsIgnoreCase(imageURL, "imageView")) {
+        if (!canProcessImage(imageURL)) {
             return imageURL;
         }
 
         return imageURL + "?imageView2/1/w/" + width + "/h/" + height + "/interlace/1/q/100";
     }
 
-    public static File compressImage(File inputFile, float quality) throws IOException {
-        BufferedImage image = ImageIO.read(inputFile);
-        File compressedFile = new File(inputFile.getParent(), "compressed_" + inputFile.getName());
-
-        ImageWriter jpgWriter = ImageIO.getImageWritersByFormatName("jpg").next();
-        ImageOutputStream ios = ImageIO.createImageOutputStream(compressedFile);
-        jpgWriter.setOutput(ios);
-
-        ImageWriteParam param = jpgWriter.getDefaultWriteParam();
-        if (param.canWriteCompressed()) {
-            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-            param.setCompressionQuality(quality);
+    private static boolean canProcessImage(final String url) {
+        if (url == null || url.contains("?") || url.contains("#")) return false;
+        try {
+            final String path = java.net.URI.create(url).getPath();
+            return path != null && path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(?:png|jpe?g|webp|bmp)$");
+        } catch (IllegalArgumentException e) {
+            return false;
         }
-        jpgWriter.write(null, new javax.imageio.IIOImage(image, null, null), param);
-        ios.close();
-        jpgWriter.dispose();
+    }
 
-        LOGGER.log(Level.INFO, "Temp Image " + inputFile.getName() + " Delete [" + inputFile.delete() + "]");
-        return compressedFile;
+    public static File compressImage(File inputFile, float quality) throws IOException {
+        if (!Float.isFinite(quality) || quality < 0) {
+            throw new IOException("Image compression quality must be a finite, non-negative number");
+        }
+        // Quality 1 (and the legacy value 10) keeps the original file unchanged.
+        if (quality >= 1) return inputFile;
+
+        final BufferedImage image;
+        try (ImageInputStream input = ImageIO.createImageInputStream(inputFile)) {
+            if (input == null) throw new IOException("Cannot open uploaded image");
+            final java.util.Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("Unsupported image format");
+            final ImageReader reader = readers.next();
+            try {
+                // JPEG compression must not discard PNG transparency or GIF animation.
+                if (!"JPEG".equalsIgnoreCase(reader.getFormatName())) return inputFile;
+                reader.setInput(input);
+                image = reader.read(0);
+            } finally {
+                reader.dispose();
+            }
+        }
+
+        final File compressedFile = File.createTempFile("compressed-", ".jpg", inputFile.getAbsoluteFile().getParentFile());
+        final ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+        boolean completed = false;
+        try {
+            try (ImageOutputStream output = ImageIO.createImageOutputStream(compressedFile)) {
+                if (output == null) throw new IOException("Cannot create compressed image");
+                writer.setOutput(output);
+                final ImageWriteParam param = writer.getDefaultWriteParam();
+                param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                param.setCompressionQuality(quality);
+                writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+            }
+            completed = compressedFile.length() < inputFile.length();
+            return completed ? compressedFile : inputFile;
+        } finally {
+            writer.dispose();
+            if (!completed) java.nio.file.Files.deleteIfExists(compressedFile.toPath());
+        }
     }
 
 
     /**
      * Gets an image URL randomly. Sees https://github.com/b3log/bing for more details.
+     * Generating a cover must not download or re-upload it during page rendering.
      *
      * @return an image URL
      */
     public static String randImage() {
-        // 修改
         try {
             final long min = DateUtils.parseDate("20171104", new String[]{"yyyyMMdd"}).getTime();
-            final long max = System.currentTimeMillis();
+            // The archive includes 2023-12-20; the random upper bound is exclusive.
+            final long max = DateUtils.parseDate("20231221", new String[]{"yyyyMMdd"}).getTime();
             final long delta = max - min;
             final long time = ThreadLocalRandom.current().nextLong(0, delta) + min;
 
-            String imageName = DateFormatUtils.format(time, "yyyyMMdd") + ".jpg";
-            String B3logImageURL = COMMUNITY_FILE_URL + "/bing/" + imageName;
-            String config = Options.get(Option.ID_C_TUCHUANG_CONFIG);
-            String value = Options.get(Option.ID_C_THUMB_COMPRESS);
-
-            if (!config.equals("hacpai") && !config.isEmpty()) {
-                File file = new File("temp/tmp_" + imageName);
-                // FileNotFoundException
-                FileUtils.copyURLToFile(new URL(B3logImageURL), file);
-                return UploadUtil.upload(config, compressImage(file, Float.parseFloat(value)));
-            }
-            return B3logImageURL;
-
-        } catch (final FileNotFoundException e) {
-            LOGGER.log(Level.ERROR, "Remote image resource lost", e);
-            return COMMUNITY_FILE_URL + "/bing/20171104.jpg";
+            return COMMUNITY_FILE_URL + "/bing/" + DateFormatUtils.format(time, "yyyyMMdd") + ".jpg";
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Generates random image URL failed", e);
+
             return COMMUNITY_FILE_URL + "/bing/20171104.jpg";
         }
-
     }
 
     /**

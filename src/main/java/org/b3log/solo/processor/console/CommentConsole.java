@@ -20,13 +20,13 @@ package org.b3log.solo.processor.console;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.model.Comment;
 import org.b3log.solo.service.CommentMgmtService;
 import org.b3log.solo.service.CommentQueryService;
@@ -42,7 +42,7 @@ import java.util.List;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.4.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAuthAdvice.class)
 public class CommentConsole {
 
@@ -84,6 +84,7 @@ public class CommentConsole {
      * @param context the specified request context
      */
     public void removeArticleComment(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();
@@ -93,20 +94,23 @@ public class CommentConsole {
             final String commentId = context.pathVar("id");
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             if (!commentQueryService.canAccessComment(commentId, currentUser)) {
-                ret.put(Keys.STATUS_CODE, false);
+                ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
 
                 return;
             }
 
-            commentMgmtService.removeArticleComment(commentId);
+            if ("thread".equals(context.param("scope"))) {
+                if (!Solos.isAdminLoggedIn(context)) { org.b3log.solo.util.AdminRequests.reject(context, 403, "仅管理员可以删除整个讨论。"); return; }
+                commentMgmtService.removeArticleCommentThread(commentId);
+            } else commentMgmtService.removeArticleComment(commentId);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            ret.put(Keys.STATUS_CODE, false);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             ret.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }
@@ -152,15 +156,29 @@ public class CommentConsole {
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/comments/").length());
 
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
-            final JSONObject result = commentQueryService.getComments(requestJSONObject);
+            final JSONObject result = commentQueryService.getComments(requestJSONObject, Solos.isAdminLoggedIn(context));
+            if (Solos.isAdminLoggedIn(context)) {
+                final java.util.Map<String, String> emails = new java.util.HashMap<>();
+                for (final var binding : org.b3log.solo.bolo.prop.MailService.getUserMailContext()) {
+                    emails.put(binding.getCommentId(), binding.getCommentEmail());
+                }
+                final var comments = result.optJSONArray(Comment.COMMENTS);
+                if (comments != null) for (int i = 0; i < comments.length(); i++) {
+                    final JSONObject comment = comments.getJSONObject(i);
+                    final String currentEmail = comment.optString("commentNotifyEmail");
+                    final String email = currentEmail.isBlank() ? emails.getOrDefault(comment.optString(Keys.OBJECT_ID), "") : currentEmail;
+                    comment.remove("commentNotifyEmail");
+                    if (!email.isBlank()) comment.put("commentEmail", email);
+                }
+            }
 
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             renderer.setJSONObject(result);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -200,11 +218,11 @@ public class CommentConsole {
             final List<JSONObject> comments = commentQueryService.getComments(articleId);
 
             ret.put(Comment.COMMENTS, comments);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }

@@ -20,7 +20,7 @@
 <#include "../../common-template/macro-user_site.ftl">
 <aside>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-        <#include "../../common-template/toc.ftl"/>
+        <#include "../../common-template/disclosure-toc.ftl"/>
     <#else>
     <section>
         <#if noticeBoard??>
@@ -92,7 +92,7 @@
                             <a rel="nofollow" aria-label="${article.articleCommentCount} ${commentLabel}"
                                class="vditor-tooltipped vditor-tooltipped__e"
                                href="${servePath}${article.articlePermalink}">
-                                ${article.articleTitle}
+                                <span class="skin-list-title">${(article.articleTitle)?html}</span>
                             </a>
                         </li>
                     </#list>
@@ -112,7 +112,7 @@
                             <a rel="nofollow" aria-label="${article.articleCommentCount} ${commentLabel}"
                                class="vditor-tooltipped vditor-tooltipped__e"
                                href="${servePath}${article.articlePermalink}">
-                                ${article.articleTitle}
+                                <span class="skin-list-title">${(article.articleTitle)?html}</span>
                             </a>
                         </li>
                     </#list>

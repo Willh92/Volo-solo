@@ -17,12 +17,5 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<#include "../common-template/macro-common_page.ftl">
-
-<@commonPage "500 服务端内部错误">
-<h2>500 服务端内部错误!</h2>
-<img class="img-error" src="${staticServePath}/images/500.png" title="500" alt="500 Internal Server Error!"/>
-<div class="a-error">
-    <a href="${loginURL}">管理登录</a> | <a href="${servePath}">返回主页</a>
-</div>
-</@commonPage>
+<#include "../common-template/macro-utility_page.ftl"/>
+<@errorPage code="500" title="暂时出了点问题" description="服务器没能完成这次请求。" hint="你的操作可能还没有完成，请稍后重试。" retry=true/>

@@ -61,7 +61,7 @@ public class CategoryRepository extends AbstractRepository {
                 .setFilter(new PropertyFilter(Category.CATEGORY_TITLE, FilterOperator.EQUAL, categoryTitle))
                 .setPageCount(1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -81,7 +81,7 @@ public class CategoryRepository extends AbstractRepository {
                 .setFilter(new PropertyFilter(Category.CATEGORY_URI, FilterOperator.EQUAL, categoryURI))
                 .setPageCount(1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -98,7 +98,7 @@ public class CategoryRepository extends AbstractRepository {
     public int getMaxOrder() throws RepositoryException {
         final Query query = new Query().addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return -1;
         }
@@ -124,7 +124,7 @@ public class CategoryRepository extends AbstractRepository {
                         category.optInt(Category.CATEGORY_ORDER)))
                 .addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING).setPage(1, 1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
@@ -150,7 +150,7 @@ public class CategoryRepository extends AbstractRepository {
                         category.optInt(Category.CATEGORY_ORDER)))
                 .addSort(Category.CATEGORY_ORDER, SortDirection.ASCENDING).setPage(1, 1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
@@ -169,7 +169,7 @@ public class CategoryRepository extends AbstractRepository {
         final Query query = new Query()
                 .setFilter(new PropertyFilter(Category.CATEGORY_ORDER, FilterOperator.EQUAL, order));
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -196,8 +196,7 @@ public class CategoryRepository extends AbstractRepository {
 
         for (final JSONObject category : ret) {
             final String categoryId = category.optString(Keys.OBJECT_ID);
-            final JSONArray categoryTags = categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE)
-                    .optJSONArray(Keys.RESULTS);
+            final JSONArray categoryTags = org.b3log.solo.util.QueryResults.array(categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE));
             /* final StringBuilder queryCount = new StringBuilder("SELECT count(DISTINCT(b3_solo_article.oId)) as C FROM ");
             final StringBuilder queryStr = new StringBuilder(articleRepository.getName() + " AS b3_solo_article,").
                     append(tagArticleRepository.getName() + " AS b3_solo_tag_article").

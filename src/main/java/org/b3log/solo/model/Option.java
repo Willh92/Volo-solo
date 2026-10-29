@@ -386,6 +386,8 @@ public final class Option {
      * Key of spam words.
      */
     public static final String ID_C_SPAM = "spam";
+    public static final String ID_C_COMMENT_FILTER_BUILTIN = "commentFilterBuiltin";
+    public static final String ID_C_COMMENT_FILTER_ALLOW = "commentFilterAllow";
 
     /**
      * Key of interactive switch.
@@ -475,7 +477,7 @@ public final class Option {
         /**
          * Default favicon URL.
          */
-        public static final String DEFAULT_FAVICON_URL = "https://pic.stackoverflow.wiki/uploadImages/114/246/231/87/2020/06/06/16/41/3e4a3ce8-8882-4258-9860-a337bf859605.png";
+        public static final String DEFAULT_FAVICON_URL = "/images/volo-mark.svg";
 
         /**
          * Default custom vars.
@@ -520,12 +522,12 @@ public final class Option {
         /**
          * Default skin directory name.
          */
-        public static final String DEFAULT_SKIN_DIR_NAME = "bolo-nexmoe";
+        public static final String DEFAULT_SKIN_DIR_NAME = "volo-studio";
 
         /**
          * Default mobile skin directory name.
          */
-        public static final String DEFAULT_MOBILE_SKIN_DIR_NAME = "bolo-nexmoe";
+        public static final String DEFAULT_MOBILE_SKIN_DIR_NAME = "volo-studio";
 
         /**
          * Default language.

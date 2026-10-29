@@ -43,8 +43,8 @@ ${addFollowLabel}
     <label>${linkDescription1Label}</label>
     <input id="followDescriptionUpdate" type="text"/>
     <label>${linkIcon1Label}</label>
-    <input id="followIconUpdate" type="text"/><br><br>
-    <button onclick="admin.followList.update();" class="fn__right">${updateLabel}</button>
+    <input id="followIconUpdate" type="text"/>
+        <div class="console-form-actions"><button onclick="admin.followList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

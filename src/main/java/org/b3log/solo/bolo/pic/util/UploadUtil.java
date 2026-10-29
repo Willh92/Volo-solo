@@ -37,7 +37,7 @@ import com.qiniu.storage.model.DefaultPutRet;
 import com.qiniu.util.Auth;
 import com.upyun.RestManager;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.RandomStringUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -52,8 +52,8 @@ import org.apache.http.ssl.SSLContextBuilder;
 import org.apache.http.ssl.TrustStrategy;
 import org.apache.http.util.EntityUtils;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.bolo.tool.PassSSL;
 import org.json.JSONObject;
 
@@ -107,7 +107,7 @@ public class UploadUtil {
                 // 传入文件
                 File localNewFile = new File(localImagePath + "/" + localFilename);
                 FileUtils.copyFile(file, localNewFile);
-                result = Latkes.getServePath() + "/image/" + localFilename;
+                result = Latkes.getContextPath() + "/image/" + localFilename;
                 LOGGER.log(Level.INFO, "An image has been uploaded to local [path=" + localNewFile.getAbsolutePath() + "]");
                 break;
             case "picuang":

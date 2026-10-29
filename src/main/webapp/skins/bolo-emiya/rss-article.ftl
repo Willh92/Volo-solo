@@ -49,7 +49,7 @@
                 class="item J_share J_share_wechat"
                 href="javascript:;"
                 data-type="wechat"
-                data-title="${article.articleTitle}"
+                data-title="${(article.articleTitle)?html}"
                 data-blogtitle="${blogTitle}"
                 data-url="${servePath}${article.articlePermalink}"
                 data-avatar="${article.authorThumbnailURL}"></a>
@@ -59,7 +59,7 @@
               <@article_comments commentList=articleComments article=article></@article_comments>
             </div>
             </#if>
-            <div class="recommendation__container">
+            <div class="recommendation__container" data-article-recommendations>
               <div class="item" id="randomArticles">
               </div>
               <div class="item" id="relevantArticles">

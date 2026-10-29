@@ -1,0 +1,201 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          bolo
+# Required-Start:    $network $remote_fs $syslog
+# Required-Stop:     $network $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Volo 3.0.0
+# Description:       Volo with Java 17 and Netty
+### END INIT INFO
+
+JAVA_HOME="/usr/lib/jvm/temurin-17-jdk-amd64"
+RUNNING_USER=www
+# Shared socket group; use the Nginx worker group (for example, nogroup).
+# This does not change RUNNING_USER's primary group or project ownership.
+SOCKET_GROUP=www
+APP_HOME="/usr/local/web/bolo"
+APP_MAINCLASS=org.b3log.solo.Starter
+CLASSPATH="$APP_HOME/WEB-INF/classes:$APP_HOME/WEB-INF/lib/*:$APP_HOME"
+JAVA_OPTS=""
+# Set LISTEN_SOCKET="" for the original TCP/8080 mode.
+# Optional ,MODE suffix; absent/empty mode defaults to 0660.
+LISTEN_SOCKET="/dev/shm/volo/volo.sock"
+APP_ARGS="--listen_port 8080"
+if [ -n "$LISTEN_SOCKET" ]; then APP_ARGS="--listen_socket '$LISTEN_SOCKET'"; fi
+LOG_FILE="$APP_HOME/logs/console.log"
+LOCK_DIR=/run/bolo-init
+STOP_TIMEOUT=30
+START_TIMEOUT=45
+psid=0
+
+run_as_user() {
+    # Both use util-linux's -g/-G options; runuser avoids authentication as root.
+    if command -v runuser >/dev/null 2>&1; then runuser "$@"; else su "$@"; fi
+}
+
+lock_operation() {
+    [ "$(id -u)" = 0 ] || { echo "Run this service operation as root." >&2; return 1; }
+    command -v flock >/dev/null 2>&1 || { echo "The util-linux flock command is required." >&2; return 1; }
+    if [ ! -e "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ]; then
+        (umask 077; mkdir "$LOCK_DIR") || return 1
+    fi
+    [ ! -L "$LOCK_DIR" ] && [ -d "$LOCK_DIR" ] &&
+        [ "$(stat -c %u "$LOCK_DIR")" = 0 ] && [ "$(stat -c %a "$LOCK_DIR")" = 700 ] || {
+        echo "Refusing an unsafe lock directory: $LOCK_DIR" >&2; return 1;
+    }
+    exec 9>"$LOCK_DIR/lock" || return 1
+    flock -n 9 || { echo "Another Volo start/stop operation is in progress." >&2; return 1; }
+}
+
+parse_socket_setting() {
+    socket_path=${LISTEN_SOCKET%%,*}
+    socket_mode=660
+    [ -n "$LISTEN_SOCKET" ] || return 0
+    case "$LISTEN_SOCKET" in *,*)
+        socket_mode=$(printf '%s' "${LISTEN_SOCKET#*,}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -n "$socket_mode" ] || socket_mode=660 ;; esac
+    case "$socket_mode" in 0[0-7][0-7][0-7]) socket_mode=${socket_mode#0} ;; esac
+    case "$socket_mode" in [0-7][0-7][0-7]) ;; *)
+        echo "Socket mode must be 3 octal digits, optionally prefixed with 0: $socket_mode" >&2; return 1 ;; esac
+    socket_path=$(printf '%s' "$socket_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [ -n "$socket_path" ] || { echo "A socket path is required before ,MODE." >&2; return 1; }
+    socket_mode=$(printf '%o' "$((0$socket_mode))") || return 1
+}
+
+prepare_socket_directory() {
+    [ -n "$LISTEN_SOCKET" ] || return 0
+    socket_dir=$(dirname -- "$socket_path") || return 1
+    case "$socket_dir" in /run/volo|/dev/shm/volo) ;; *)
+        echo "Use a dedicated /run/volo or /dev/shm/volo runtime directory." >&2; return 1 ;; esac
+    socket_uid=$(id -u "$RUNNING_USER") || return 1
+    group_entry=$(getent group "$SOCKET_GROUP") || {
+        echo "Socket group does not exist: $SOCKET_GROUP" >&2; return 1;
+    }
+    socket_gid=$(printf '%s\n' "$group_entry" | cut -d: -f3)
+    case "$socket_gid" in ''|*[!0-9]*) echo "Invalid socket group: $SOCKET_GROUP" >&2; return 1 ;; esac
+    if [ ! -e "$socket_dir" ] && [ ! -L "$socket_dir" ]; then
+        install -d -o "$RUNNING_USER" -g "$SOCKET_GROUP" -m 750 "$socket_dir" || return 1
+    fi
+    [ ! -L "$socket_dir" ] && [ -d "$socket_dir" ] &&
+        [ "$(stat -c %u "$socket_dir")" = "$socket_uid" ] || {
+        echo "Socket directory must be a real directory owned by $RUNNING_USER: $socket_dir" >&2
+        return 1
+    }
+    case "$(stat -c %a "$socket_dir")" in 700|750) ;; *)
+        echo "Socket directory must have private mode 0700 or 0750: $socket_dir" >&2
+        stat -c 'Actual: %A %a %U:%G %n' "$socket_dir" >&2
+        return 1 ;; esac
+    # Only this private runtime directory is adjusted, after checkpid confirms the app is stopped.
+    # Project ownership and existing socket/lock inodes are never changed here.
+    if [ "$(stat -c %g "$socket_dir")" != "$socket_gid" ]; then
+        chgrp "$SOCKET_GROUP" "$socket_dir" || return 1
+    fi
+    chmod 750 "$socket_dir" || return 1
+    # The JVM acquires its own file lock, binds, chmods and cleans up its socket.
+    # Never unlink a socket here: another process may still be listening on it.
+}
+
+checkpid() {
+    psid=0
+    processes=$("$JAVA_HOME/bin/jps" -lv) || return 1
+    pids=$(printf '%s\n' "$processes" | awk -v main="$APP_MAINCLASS" -v base="-Dbase.dir=$APP_HOME" '
+        $2 == main {
+            for (i = 3; i <= NF; i++) {
+                if ($i == base || $i == base "/") { print $1; break }
+            }
+        }')
+    count=0
+    for pid in $pids; do
+        case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+        psid=$pid
+        count=$((count + 1))
+    done
+    if [ "$count" -gt 1 ]; then
+        echo "Multiple matching Volo processes; refusing to choose a PID." >&2
+        return 1
+    fi
+}
+
+start() {
+    [ -x "$JAVA_HOME/bin/java" ] && [ -x "$JAVA_HOME/bin/jps" ] || {
+        echo "Check JAVA_HOME: $JAVA_HOME" >&2; return 1;
+    }
+    [ -f "$APP_HOME/WEB-INF/classes/org/b3log/solo/Starter.class" ] || {
+        echo "Volo classes not found under $APP_HOME" >&2; return 1;
+    }
+    checkpid || return 1
+    if [ "$psid" -ne 0 ]; then echo "Volo already running (pid=$psid)."; return 0; fi
+    id "$RUNNING_USER" >/dev/null 2>&1 || return 1
+    parse_socket_setting || return 1
+    prepare_socket_directory || return 1
+    JAVA_CMD="cd '$APP_HOME' || exit 1
+mkdir -p logs || exit 1
+nohup '$JAVA_HOME/bin/java' $JAVA_OPTS -Dfile.encoding=UTF-8 '-Dbase.dir=$APP_HOME' -classpath '$CLASSPATH' '$APP_MAINCLASS' $APP_ARGS >>'$LOG_FILE' 2>&1 </dev/null &"
+    # Keep the account's primary/existing groups; add only the socket group to this process.
+    # Non-login shell avoids /etc/profile; the child closes root's operation lock.
+    set -- -s /bin/sh
+    if [ -n "$LISTEN_SOCKET" ]; then
+        primary_group=$(id -gn "$RUNNING_USER") || return 1
+        user_groups=$(id -Gn "$RUNNING_USER") || return 1
+        set -- "$@" -g "$primary_group" -G "$SOCKET_GROUP"
+        for group in $user_groups; do
+            [ "$group" = "$SOCKET_GROUP" ] || set -- "$@" -G "$group"
+        done
+    fi
+    run_as_user "$@" -c "$JAVA_CMD" "$RUNNING_USER" 9>&- || return 1
+    sleep 3
+    waited=3
+    while [ "$waited" -lt "$START_TIMEOUT" ]; do
+        checkpid || return 1
+        if [ "$psid" -eq 0 ]; then echo "Volo exited during startup. See $LOG_FILE" >&2; return 1; fi
+        if [ -z "$LISTEN_SOCKET" ] || { [ -S "$socket_path" ] && [ "$(stat -c %a "$socket_path")" = "$socket_mode" ]; }; then
+            echo "Volo started (pid=$psid). Logs: $LOG_FILE"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo "Volo has not bound its socket within $START_TIMEOUT seconds. See $LOG_FILE" >&2
+    return 1
+}
+
+stop() {
+    checkpid || return 1
+    if [ "$psid" -eq 0 ]; then echo "Volo is not running."; return 0; fi
+    target_pid=$psid
+    echo "Stopping Volo (pid=$target_pid)..."
+    run_as_user -s /bin/sh -c "kill -TERM $target_pid" "$RUNNING_USER" 9>&- || return 1
+    waited=0
+    while [ "$waited" -lt "$STOP_TIMEOUT" ]; do
+        sleep 1
+        checkpid || return 1
+        if [ "$psid" -eq 0 ]; then echo "Volo stopped."; return 0; fi
+        if [ "$psid" -ne "$target_pid" ]; then echo "Volo PID changed; inspect it before retrying." >&2; return 1; fi
+        waited=$((waited + 1))
+    done
+    echo "Volo did not stop within $STOP_TIMEOUT seconds. See $LOG_FILE; no forced kill was sent." >&2
+    return 1
+}
+
+status() {
+    checkpid || return 1
+    if [ "$psid" -ne 0 ]; then echo "Volo is running (pid=$psid)."; return 0; fi
+    echo "Volo is not running."
+    return 3
+}
+
+info() {
+    printf 'JAVA_HOME=%s\nAPP_HOME=%s\nAPP_ARGS=%s\nLOG_FILE=%s\n' "$JAVA_HOME" "$APP_HOME" "$APP_ARGS" "$LOG_FILE"
+    "$JAVA_HOME/bin/java" -version
+}
+
+case "${1:-}" in
+    start) lock_operation && start ;;
+    stop) lock_operation && stop ;;
+    restart) lock_operation && stop && start ;;
+    status) status ;;
+    info) info ;;
+    *) echo "Usage: $0 {start|stop|restart|status|info}" >&2; exit 2 ;;
+esac
+exit $?

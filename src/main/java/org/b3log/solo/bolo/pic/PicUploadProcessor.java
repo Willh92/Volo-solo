@@ -17,28 +17,25 @@
  */
 package org.b3log.solo.bolo.pic;
 
-import org.apache.commons.fileupload.FileItem;
-import org.apache.commons.fileupload.disk.DiskFileItemFactory;
-import org.apache.commons.fileupload.servlet.ServletFileUpload;
+import org.b3log.latke.http.FileUpload;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Logger;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.logging.Logger;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.bolo.pic.util.UploadUtil;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.util.Uploads;
+import org.apache.commons.io.FileUtils;
 
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.OutputStream;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -54,7 +51,7 @@ import java.util.Map;
  * @author : https://github.com/adlered
  * @date : 2020-03-04 20:50
  **/
-@RequestProcessor
+@Singleton
 public class PicUploadProcessor {
 
     /**
@@ -77,21 +74,28 @@ public class PicUploadProcessor {
     public void uploadPicture(final RequestContext context) {
         synchronized (this) {
             if (!Solos.isAdminOrAuthorLoggedIn(context)) {
-                context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                context.sendError(401);
 
                 return;
             }
 
-            DiskFileItemFactory factory = new DiskFileItemFactory();
-            factory.setRepository(new File("temp/"));
-            ServletFileUpload upload = new ServletFileUpload(factory);
-            upload.setHeaderEncoding("UTF-8");
+            java.nio.file.Path directory = null;
+            List<FileUpload> itemList = java.util.Collections.emptyList();
             Map okPic = new HashMap();
             List<String> errFiles = new ArrayList<>();
             try {
-                List<FileItem> itemList = upload.parseRequest(context.getRequest());
-                for (FileItem item : itemList) {
-                    String name = item.getName();
+                directory = Files.createTempDirectory("bolo-image-");
+                itemList = Uploads.files(context.getRequest());
+                for (FileUpload item : itemList) {
+                    String name = item.getFilename();
+                    File file;
+                    try {
+                        file = Uploads.stage(item, directory, "jpg", "jpeg", "png", "gif", "bmp", "webp");
+                        Uploads.validateImage(file);
+                    } catch (Exception e) {
+                        errFiles.add(name);
+                        continue;
+                    }
                     String config;
                     try {
                         config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
@@ -104,14 +108,6 @@ public class PicUploadProcessor {
                     } catch (Exception e) {
                         value = "10";
                     }
-                    final ServletContext servletContext = SoloServletListener.getServletContext();
-                    final String assets = "/";
-                    String path = servletContext.getResource(assets).getPath();
-                    path = URLDecoder.decode(path);
-                    LOGGER.info("Uploading image [temp=" + path + name + "]");
-                    File file = new File(path + name);
-                    item.write(file);
-                    item.delete();
                     try {
 
                         String url = UploadUtil.upload(config, Images.compressImage(file, Float.parseFloat(value)));
@@ -124,14 +120,18 @@ public class PicUploadProcessor {
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                org.b3log.solo.web.JsonResponses.json(context).renderCode(400);
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("图片上传失败，请检查文件类型和大小。");
+                return;
+            } finally {
+                FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
             }
             Map map = new HashMap();
             map.put("succMap", okPic);
             map.put("errFiles", errFiles);
-            context.renderJSON().renderData(map);
-            context.renderCode(0);
-            context.renderMsg("");
+            org.b3log.solo.web.JsonResponses.json(context).renderData(map);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(0);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("");
         }
     }
 
@@ -143,15 +143,15 @@ public class PicUploadProcessor {
     @RequestProcessing(value = "/pic/local/check", method = {HttpMethod.GET})
     public void checkLocalImageBedAvailable(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
 
         String path = context.param("path");
         if (path == null || "undefined".equals(path)) {
-            context.renderJSON().renderCode(500);
-            context.renderJSON().renderMsg("测试失败！目录格式错误。");
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目录格式错误。");
 
             return;
         }
@@ -159,8 +159,8 @@ public class PicUploadProcessor {
         // 检查目录是否存在，如果不存在则创建
         if (!pathFile.exists()) {
             if (!pathFile.mkdirs()) {
-                context.renderJSON().renderCode(500);
-                context.renderJSON().renderMsg("创建目录失败！目录格式错误或没有权限。");
+                org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("创建目录失败！目录格式错误或没有权限。");
 
                 return;
             }
@@ -171,13 +171,13 @@ public class PicUploadProcessor {
             tmpFile.createNewFile();
             tmpFile.delete();
 
-            context.renderJSON().renderCode(200);
-            context.renderJSON().renderMsg("测试成功 :)");
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试成功 :)");
 
             return;
         } catch (Exception e) {
-            context.renderJSON().renderCode(500);
-            context.renderJSON().renderMsg("测试失败！目录没有写入权限。");
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目录没有写入权限。");
 
             return;
         }
@@ -191,7 +191,7 @@ public class PicUploadProcessor {
     @RequestProcessing(value = "/image/{imageFilename}", method = HttpMethod.GET)
     public void getLocalImage(final RequestContext context) {
         try {
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             String config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
             String type = config.split("<<>>")[0];
             if ("local".equals(type)) {
@@ -206,12 +206,10 @@ public class PicUploadProcessor {
                 fileInputStream.close();
                 String contentType = Files.probeContentType(Paths.get(filePath));
                 response.setContentType(contentType);
-                OutputStream outputStream = response.getOutputStream();
-                outputStream.write(data);
-                outputStream.close();
+                response.sendBytes(data);
             }
         } catch (Exception e) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }

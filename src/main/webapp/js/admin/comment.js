@@ -63,25 +63,27 @@ admin.comment = {
 
         var comments = result.comments,
           commentsHTML = ''
+        var escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]))
         for (var i = 0; i < comments.length; i++) {
-          var hrefHTML = '<a target=\'_blank\' href=\'' + comments[i].commentURL +
+          var hrefHTML = '<a target=\'_blank\' rel=\'noopener\' href=\'' + escape(comments[i].commentURL) +
             '\'>',
             content = comments[i].commentContent,
             contentHTML = content
 
-          if (comments[i].commentURL === 'http://') {
+          if (!/^https?:\/\/[^\s]+$/i.test(comments[i].commentURL || '')) {
             hrefHTML = '<a target=\'_blank\'>'
           }
 
           commentsHTML += '<div class=\'comment-title\'><span class=\'fn__left\'>'
-            + hrefHTML + comments[i].commentName + '</a>'
+            + hrefHTML + escape(comments[i].commentName) + '</a>'
 
           if (comments[i].commentOriginalCommentName) {
-            commentsHTML += '@' + comments[i].commentOriginalCommentName
+            commentsHTML += '@' + escape(comments[i].commentOriginalCommentName)
           }
           commentsHTML += '</span><a title=\'' + Label.removeLabel +
-            '\' class=\'fn__right fn__pointer\' href="javascript:admin.comment.del(\''
-            + comments[i].oId + '\', \'' + fromId + '\', \'' + onId + '\')">' +
+            '\' class=\'fn__right fn__pointer\' href="#" data-comment-id="' + escape(comments[i].oId) +
+            '" data-comment-from="' + escape(fromId) + '" data-comment-on="' + escape(onId) +
+            '" onclick="admin.comment.del(this.dataset.commentId, this.dataset.commentFrom, this.dataset.commentOn); return false;">' +
             Label.removeLabel + '</a><span class=\'fn__right\'>&nbsp;&nbsp;'
             + $.bowknot.getDate(comments[i].commentTime)
             +

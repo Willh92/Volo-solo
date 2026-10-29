@@ -21,8 +21,8 @@
     <#assign isRss=(article.isRss!false)?c=="true">
         <article class="article__item">
             <h2 class="article__title">
-                <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                    ${article.articleTitle}
+                <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                    ${(article.articleTitle)?html}
                 </a>
                 <#if article.articlePutTop>
                     <sup>

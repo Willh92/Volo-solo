@@ -119,7 +119,7 @@ admin.articleList = {
           articleData[i] = {}
           articleData[i].title = '<a href="' + Label.servePath +
             articles[i].articlePermalink + '" target=\'_blank\' title=\'' +
-            articles[i].articleTitle + '\' class=\'no-underline\'>'
+            articles[i].articleTitle + '\' class=\'no-underline console-article-title\'>'
             + articles[i].articleTitle + '</a><span class=\'table-tag\'>' +
             articles[i].articleTags + '</span>'
           articleData[i].date = $.bowknot.getDate(articles[i].articleCreateTime)

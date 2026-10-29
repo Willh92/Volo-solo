@@ -31,7 +31,7 @@
     ${onlineVisitorLabel}
     <br><br>
     &copy; ${.now?string('yyyy')} ${blogTitle!}
-    Powered by <a href="https://github.com/AdlerED/bolo-solo" target="_blank">Bolo</a>
+    Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
     <br>
     Theme 极简 · xups by <a href="https://github.com/adlered" target="_blank">adlered</a>
     <br/>
@@ -44,7 +44,7 @@
 <script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common.js?${staticResourceVersion}"
         charset="utf-8"></script>
 
-<div class="back-to-top" id="JELON__backToTop" title="返回顶部">返回顶部</div>
+<button type="button" class="back-to-top" id="JELON__backToTop" title="返回顶部" aria-label="返回顶部"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
 </body>
 
 <#include "../../common-template/label.ftl">

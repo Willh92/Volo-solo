@@ -21,16 +21,14 @@
     <#list articles as article>
         <#assign isRss=(article.isRss!false)?c=="true">
             <div class="nexmoe-post">
-                <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${article.articleTitle} - ${blogTitle}">
+                <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html} - ${blogTitle}">
                     <div class="nexmoe-post-cover mdui-ripple">
                         <#if article.articlePutTop>
                             <i class="top iconfont solo-top"></i>
                         </#if>
-                        <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${article.articleTitle}"
+                        <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${(article.articleTitle)?html}"
                             data-src="/images/5c3aec85a4343.jpg" class="ls-is-cached lazyloaded index-img">
-                        <h1>
-                            ${article.articleTitle}
-                        </h1>
+                        <h1><span class="skin-list-title" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</span></h1>
                     </div>
                 </a>
                 <div class="nexmoe-post-meta">

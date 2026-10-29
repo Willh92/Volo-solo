@@ -105,7 +105,7 @@ admin.plugin = {
         }
         
         if (!data.target) {
-            alert("data.index is error!");
+            noBtnSwal("data.index is error!");
         }
         
         $("#tabs").tabs("add", data);

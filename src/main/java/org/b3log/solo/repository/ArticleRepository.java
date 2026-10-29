@@ -19,8 +19,8 @@ package org.b3log.solo.repository;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.cache.ArticleCache;
@@ -46,11 +46,6 @@ public class ArticleRepository extends AbstractRepository {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(ArticleRepository.class);
-
-    /**
-     * Random range.
-     */
-    private static final double RANDOM_RANGE = 0.1D;
 
     /**
      * Article cache.
@@ -100,39 +95,20 @@ public class ArticleRepository extends AbstractRepository {
     @Override
     public List<JSONObject> getRandomly(final int fetchSize) throws RepositoryException {
         final List<JSONObject> ret = new ArrayList<>();
-
-        if (0 == count()) {
+        if (fetchSize <= 0) {
             return ret;
         }
-
-        final double mid = Math.random() + RANDOM_RANGE;
-
-        LOGGER.log(Level.TRACE, "Random mid[{0}]", mid);
-
-        Query query = new Query().setFilter(CompositeFilterOperator.and(
-                new PropertyFilter(Article.ARTICLE_RANDOM_DOUBLE, FilterOperator.GREATER_THAN_OR_EQUAL, mid),
-                new PropertyFilter(Article.ARTICLE_RANDOM_DOUBLE, FilterOperator.LESS_THAN_OR_EQUAL, mid),
-                new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
-                setPage(1, fetchSize).setPageCount(1);
-
-        final List<JSONObject> list1 = getList(query);
-        ret.addAll(list1);
-
-        final int reminingSize = fetchSize - list1.size();
-        if (0 != reminingSize) { // Query for remains
-            query = new Query();
-            query.setFilter(
-                    CompositeFilterOperator.and(
-                            new PropertyFilter(Article.ARTICLE_RANDOM_DOUBLE, FilterOperator.GREATER_THAN_OR_EQUAL, 0D),
-                            new PropertyFilter(Article.ARTICLE_RANDOM_DOUBLE, FilterOperator.LESS_THAN_OR_EQUAL, mid),
-                            new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
-                    setPage(1, reminingSize).setPageCount(1);
-
-            final List<JSONObject> list2 = getList(query);
-
-            ret.addAll(list2);
+        final double pivot = Math.random();
+        final String query = "SELECT * FROM " + getName()
+                + " WHERE articleStatus = ? AND articleRandomDouble >= ?"
+                + " ORDER BY articleRandomDouble, oId LIMIT ?";
+        ret.addAll(select(query, Article.ARTICLE_STATUS_C_PUBLISHED, pivot, fetchSize));
+        if (ret.size() < fetchSize) {
+            final String wrapQuery = "SELECT * FROM " + getName()
+                    + " WHERE articleStatus = ? AND (articleRandomDouble < ? OR articleRandomDouble IS NULL)"
+                    + " ORDER BY articleRandomDouble, oId LIMIT ?";
+            ret.addAll(select(wrapQuery, Article.ARTICLE_STATUS_C_PUBLISHED, pivot, fetchSize - ret.size()));
         }
-
         return ret;
     }
 
@@ -184,7 +160,7 @@ public class ArticleRepository extends AbstractRepository {
                 setPageCount(1);
 
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -277,7 +253,7 @@ public class ArticleRepository extends AbstractRepository {
                 select(Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK, Article.ARTICLE_ABSTRACT);
 
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
@@ -328,7 +304,7 @@ public class ArticleRepository extends AbstractRepository {
                 select(Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK, Article.ARTICLE_ABSTRACT);
 
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }

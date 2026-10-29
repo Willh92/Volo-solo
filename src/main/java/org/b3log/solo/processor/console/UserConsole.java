@@ -17,19 +17,19 @@
  */
 package org.b3log.solo.processor.console;
 
-import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.bolo.tool.MD5Utils;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.service.UserMgmtService;
@@ -46,7 +46,7 @@ import org.json.JSONObject;
  * @author <a href="https://ld246.com/member/DASHU">DASHU</a>
  * @since 0.4.0
  */
-@RequestProcessor
+@Singleton
 public class UserConsole {
 
     /**
@@ -102,32 +102,26 @@ public class UserConsole {
      */
     @Before(ConsoleAdminAuthAdvice.class)
     public void updateUser(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
-            userMgmtService.updateUser(requestJSONObject, false);
-
             final String password = requestJSONObject.optString(UserExt.USER_B3_KEY);
-            if (password.isEmpty()) {
-                // 密码为空，不更新密码
-                String srcPassword = userQueryService.getUserByName(requestJSONObject.optString("userName")).optString(UserExt.USER_B3_KEY);
-                requestJSONObject.put(UserExt.USER_B3_KEY, srcPassword);
-            } else {
-                // 更新密码
+            if (!password.isEmpty()) {
                 requestJSONObject.put(UserExt.USER_B3_KEY, MD5Utils.stringToMD5Twice(password));
             }
-            userMgmtService.updateUser(requestJSONObject, true);
+            userMgmtService.updateUser(requestJSONObject, !password.isEmpty());
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
@@ -149,6 +143,7 @@ public class UserConsole {
      */
     @Before(ConsoleAdminAuthAdvice.class)
     public void removeUser(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject jsonObject = new JSONObject();
@@ -157,12 +152,12 @@ public class UserConsole {
             final String userId = context.pathVar("id");
             userMgmtService.removeUser(userId);
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }
@@ -204,20 +199,20 @@ public class UserConsole {
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/users/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
             final JSONObject result = userQueryService.getUsers(requestJSONObject);
-            result.put(Keys.STATUS_CODE, true);
+            result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
 
             final JSONArray users = result.optJSONArray(User.USERS);
             for (int i = 0; i < users.length(); i++) {
                 final JSONObject user = users.optJSONObject(i);
                 String userName = user.optString(User.USER_NAME);
-                userName = StringEscapeUtils.escapeXml(userName);
+                userName = StringEscapeUtils.escapeXml11(userName);
                 user.put(User.USER_NAME, userName);
             }
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -249,7 +244,7 @@ public class UserConsole {
 
         final JSONObject result = userQueryService.getUser(userId);
         if (null == result) {
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
 
@@ -257,7 +252,7 @@ public class UserConsole {
         }
 
         renderer.setJSONObject(result);
-        result.put(Keys.STATUS_CODE, true);
+        result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
     }
 
     /**
@@ -276,6 +271,7 @@ public class UserConsole {
      */
     @Before(ConsoleAdminAuthAdvice.class)
     public void changeUserRole(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject jsonObject = new JSONObject();
@@ -284,12 +280,12 @@ public class UserConsole {
             final String userId = context.pathVar("id");
             userMgmtService.changeRole(userId);
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             jsonObject.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
         }
     }

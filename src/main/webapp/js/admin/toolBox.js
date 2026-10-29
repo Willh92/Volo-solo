@@ -42,7 +42,7 @@ admin.toolBox = {
    * @description 更新
    */
   update: function () {
-    alert("updated");
+    noBtnSwal("updated");
   }
 }
 

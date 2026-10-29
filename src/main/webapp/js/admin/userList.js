@@ -50,12 +50,17 @@ admin.userList = {
         text: Label.roleLabel,
         index: 'isAdmin',
         width: 120,
+      }, {
+        text: '操作',
+        index: 'actions',
+        width: 230,
       }])
 
     this.tablePagination.initPagination()
     this.getList(page)
 
     $('#userUpdate').dialog({
+      title: $('#userUpdate').data('title'),
       width: 700,
       height: 450,
       'modal': true,
@@ -101,11 +106,11 @@ admin.userList = {
 
           if ('adminRole' === users[i].userRole) {
             userData[i].isAdmin = '&nbsp;' + Label.administratorLabel
-            userData[i].expendRow = '<a href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
+            userData[i].actions = '<a class=\'console-row-action\' href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
               users[i].oId + '\', \'' + users[i].userRole + '\')">' +
               Label.updateLabel + '</a>'
           } else {
-            userData[i].expendRow = '<a href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
+            userData[i].actions = '<a class=\'console-row-action\' href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
               users[i].oId + '\', \'' + users[i].userRole + '\')">' +
               Label.updateLabel + '</a>\
                                 <a href=\'javascript:void(0)\' onclick="admin.userList.del(\'' +
@@ -120,10 +125,8 @@ admin.userList = {
             }
           }
 
-          that.tablePagination.updateTablePagination(userData, pageNum,
-            result.pagination)
-
         }
+        that.tablePagination.updateTablePagination(userData, pageNum, result.pagination)
         $('#loadMsg').text('')
       },
     })
@@ -185,13 +188,13 @@ admin.userList = {
         cache: false,
         data: JSON.stringify(requestJSONObject),
         success: function (result, textStatus) {
-          $('#userUpdate').dialog('close')
           $('#tipMsg').text(result.msg)
           if (!result.sc) {
             $('#loadMsg').text('')
             return
           }
 
+          $('#userUpdate').dialog('close')
           admin.userList.getList(admin.userList.pageInfo.currentPage)
 
           $('#loadMsg').text('')
@@ -206,7 +209,7 @@ admin.userList = {
    */
   del: function (id, userName) {
     var isDelete = confirm(Label.confirmRemoveLabel + Label.userLabel + '"' +
-      Util.htmlDecode(userName) + '"?')
+      Util.htmlDecode(decodeURIComponent(userName)) + '"?')
     if (isDelete) {
       $('#loadMsg').text(Label.loadingLabel)
       $('#tipMsg').text('')
@@ -249,7 +252,7 @@ admin.userList = {
     $('#tipMsg').text('')
     $.ajax({
       url: Label.servePath + '/console/changeRole/' + id,
-      type: 'GET',
+      type: 'POST',
       cache: false,
       success: function (result, textStatus) {
         $('#tipMsg').text(result.msg)

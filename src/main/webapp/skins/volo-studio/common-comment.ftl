@@ -1,0 +1,55 @@
+<#--
+
+    Bolo - A stable and beautiful blogging system based in Solo.
+    Copyright (c) 2020-present, https://github.com/bolo-blog
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
+<li id="${comment.oId}" class="comment__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+    <div class="fn__flex">
+        <main class="comment__main fn__flex-1">
+            <div class="comment__meta ft__gray">
+            <span class="comment__author">
+            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://'>
+                ${comment.commentName?html}
+            <#else>
+            <a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer" class="ft__red">${comment.commentName?html}</a>
+            </#if>
+            <#if comment.isReply>
+            @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
+                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 2);"
+                onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+                class="ft__red"
+            >${comment.commentOriginalCommentName?html}</a>
+            </#if>
+            </span>
+            <span class="comment__details">
+                <time>${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
+            </span>
+
+            <#if article.commentable>
+            <button type="button" class="fn__right comment__btn" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName)">回复</button>
+            </#if>
+            </div>
+
+            <div class="vditor-reset comment__content">
+            <div data-comment-content>${comment.commentContent}</div>
+            </div>
+        </main>
+    </div>
+</li>

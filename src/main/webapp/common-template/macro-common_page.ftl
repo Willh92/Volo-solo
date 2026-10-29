@@ -23,7 +23,7 @@
 <html>
 <head>
     <#if !blogTitle??>
-    <#assign blogTitle = "Bolo">
+    <#assign blogTitle = "Volo">
     </#if>
     <@head title="${title} - ${blogTitle}">
         <link type="text/css" rel="stylesheet"
@@ -42,7 +42,7 @@
     </div>
     <div class="footerWrapper">
         <div class="footer">
-            Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a> ${boloVersion}
+            Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener">Volo</a> ${boloVersion}
         </div>
     </div>
 </div>

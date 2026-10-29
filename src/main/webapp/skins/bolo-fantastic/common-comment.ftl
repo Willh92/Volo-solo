@@ -18,11 +18,11 @@
 
 -->
 <li id="li-comment-${comment.oId}" itemtype="http://schema.org/Comment" itemprop="comment"
-    class="comment index-1">
+    class="comment index-1" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div id="comment-${comment.oId}" class="comment-body">
         <div class="comment-avatar">
             <a href="" rel="nofollow" target="_blank">
-                <img alt="${comment.commentName}" src="${comment.commentThumbnailURL}" class="avatar">
+                <img data-avatar-seed="${comment.commentName?html}" alt="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" class="avatar">
             </a>
         </div>
         <div class="contain-main">
@@ -30,10 +30,10 @@
                 <div itemprop="author" class="comment-author">
                     <#if "http://" == comment.commentURL>
                         <a href="javascript:void(0);" rel="nofollow" target="_blank"
-                           class="author-name">${comment.commentName}</a>
+                           class="author-name">${comment.commentName?html}</a>
                     <#else>
-                        <a href="${comment.commentURL}" rel="nofollow" target="_blank"
-                           class="author-name">${comment.commentName}</a>
+                        <a href="${comment.commentURL?html}" rel="nofollow" target="_blank"
+                           class="author-name">${comment.commentName?html}</a>
                     </#if>
 
                     <#if comment.isReply>
@@ -41,22 +41,24 @@
                         <a href="${servePath}${article.permalink}#li-comment-${comment.commentOriginalCommentId}"
                            onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 20);"
                            onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-                        >${comment.commentOriginalCommentName}</a>
+                        >${comment.commentOriginalCommentName?html}</a>
                     </#if>
 
-                    <#if article.commentable>
-                        <span class="comment-reply" style="cursor: pointer;">
-                            <a href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">${replyLabel}</a>
-                        </span>
-                    </#if>
-
-                    <div class="useragent-info"><a href="${comment.commentURL}"
-                                                   target="_blank">${comment.commentURL!}</a></div>
+                    <div class="useragent-info"><a href="${comment.commentURL?html}"
+                                                   target="_blank">${(comment.commentURL!'')?html}</a></div>
                 </div>
+                <#if article.commentable>
+                    <span class="comment-reply" style="cursor: pointer;">
+                        <a href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
+                    </span>
+                </#if>
                 <time itemprop="datePublished" datetime="${comment.commentDate2?string("yyyy-MM-dd")}"
                       class="comment-time">
                     ${comment.commentDate2?string("yyyy-MM-dd HH:mm")}
                 </time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
                 <a href="#li-comment-${comment.oId}" class="comment-id">#${comment.oId}</a></div>
             <style>
                 .comment-content .emoji {
@@ -65,7 +67,7 @@
                 }
             </style>
             <div itemprop="description" class="comment-content">
-                ${comment.commentContent}
+                <div data-comment-content>${comment.commentContent}</div>
             </div>
         </div>
     </div>

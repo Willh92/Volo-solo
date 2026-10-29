@@ -38,9 +38,9 @@
                             <div class="fn-clear comment-meta">
                                 <span class="fn-left">
                                     <#if "http://" == comment.commentURL>
-                                    <span>${comment.commentName}</span>
+                                    <span>${comment.commentName?html}</span>
                                     <#else>
-                                    <a href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+                                    <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
                                     </#if>
                                     <time>${comment.commentDate?string("yyyy-MM-dd HH:mm")}</time> 
                                 </span>

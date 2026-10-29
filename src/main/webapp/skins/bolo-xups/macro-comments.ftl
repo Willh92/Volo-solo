@@ -28,12 +28,10 @@
 
 <div class="comment">
     <section class="list-wrap" id="JELON__commentList">
-        <ul class="list">
-            <div id="comments">
+        <ul class="list" id="comments">
             <#list commentList as comment>
                 <#include 'common-comment.ftl'/>
             </#list>
-            </div>
         </ul>
     </section>
 </div>

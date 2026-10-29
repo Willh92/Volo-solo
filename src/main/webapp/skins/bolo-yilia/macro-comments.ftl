@@ -24,7 +24,7 @@
     </#list>
 </ul>
 <#if article.commentable>
-<div class="form" style="padding: 0;margin: 0 60px 0 50px;width: auto">
+<div class="form">
     <input id="boloUser" placeholder="你的昵称" style="padding: 10px; width: fill-available; width: -webkit-fill-available;">
     <input id="boloSite" placeholder="你的个人主页URL（选填）" style="margin-top: 3px; margin-bottom: 10px; padding: 10px; width: fill-available; width: -webkit-fill-available;">
     <textarea rows="3" placeholder="${postCommentsLabel}" id="comment"></textarea>

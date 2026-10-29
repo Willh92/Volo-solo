@@ -28,6 +28,7 @@
                     <span class="description">${blogSubtitle}</span>
                 </div>
             </a>
+            <div class="skin-theme-slot xups-theme-mobile" data-bolo-theme-slot></div>
         </div>
         <ul class="menu hidden" id="JELON__menu">
             <li class="item current">
@@ -35,11 +36,11 @@
             </li>
             <#list pageNavigations as page>
                 <li class="item current">
-                    <a href="${page.pagePermalink}" target="${page.pageOpenTarget}">
+                    <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">
                         <#if page.pageIcon != ''>
-                            <img src="${page.pageIcon}" width="15px" height="16px">
+                            <img src="${page.pageIcon?html}" width="15px" height="16px">
                         </#if>
-                        ${page.pageTitle}
+                        ${page.pageTitle?html}
                     </a>
                 </li>
             </#list>
@@ -47,15 +48,7 @@
         <div class="profile clearfix">
             <div class="feeds fl">
                 <p class="links">
-                    <#if interactive == "on">
-                        <#if isLoggedIn>
-                            <a href="${servePath}/admin-index.do#main">${adminLabel}</a>
-                            |
-                            <a href="${logoutURL}">${logoutLabel}</a>
-                        <#else>
-                            <a href="${servePath}/start">${startToUseLabel}</a>
-                        </#if>
-                    </#if>
+
                 </p>
                 <p class="sns">
                     <#include "../../common-template/macro-user_site.ftl"/>
@@ -105,9 +98,7 @@
                     </#if>
                 </p>
             </div>
-            <div class="avatar fr">
-                <img src="${adminUser.userAvatar}" alt="avatar" title="Jelon" >
-            </div>
+            <div class="skin-theme-slot xups-theme-desktop" data-bolo-theme-slot></div>
         </div>
     </section>
 </header>

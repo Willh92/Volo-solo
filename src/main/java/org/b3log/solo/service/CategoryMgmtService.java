@@ -19,8 +19,8 @@ package org.b3log.solo.service;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Transactional;
 import org.b3log.latke.service.ServiceException;
@@ -131,7 +131,7 @@ public class CategoryMgmtService {
                             new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId),
                             new PropertyFilter(Tag.TAG + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, tagId)));
 
-            final JSONArray relations = categoryTagRepository.get(query).optJSONArray(Keys.RESULTS);
+            final JSONArray relations = org.b3log.solo.util.QueryResults.array(categoryTagRepository.get(query));
             if (relations.length() < 1) {
                 return;
             }
@@ -158,9 +158,7 @@ public class CategoryMgmtService {
 
             final String categoryId = categoryTag.optString(Category.CATEGORY + "_" + Keys.OBJECT_ID);
             final JSONObject category = categoryRepository.get(categoryId);
-            final int tagCount =
-                    categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE).
-                            optJSONArray(Keys.RESULTS).length();
+            final int tagCount = org.b3log.solo.util.QueryResults.array(categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE)).length();
             category.put(Category.CATEGORY_TAG_CNT, tagCount);
 
             categoryRepository.update(categoryId, category);

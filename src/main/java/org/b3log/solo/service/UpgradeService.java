@@ -18,10 +18,10 @@
 package org.b3log.solo.service;
 
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.upgrade.V299_300;
 import org.b3log.solo.upgrade.V300_310;
@@ -76,19 +76,34 @@ public class UpgradeService {
     /**
      * IF IT IS TRUE, FAST MIGRATION PROGRAM WILL BE BOOT UP.
      */
-    public static boolean boloFastMigration = false;
+    public static volatile boolean boloFastMigration = false;
 
     /**
      * Upgrades if need.
      */
     public void upgrade() {
+        boloFastMigration = false;
         try {
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
                 return;
             }
 
-            // 快速迁移检测程序
+            final String currentVer = preference.getString(Option.ID_C_VERSION);
+            // A current Volo/Bolo database must never reset its administrator based on a theme name.
+            if (SoloApplication.DATABASE_VERSION.equals(currentVer) || "4.3.4".equals(currentVer)) {
+                upgradeDateSchema();
+                return;
+            }
+            if (currentVer.matches("[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}")) {
+                if (currentVer.compareTo(SoloApplication.DATABASE_VERSION) > 0) {
+                    throw new IllegalStateException("This database belongs to a newer Volo release: " + currentVer);
+                }
+                upgradeDateSchema();
+                return;
+            }
+
+            // Only older databases from outside the Bolo/Volo theme family need fast migration.
             final JSONObject skin = optionQueryService.getSkin();
             if (null == skin) {
                 boloFastMigration = true;
@@ -96,16 +111,10 @@ public class UpgradeService {
             } else {
                 final String currentSkinDirName = skin.optString(Option.ID_C_SKIN_DIR_NAME);
                 final String currentMobileSkinDirName = skin.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME);
-                if (!currentSkinDirName.contains("bolo") && !currentMobileSkinDirName.contains("bolo")) {
+                if (!isFamilySkin(currentSkinDirName) && !isFamilySkin(currentMobileSkinDirName)) {
                     boloFastMigration = true;
                     LOGGER.info("Not a bolo skin has set, enabling Bolo Fast Migration.");
                 }
-            }
-
-            final String currentVer = preference.getString(Option.ID_C_VERSION); // 数据库中的版本
-            if (SoloServletListener.VERSION.equals(currentVer)) {
-                // 如果数据库中的版本和运行时版本一致则说明已经是最新版
-                return;
             }
 
             // 如果版本较老，则调用对应的升级程序进行升级，并贯穿升级下去直到最新版
@@ -166,13 +175,20 @@ public class UpgradeService {
                         break;
                     default:
                         LOGGER.log(Level.INFO, "Version " + currentVer + " loaded in compatibility mode.");
-                        SoloServletListener.VERSION = currentVer;
+                        throw new IllegalStateException("Unsupported legacy database version: " + currentVer);
                 }
+                upgradeDateSchema();
             }
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Upgrade failed, please contact the Bolo developers or reports this "
-                    + "issue: https://github.com/bolo-blog/bolo-solo/issues/new", e);
+            LOGGER.log(Level.ERROR, "Upgrade failed, please report this issue: "
+                    + "https://github.com/Willh92/Volo-solo/issues/new", e);
             System.exit(-1);
         }
+    }
+
+    protected void upgradeDateSchema() throws Exception { org.b3log.solo.upgrade.V434_20261101.perform(); }
+
+    private static boolean isFamilySkin(final String name) {
+        return name.contains("bolo") || name.startsWith("volo-");
     }
 }

@@ -1,0 +1,122 @@
+/* The shared comment editor stays at the visible viewport's bottom in every skin. */
+html[data-bolo-page='public'] {
+  &[data-bolo-theme='dark'] [data-comment-depth] { border-color: var(--bolo-line); }
+  &[data-bolo-theme='dark'][data-bolo-skin='bolo-9IPHP'] .title { border-color: var(--bolo-line); }
+  [data-comment-depth='1'] { box-sizing: border-box; width: auto; max-width: calc(100% - 24px); margin-inline-start: 24px; }
+  [data-comment-depth] [data-comment-content] { min-width: 0; overflow-wrap: anywhere; }
+  .comment-management-actions { display: flex; clear: both; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 6px; }
+  .comment-management-actions:empty { display: none; }
+  [data-comment-depth] .comment-management-actions--inline { display:inline-flex; float:right; clear:none; grid-column:2; grid-row:1; align-self:start; max-width:100%; margin:0; line-height:1.5; }
+  [data-comment-depth] .comment-management-actions--inline > [data-comment-name] { position:static; float:none; display:inline-flex; align-items:center; justify-content:center; flex:none; box-sizing:border-box; min-height:28px; margin:0; padding:3px 6px; font-size:12px; line-height:1.5; white-space:nowrap; }
+  [data-comment-depth] .comment-management-actions--inline > .comment-reply { position:static; float:none; flex:none; margin:0; }
+  .comment-edit-action { appearance: none; flex-shrink: 0; width: auto; height: auto; min-height: 28px; margin: 0 4px; padding: 3px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--bolo-muted); font: inherit; font-size: 12px; line-height: 1.5; white-space: nowrap; cursor: pointer; }
+  .comment-edit-action:hover { color: var(--skin-control-accent,var(--bolo-accent)); background: var(--bolo-raised); }
+  .comment-edit-action:focus-visible { outline: 2px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 1px; }
+  .comment-tombstone { color: var(--bolo-muted); font-size: 13px; font-style: italic; }
+  [data-comment-deleted='true'] [data-comment-name] { display: none; }
+  .comment-location { display: inline-block; margin-inline-start: 8px; color: var(--bolo-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; font-weight: 400; }
+  .comment-location .comment-ban-action { appearance:none; display:inline-flex; align-items:center; vertical-align:middle; width:auto; height:auto; min-height:24px; margin:0 0 0 8px; padding:1px 6px; border:1px solid var(--bolo-line); border-radius:4px; background:transparent; color:var(--skin-control-accent,var(--bolo-accent)); font:inherit; line-height:1.5; white-space:nowrap; cursor:pointer; }
+  .comment-location .comment-ban-action:hover { background:var(--bolo-raised); border-color:currentColor; }
+  .comment-location .comment-ban-action:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+  #soloEditor {
+    --composer-accent: var(--skin-control-accent, var(--bolo-accent));
+    --composer-on-accent: #fff;
+    box-sizing: border-box; position: fixed; inset: auto 0 0; width: 100%; margin: 0;
+    padding: 14px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    background: var(--bolo-surface); color: var(--bolo-text); border: 0; border-top: 1px solid var(--bolo-line);
+    box-shadow: 0 -8px 32px #10251b1c; z-index: 240; overflow: visible;
+    opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(100%);
+    transition: transform .18s, opacity .18s, visibility .18s;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  }
+  #soloEditor.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
+  .comment-composer__inner { width: 100%; max-width: 768px; margin: 0 auto; }
+  .form :is(#boloUser,#boloSite) { display: none; }
+  .comment-composer__identity { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-bottom: 12px; }
+  .comment-composer__identity[hidden] { display: none; }
+  .comment-composer__visitor { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--bolo-muted); font-size: 12px; }
+  .comment-composer__visitor[hidden] { display: none; }
+  .comment-composer__visitor img { flex: none; width: 28px; height: 28px; border-radius: 50%; }
+  .comment-composer__visitor strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--bolo-text); }
+  .comment-composer__visitor button { margin-left: auto; padding: 3px 8px; border: 0; border-radius: 5px; background: var(--bolo-raised); color: var(--composer-accent); font: inherit; cursor: pointer; }
+  .comment-composer__identity > label { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0; color: var(--bolo-muted); font-size: 12px; }
+  .comment-composer__identity > label:last-child { grid-column: 1 / -1; }
+  .comment-composer__identity :is(span,input) { display: block; min-width: 0; }
+  .comment-composer__identity :is(input,#boloUser,#boloSite) { box-sizing: border-box; display: block; width: 100%; height: 38px; min-height: 0; margin: 0; padding: 8px 10px; border: 1px solid var(--bolo-line); border-radius: 7px; background: var(--bolo-surface); color: var(--bolo-text); font: inherit; }
+  .comment-composer__identity input:focus { outline: 0; border-color: var(--composer-accent); box-shadow: inset 0 0 0 1px var(--composer-accent); }
+  @media (max-width: 480px) { .comment-composer__identity { gap: 7px 10px; } }
+  #soloEditorComment { width: 100%; min-width: 0; }
+  #soloEditorComment[aria-busy='true']:not(.vditor) { display: grid; place-items: center; min-height: 180px; border: 1px solid var(--bolo-line); border-radius: 6px; color: var(--bolo-muted); }
+  #soloEditorComment[aria-busy='true']:not(.vditor)::before { content: '正在准备评论编辑器…'; }
+  #soloEditorComment.vditor { --second-color: var(--bolo-muted); --text-color: var(--bolo-text); --toolbar-icon-color: var(--bolo-muted); border-color: var(--bolo-line); border-radius: 6px; }
+  #soloEditorComment.vditor { @include editor-frame(6px, var(--composer-accent)); }
+  #soloEditorComment.vditor:focus-within { outline: 0; border-color: var(--composer-accent); }
+  #soloEditorComment > .vditor-toolbar { display: flex; flex-wrap: wrap; align-items: center; flex: none; gap: 2px; min-height: 40px; padding: 4px 6px; border-bottom: 1px solid var(--bolo-line); background: var(--bolo-raised); line-height: 1; }
+  #soloEditorComment .vditor-toolbar__item { box-sizing: border-box; float: none; flex: none; width: 28px; min-width: 0; height: 30px; margin: 0; padding: 0; }
+  #soloEditorComment .vditor-toolbar__item .vditor-tooltipped { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: var(--bolo-muted); line-height: 1; transition: color .15s, background-color .15s; }
+  #soloEditorComment .vditor-toolbar__item .vditor-tooltipped:hover { background: var(--bolo-surface); color: var(--composer-accent); }
+  #soloEditorComment .vditor-toolbar__item svg { width: 16px; height: 16px; }
+  #soloEditorComment .vditor-toolbar__item input { inset: 0; width: 100%; height: 100%; margin: 0; }
+  #soloEditorComment .vditor-toolbar__divider { float: none; flex: none; height: 18px; margin: 0 4px; border-color: var(--bolo-line); }
+  #soloEditorComment .vditor-counter { float: none; flex: none; align-self: center; margin: 0 0 0 auto; padding: 4px; background: transparent; color: var(--bolo-muted); font: 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #soloEditorComment .vditor-counter--error { color: #aa3c34; }
+  &[data-bolo-theme='dark'] #soloEditorComment .vditor-counter--error { color: #edb1aa; }
+  #soloEditor .comment-composer__inner { display: flex; flex-direction: column; min-height: 0; max-height: calc(var(--composer-viewport-height, 100dvh) - 44px); overflow-y: auto; overscroll-behavior: contain; }
+  #soloEditorComment.vditor { flex-shrink: 1; min-height: 100px; }
+  #soloEditorComment > .vditor-content { min-height: 40px; }
+  #soloEditorComment :is(.vditor-sv,.vditor-ir,.vditor-wysiwyg,.vditor-preview) { min-height: 0; overflow: auto; }
+  #soloEditorComment .vditor-tooltipped::before { top: 100%; bottom: auto; transform: translateY(-5px); border-top-color: transparent; border-bottom-color: #3b3e43; }
+  #soloEditorComment .vditor-tooltipped::after { top: 100%; bottom: auto; margin-top: 5px; transform: none; }
+  #soloEditorComment :is(textarea,[contenteditable='true']):is(:focus,:focus-visible) { border: 0; outline: 0; box-shadow: none; border-radius: inherit; }
+  .comment-composer__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #soloEditorReplyTarget { flex: 1 1 0; min-width: 0; color: var(--bolo-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #soloEditorError { order: -1; flex: 0 0 100%; color: #aa3c34; font-size: 13px; }
+  #soloEditorError:empty { display: none; }
+  :is(#soloEditorCancel,#soloEditorAdd,#soloEditorRetry) { box-sizing: border-box; appearance: none; width: auto; min-height: 36px; height: auto; margin: 0; padding: 7px 14px; border: 1px solid var(--bolo-line); border-radius: 5px; background: var(--bolo-surface); color: var(--bolo-text); font: inherit; line-height: 1.5; cursor: pointer; box-shadow: none; transition: background-color .18s, border-color .18s; }
+  :is(#soloEditorCancel,#soloEditorRetry):hover { background: var(--bolo-raised); }
+  #soloEditorRetry[hidden] { display: none; }
+  #soloEditorAdd { background: var(--composer-accent); color: var(--composer-on-accent); border-color: var(--composer-accent); }
+  #soloEditorAdd:hover { background: color-mix(in srgb, var(--composer-accent) 88%, var(--bolo-text)); }
+  #soloEditorAdd:disabled { opacity: .6; cursor: wait; }
+  :is(#soloEditorCancel,#soloEditorAdd,#soloEditorRetry):focus-visible { outline: 2px solid var(--composer-accent); outline-offset: 2px; }
+  .swal-overlay { box-sizing: border-box; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; width: auto; height: auto; padding: 16px; overflow: hidden; white-space: normal; }
+  .swal-overlay::before { display: none; }
+  .swal-modal { box-sizing: border-box; flex: 0 1 440px; width: 100%; min-width: 0; max-width: 440px; max-height: 100%; overflow: auto; margin: 0; border: 1px solid var(--bolo-line); border-radius: 14px; background: var(--bolo-surface); color: var(--bolo-text); box-shadow: 0 18px 60px #10251b33; font: 14px/1.7 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif; white-space: normal; overflow-wrap: anywhere; }
+  .swal-icon { margin: 16px auto 4px; transform: scale(.8); }
+  .swal-icon--success { border-color: color-mix(in srgb,var(--skin-control-accent,var(--bolo-accent)) 25%,transparent); }
+  .swal-icon--success::before, .swal-icon--success::after, .swal-icon--success__hide-corners { background: var(--bolo-surface); }
+  .swal-icon--success__line { background: var(--skin-control-accent,var(--bolo-accent)); }
+  .swal-title { margin: 24px 24px 12px; padding: 0; color: var(--bolo-text); font-size: 21px; line-height: 1.4; text-align: left; }
+  .swal-text { display: block; max-width: none; margin: 0 24px 18px; padding: 0; color: var(--bolo-muted); font-size: 14px; line-height: 1.85; text-align: left; overflow-wrap: anywhere; }
+  .swal-content { margin: 0 24px; padding: 0; }
+  .swal-content__input { box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; border: 1px solid var(--bolo-line); border-radius: 8px; background: var(--bolo-bg); color: var(--bolo-text); font: inherit; font-size: 16px; }
+  .swal-content__input:focus { border-color: var(--skin-control-accent,var(--bolo-accent)); outline: 0; box-shadow: inset 0 0 0 1px var(--skin-control-accent,var(--bolo-accent)); }
+  .swal-content__input::placeholder { color: var(--bolo-muted); opacity: 1; }
+  .swal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; padding: 16px 24px; border-top: 1px solid var(--bolo-line); background: var(--bolo-raised); }
+  .swal-button-container { margin: 0; }
+  .swal-button { min-height: 40px; padding: 9px 16px; border: 1px solid var(--skin-control-accent,var(--bolo-accent)); border-radius: 8px; background: var(--skin-control-accent,var(--bolo-accent)); color: #fff; font: inherit; font-weight: 500; box-shadow: none; }
+  .swal-button:hover { background: color-mix(in srgb,var(--skin-control-accent,var(--bolo-accent)) 85%,var(--bolo-text)); }
+  .swal-button:focus-visible { outline: 2px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 2px; box-shadow: none; }
+  .swal-button--cancel { border-color: var(--bolo-line); background: var(--bolo-surface); color: var(--bolo-text); }
+  .swal-button--cancel:hover { background: var(--bolo-bg); }
+  &[data-bolo-theme='dark'] .swal-button:not(.swal-button--cancel) { color: #1b2021; }
+  #soloEditor.is-open:has(.vditor--fullscreen) { height: var(--composer-viewport-height, 100dvh); overflow: visible; max-height: none !important; }
+  #soloEditor:has(.vditor--fullscreen) .comment-composer__inner { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #soloEditorComment.vditor--fullscreen { position: relative; inset: auto; flex: 1; width: 100% !important; height: auto !important; min-height: 0; }
+  #soloEditor:has(.vditor--fullscreen) .comment-composer__actions { flex: none; }
+  &:has(#soloEditor.is-open) #comment { visibility: hidden; }
+  &[data-bolo-theme='dark'] {
+    #soloEditor { --composer-on-accent: #1b2021; box-shadow: 0 -8px 32px #0003; }
+    #soloEditorError { color: #edb1aa; }
+  }
+  &:has(#soloEditor.is-open .vditor--fullscreen) :is(.mobile-reading-toc,.bolo-appearance--floating,.post__fix,#rightside,#goTop,#sideTop,#back-to-top,.icon-up,.icon__up,.back-to-top,.toTop,#moblieGoTop,.icon-goup) { visibility: hidden; pointer-events: none; }
+  @media (max-width: 767px) {
+    #soloEditorComment .vditor-toolbar__item { width: 36px; height: 36px; }
+    &:has(#soloEditor.is-open) :is(.mobile-reading-toc,.bolo-appearance--floating,.post__fix,#rightside,#goTop,#sideTop,#back-to-top,.icon-up,.icon__up,.back-to-top,.toTop,#moblieGoTop,.icon-goup) { visibility: hidden; pointer-events: none; }
+  }
+  @media (max-width: 380px) {
+    #soloEditorComment > .vditor-toolbar { gap: 0; padding-inline: 4px; }
+    #soloEditorComment .vditor-toolbar__item { width: 32px; height: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #soloEditor { transition: none; } }
+}

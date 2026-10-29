@@ -65,6 +65,7 @@
     burger.addEventListener('click', function () {
         burger.classList.toggle('is-active');
         menu.classList.toggle('is-active');
+        burger.setAttribute('aria-expanded', String(menu.classList.contains('is-active')));
     });
 
 })();
@@ -123,6 +124,19 @@ $(document).ready(function () {
     }
 
     function applyState(state) {
+        state = Object.assign({}, state);
+        var mobile = window.innerWidth <= 600;
+        var appearance = document.querySelector('.bolo-appearance--floating');
+        if (mobile) state.bottom += (document.querySelector('.mobile-reading-toc') ? 58 : 0) + (appearance ? 58 : 0);
+        var rootStyle = document.documentElement.style;
+        rootStyle.setProperty('--fantastic-control-width', state.width + 'px');
+        rootStyle.setProperty('--fantastic-control-radius', typeof state['border-radius'] === 'number' ? state['border-radius'] + 'px' : state['border-radius']);
+        if (appearance) {
+            var besideReturn = state.classname.includes('fade-in') && state.classname.includes('rise-up');
+            appearance.style.left = besideReturn && typeof state.left === 'number' ? state.left + 'px' : 'auto';
+            appearance.style.right = besideReturn && typeof state.left === 'number' ? 'auto' : (state.right || rightMargin) + 'px';
+            appearance.style.bottom = (mobile ? 78 : besideReturn ? state.bottom + 54 : 80) + 'px';
+        }
         if (lastState !== null && isStateEquals(lastState, state)) {
             return;
         }
@@ -133,6 +147,7 @@ $(document).ready(function () {
             }
             $button.css(prop, state[prop]);
         }
+        rootStyle.setProperty('--fantastic-control-height', $button.outerHeight() + 'px');
         lastState = state;
     }
 
@@ -329,11 +344,12 @@ document.addEventListener('DOMContentLoaded', function () {
         $('body').append($mask);
 
         function toggleToc() {
+            if (window.innerWidth > 1023) return;
             $toc.toggleClass('is-active');
             $mask.toggleClass('is-active');
         }
 
-        $toc.on('click', toggleToc);
+        $toc.on('click', 'a, .fantastic-toc-close', toggleToc);
         $mask.on('click', toggleToc);
         $('.navbar-main .catalogue').on('click', toggleToc);
     }

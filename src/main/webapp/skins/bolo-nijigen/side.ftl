@@ -18,20 +18,15 @@
 
 -->
 <aside class="side">
+
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
     <div class="module">
         <div class="module__list">
-        <#include "../../common-template/toc.ftl"/>
+        <#include "../../common-template/disclosure-toc.ftl"/>
         </div>
     </div>
     </#if>
-    <#if noticeBoard??>
-    <section class="vditor-reset module">
-        <main class="module__content">
-            ${noticeBoard}
-        </main>
-    </section>
-    </#if>
+
 
     <#if interactive == "on">
     <section class="module">
@@ -41,6 +36,13 @@
                 <button class="side__btn" type="submit"><i class="icon__search"></i></button>
             </form>
         </header>
+    </section>
+    </#if>
+    <#if noticeBoard??>
+    <section class="vditor-reset module">
+        <main class="module__content">
+            ${noticeBoard}
+        </main>
     </section>
     </#if>
 
@@ -97,7 +99,7 @@
                         <li>
                             <a rel="nofollow"
                                href="${servePath}${article.articlePermalink}">
-                                ${article.articleTitle}
+                                <span class="skin-list-title">${(article.articleTitle)?html}</span>
                             </a>
                         </li>
                     </#list>
@@ -116,7 +118,7 @@
                         <li>
                             <a rel="nofollow"
                                href="${servePath}${article.articlePermalink}">
-                                ${article.articleTitle}
+                                <span class="skin-list-title">${(article.articleTitle)?html}</span>
                             </a>
                         </li>
                     </#list>

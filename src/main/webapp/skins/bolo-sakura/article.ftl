@@ -31,14 +31,14 @@
         <div class="pattern-center single-center">
             <div class="pattern-attachment-img"><img src="${article.articleImg1URL}"
                                                      data-src="${article.articleImg1URL}"
-                                                     class="lazyload" onerror="imgError(this,3)"
+                                                     class="lazyload" onerror="if(window.imgError) imgError(this)"
                                                      style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;"
                                                      referrerpolicy="origin">
             </div>
-            <header class="pattern-header single-header"><h1 class="entry-title">${article.articleTitle}</h1>
+            <header class="pattern-header single-header"><h1 class="entry-title">${(article.articleTitle)?html}</h1>
                 <p class="entry-census"><span><a href="${servePath}/"><img
                                     src="${article.authorThumbnailURL}"></a></span><span><a
-                                href="https://2heng.xin/author/Mashiro/">${article.authorName}</a></span><span
+                                href="${servePath}/authors/${article.authorId}">${article.authorName}</a></span><span
                             class="bull">·</span>${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}<span
                             class="bull">·</span>${article.articleViewCount} 次阅读<#if interactive == "on"><span
                             class="bull">·</span>${article.articleCommentCount} ${commentLabel}</#if></p>
@@ -57,9 +57,8 @@
             <div id="primary" class="content-area">
                 <main id="main" class="site-main" role="main">
                     <article class="post-4491 post type-post status-publish format-standard has-post-thumbnail hentry category-hacking tag-graphql tag-javascript tag-wordpress">
-                        <div class="toc-container"><div class="toc"></div></div>
+                        <#include "../../common-template/inline-toc.ftl">
                         <div class="entry-content">
-                            <div class="has-toc have-toc"></div>
                             ${article.articleContent}
                             <#if "" != article.articleSign.signHTML?trim>
                                 <div>
@@ -77,9 +76,9 @@
 
         <#if interactive == "on">
         <section class="comments">
-            <ul class="commentwrap">
+            <div class="commentwrap">
                 <@comments commentList=articleComments article=article count=article.articleCommentCount></@comments>
-            </ul>
+            </div>
         </section>
         </#if>
     </div>

@@ -97,14 +97,14 @@
             </#if>
                 <label class="checkbox">
                     <input id="postToCommunity" type="checkbox" />
-                    <a href="https://doc.stackoverflow.wiki/web/#/7?page_id=179" target="_blank">${syncToCommunityLabel}</a>
+                    <a href="https://github.com/Willh92/Volo-solo/blob/HEAD/UPGRADE.md#%E7%A4%BE%E5%8C%BA%E5%90%8C%E6%AD%A5" target="_blank">${syncToCommunityLabel}</a>
                 </label>
             </span>
         </div>
         <div class="fn__clear"></div>
     </div>
-    <div class="fn__right">
-        <button class="marginRight12" class="marginRight12" id="cancelDo">${cancelLabel}</button>
+    <div class="console-form-actions">
+        <button class="marginRight12" id="cancelDo">${cancelLabel}</button>
         <button id="unSubmitArticle" class="fn__none marginRight12" onclick="admin.article.unPublish();">${unPublishLabel}</button>
         <button class="marginRight12" id="saveArticle">${saveLabel}${draftListLabel}</button>
         <button id="submitArticle">${publishLabel}</button>

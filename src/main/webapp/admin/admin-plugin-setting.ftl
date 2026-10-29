@@ -25,20 +25,18 @@
 <button class="marginRight12" id="updateSetting" onclick="updateSetting()">save</button>
 
 <script type="text/javascript">
-	
-	
+
+
 	function updateSetting(){
-	
+
 		var pluginId = $("#pluginId").val();
-	 	var json = $("#jsoneditor").val();
-	 	alert(json);
-		
+
 		$("#loadMsg").text(Label.loadingLabel);
           var requestJSONObject = {
             "oId": pluginId,
             "setting":json
         };
-        
+
         $.ajax({
             url: Label.servePath + "/console/plugin/updateSetting",
             type: "POST",

@@ -95,8 +95,6 @@ public class WAF {
                         requestURL.endsWith("/relevant/articles") ||
                         requestURL.startsWith("/opensearch.xml") ||
                         requestURL.startsWith("/waf/denied") ||
-                        requestIP.equals("0:0:0:0:0:0:0:1") ||
-                        requestIP.equals("127.0.0.1") ||
                         requestURL.startsWith("/admin") ||
                         requestURL.startsWith("/console") ||
                         requestURL.startsWith("/plugins") ||
@@ -104,6 +102,14 @@ public class WAF {
                         requestURL.startsWith("/logout") ||
                         requestURL.startsWith("/start") ||
                         requestURL.startsWith("/favicon.ico") ||
+                        // Loading one page may need dozens of scripts, styles and font files.
+                        // PublicResourceHandler still checks methods, extensions and filesystem containment.
+                        requestURL.startsWith("/js/") ||
+                        requestURL.startsWith("/scss/") ||
+                        requestURL.startsWith("/skins/") ||
+                        requestURL.equals("/sw.js") ||
+                        requestURL.equals("/service-worker.js") ||
+                        requestURL.equals("/robots.txt") ||
                         requestURL.startsWith("/error") ||
                         requestURL.startsWith("/images") ||
                         requestURL.startsWith("/article/commentSync/getList") ||

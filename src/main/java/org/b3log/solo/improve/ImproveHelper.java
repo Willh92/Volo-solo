@@ -23,11 +23,11 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.bolo.tool.PassSSL;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.latke.http.Request;
 import java.io.IOException;
 
 /**
@@ -51,7 +51,7 @@ public class ImproveHelper implements Runnable {
             statisticsObject.put("category", "statistics");
 
             JSONObject statisticsDataObject = new JSONObject();
-            HttpServletRequest request = context.getRequest();
+            Request request = context.getRequest();
 
             /*
               隐私信息说明
@@ -68,11 +68,11 @@ public class ImproveHelper implements Runnable {
                 statisticsDataObject.put("requestURL", request.getRequestURI());
                 String clientIP;
                 try {
-                    clientIP = request.getRemoteHost();
+                    clientIP = request.getRemoteAddr();
                     String[] ipSplit = clientIP.split("\\.");
                     clientIP = ipSplit[0] + "." + ipSplit[1] + "." + ipSplit[2] + ".*";
                 } catch (Exception e) {
-                    clientIP = request.getRemoteHost();
+                    clientIP = request.getRemoteAddr();
                 }
                 statisticsDataObject.put("clientIP", clientIP);
                 statisticsDataObject.put("userAgent", request.getHeader("User-Agent"));

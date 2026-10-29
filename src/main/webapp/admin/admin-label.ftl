@@ -19,20 +19,21 @@
 -->
 <#include "../common-template/label.ftl"/>
 <script type="text/javascript">
+    Label.uncategorizedLabel = "${(uncategorizedLabel!'未分类')?js_string}";
     Label.editorMode = "${editorMode}"
     Label.setMobileLabel = "${setMobileLabel}"
     Label.pushSuccLabel = "${pushSuccLabel}"
     Label.pushToHacpaiLabel = "${pushToHacpaiLabel}"
-    Label.uploadMsg = "${uploadMsg}"
-    Label.uploadToken = "${uploadToken}"
-    Label.uploadURL = "${uploadURL}"
+    Label.uploadMsg = "${uploadMsg?js_string}"
+    Label.uploadToken = "${uploadToken?js_string}"
+    Label.uploadURL = "${uploadURL?js_string}"
     Label.skinDirName = "${skinDirName}"
     Label.userRole = "${userRole}"
     Label.PAGE_SIZE = "${articleListDisplayCount}"
     Label.WINDOW_SIZE = "${articleListPaginationWindowSize}"
     Label.localeString = "${localeString}"
     Label.version = "${version}"
-    Label.reportIssueLabel = "please report this issue on https://github.com/adlered/bolo-solo/issues/new"
+    Label.reportIssueLabel = "please report this issue on https://github.com/Willh92/Volo-solo/issues/new"
     Label.noDataLabel = "${noDataLabel}"
     Label.linkDescriptionLabel = "${linkDescriptionLabel}"
     Label.linkDescription1Label = "${linkDescription1Label}"

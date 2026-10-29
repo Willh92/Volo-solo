@@ -23,12 +23,12 @@
                     <div class="post_cover">
                     <#assign isRss = (article.isRss!false)?c == "true">
                     <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
-                    title="${article.articleTitle}">
+                    title="${(article.articleTitle)?html}">
                         <img class="post_bg" src="${article.articleImg1URL}">
                     </a>
                     </div>
                     <div class="recent-post-info">
-                        <a class="article-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${article.articleTitle}">${article.articleTitle}</a>
+                        <a class="article-title skin-list-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</a>
                         <div class="article-meta-wrap">
                             <time class="post-meta__date" title="">
                                 <i class="far fa-calendar-alt"></i>

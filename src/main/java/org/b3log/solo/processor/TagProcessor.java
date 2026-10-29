@@ -20,20 +20,20 @@ package org.b3log.solo.processor;
 import java.util.List;
 import java.util.Map;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.model.Article;
@@ -56,7 +56,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.3.1
  */
-@RequestProcessor
+@Singleton
 public class TagProcessor {
 
     /**
@@ -115,8 +115,8 @@ public class TagProcessor {
     public void showTagArticles(final RequestContext context) {
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "tag-articles.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
 
         try {
             String tagTitle = context.pathVar("tagTitle");
@@ -124,7 +124,7 @@ public class TagProcessor {
             LOGGER.log(Level.DEBUG, "Tag [title={0}, currentPageNum={1}]", tagTitle, currentPageNum);
             final JSONObject result = tagQueryService.getTagByTitle(tagTitle);
             if (null == result) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -134,13 +134,13 @@ public class TagProcessor {
 
             final JSONObject preference = optionQueryService.getPreference();
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
 
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
             final int windowSize = preference.getInt(Option.ID_C_ARTICLE_LIST_PAGINATION_WINDOW_SIZE);
             final JSONObject tagArticleResult = articleQueryService.getArticlesByTag(tagId, currentPageNum, pageSize);
             if (null == tagArticleResult) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -163,7 +163,7 @@ public class TagProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -183,15 +183,15 @@ public class TagProcessor {
         final String previousPageNum = Integer.toString(currentPageNum > 1 ? currentPageNum - 1 : 0);
 
         dataModel.put(Pagination.PAGINATION_PREVIOUS_PAGE_NUM, "0".equals(previousPageNum) ? "" : previousPageNum);
-        if (pageCount == currentPageNum + 1) { // The next page is the last page
+        if (currentPageNum >= pageCount) {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, "");
         } else {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, currentPageNum + 1);
         }
         dataModel.put(Article.ARTICLES, articles);
         dataModel.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, currentPageNum);
-        dataModel.put(Pagination.PAGINATION_FIRST_PAGE_NUM, pageNums.get(0));
-        dataModel.put(Pagination.PAGINATION_LAST_PAGE_NUM, pageNums.get(pageNums.size() - 1));
+        dataModel.put(Pagination.PAGINATION_FIRST_PAGE_NUM, pageNums.isEmpty() ? 1 : pageNums.get(0));
+        dataModel.put(Pagination.PAGINATION_LAST_PAGE_NUM, pageNums.isEmpty() ? 1 : pageNums.get(pageNums.size() - 1));
         dataModel.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
         dataModel.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
     }

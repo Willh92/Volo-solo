@@ -40,7 +40,7 @@
             <!-- 文章 -->
             <article class="post article">
                 <header class="text-center">
-                    <h3 class="post-title"><span>${article.articleTitle}</span></h3>
+                    <h3 class="post-title"><span>${(article.articleTitle)?html}</span></h3>
                 </header>
                 <p class="post-meta text-center">
                     ${article.authorName} 发表于

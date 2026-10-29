@@ -16,85 +16,38 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.log4j;
-
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.log4j.AppenderSkeleton;
-import org.apache.log4j.Priority;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.core.*;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.plugins.*;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.b3log.solo.bolo.tool.FixSizeLinkedList;
-import org.b3log.solo.improve.LogHelperExecutor;
-
 import java.text.SimpleDateFormat;
 import java.util.*;
-
-/**
- * <h3>bolo-solo</h3>
- * <p>追加到内存的 Appender，用于在线调试后台日志</p>
- *
- * @author : https://github.com/adlered
- * @date : 2020-04-04
- **/
-public class RamAppender extends AppenderSkeleton {
-    // 定长列表
-    public static FixSizeLinkedList<Map<String, Object>> list = new FixSizeLinkedList<>(100);
-    public static long id = 0;
-
-    public static FixSizeLinkedList<Map<String, Object>> getList() {
-        return list;
+@Plugin(name="Ram", category="Core", elementType="appender", printObject=true)
+public final class RamAppender extends AbstractAppender {
+    private static final FixSizeLinkedList<Map<String,Object>> list = new FixSizeLinkedList<>(100);
+    private static long id;
+    private RamAppender(final String name) { super(name, null, PatternLayout.createDefaultLayout(), true, org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY); }
+    @PluginFactory public static RamAppender create(@PluginAttribute("name") final String name) { return new RamAppender(name); }
+    public static synchronized FixSizeLinkedList<Map<String,Object>> getList() {
+        final FixSizeLinkedList<Map<String,Object>> copy = new FixSizeLinkedList<>(100); copy.addAll(list); return copy;
     }
-
-    @Override
-    protected void append(LoggingEvent loggingEvent) {
-        final Map<String, Object> map = new HashMap<>();
-        map.put("name", loggingEvent.getLoggerName());
-        map.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SS").format(new Date(loggingEvent.getTimeStamp())));
-        map.put("level", loggingEvent.getLevel().toString());
-        map.put("message", StringEscapeUtils.escapeHtml(loggingEvent.getMessage().toString()));
-        map.put("methodName", loggingEvent.getLocationInformation().getMethodName());
-        map.put("lineNumber", loggingEvent.getLocationInformation().getLineNumber());
-
-        map.put("id", id);
-        if (id == Long.MAX_VALUE) {
-            id = 0;
-        }
-        ++id;
-
+    @Override public void append(final LogEvent event) {
+        final Map<String,Object> map = new HashMap<>();
+        map.put("name", event.getLoggerName());
+        map.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SS").format(new Date(event.getTimeMillis())));
+        map.put("level", event.getLevel().toString());
+        map.put("message", event.getMessage().getFormattedMessage());
+        final StackTraceElement source = event.getSource();
+        map.put("methodName", source == null ? "" : source.getMethodName());
+        map.put("lineNumber", source == null ? "" : String.valueOf(source.getLineNumber()));
         map.put("throwable", null);
-        if (loggingEvent.getThrowableInformation() != null && loggingEvent.getThrowableInformation().getThrowable() != null) {
-            Throwable t = loggingEvent.getThrowableInformation().getThrowable();
-            Map<String, Object> throwableMap = new HashMap<>();
-            throwableMap.put("message", t.getMessage());
-            throwableMap.put("class", t.getClass().getName());
-            throwableMap.put("stackTrace", t.getStackTrace());
-            map.put("throwable", throwableMap);
+        if (event.getThrown() != null) {
+            final Throwable error = event.getThrown();
+            final Map<String,Object> detail = new HashMap<>();
+            detail.put("message", error.getMessage()); detail.put("class", error.getClass().getName()); detail.put("stackTrace", error.getStackTrace());
+            map.put("throwable", detail);
         }
-
-        list.add(map);
-
-        // 收集最近5条错误报告
-        if (loggingEvent.getLevel().toString().equals("ERROR") || loggingEvent.getLevel().toString().equals("WARN")) {
-            List<Map<String, Object>> logs = new ArrayList<>();
-            int start = list.size() - 1;
-            int stop = start - 4;
-            if (stop < 0) {
-                stop = 0;
-            }
-            for (int i = start; i >= stop; i--) {
-                try {
-                    logs.add(list.get(i));
-                } catch (Exception ignored) {
-                }
-            }
-            LogHelperExecutor.submit(logs);
-        }
-    }
-
-    @Override
-    public void close() {
-    }
-
-    @Override
-    public boolean requiresLayout() {
-        return false;
+        synchronized (RamAppender.class) { map.put("id", id); id = id == Long.MAX_VALUE ? 0 : id + 1; list.add(map); }
     }
 }

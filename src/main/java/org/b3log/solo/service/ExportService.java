@@ -38,14 +38,14 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.Filter;
@@ -60,7 +60,7 @@ import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Execs;
 import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
@@ -234,9 +234,9 @@ public class ExportService {
 
             try {
                 if (StringUtils.isNotBlank(dbPwd)) {
-                    sql = Execs.exec("mysqldump -u" + dbUser + " -p" + dbPwd + " --databases " + db, 60 * 1000 * 5);
+                    sql = Execs.exec(new String[]{"mysqldump", "-u" + dbUser, "-p" + dbPwd, "--databases", db}, 60 * 1000 * 5);
                 } else {
-                    sql = Execs.exec("mysqldump -u" + dbUser + " --databases " + db, 60 * 1000 * 5);
+                    sql = Execs.exec(new String[]{"mysqldump", "-u" + dbUser, "--databases", db}, 60 * 1000 * 5);
                 }
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Export failed, please check command \"mysqldump\" is on your system", e);
@@ -300,21 +300,21 @@ public class ExportService {
      * Exports public articles to GitHub repo "bolo-blog and user index repo".
      * 
      */
-    public void exportGitHub(final boolean enableAutoFlushGitHubProfile) {
+    public synchronized boolean exportGitHub(final boolean enableAutoFlushGitHubProfile) {
         final JSONObject preference = optionQueryService.getPreference();
         if (null == preference) {
-            return;
+            return false;
         }
         if (Latkes.RuntimeMode.PRODUCTION != Latkes.getRuntimeMode()) {
-            return;
+            return false;
         }
         String pat = preference.optString(Option.ID_C_GITHUB_PAT);
         if (StringUtils.isBlank(pat)) {
-            return;
+            return false;
         }
         final JSONObject gitHubUser = GitHubs.getGitHubUser(pat);
         if (null == gitHubUser) {
-            return;
+            return false;
         }
         final Filter published = new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL,
                 Article.ARTICLE_STATUS_C_PUBLISHED);
@@ -325,14 +325,14 @@ public class ExportService {
                     .addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).setPage(1, 20));
         } catch (RepositoryException e) {
             LOGGER.error(String.format("export blog article error: %s", e.getMessage()));
-            return;
+            return false;
         }
         if (null == recentArticles || recentArticles.size() == 0) {
-            return;
+            return false;
         }
-        exportGitHubBlog(recentArticles, preference, gitHubUser);
-        if (enableAutoFlushGitHubProfile)
-            exportGitHubProfile(recentArticles, preference, gitHubUser);
+        final boolean backup = exportGitHubBlog(recentArticles, preference, gitHubUser);
+        final boolean profile = !enableAutoFlushGitHubProfile || exportGitHubProfile(recentArticles, preference, gitHubUser);
+        return backup && profile;
     }
 
     /**
@@ -340,9 +340,8 @@ public class ExportService {
      * https://github.com/88250/solo/issues/125
      * 
      */
-    private void exportGitHubBlog(final List<JSONObject> recentArticles, final JSONObject preference,
+    private boolean exportGitHubBlog(final List<JSONObject> recentArticles, final JSONObject preference,
             final JSONObject gitHubUser) {
-        ;
         try {
             String pat = preference.optString(Option.ID_C_GITHUB_PAT);
             final JSONObject mds = exportHexoMDs();
@@ -375,7 +374,7 @@ public class ExportService {
             boolean ok = GitHubs.createOrUpdateGitHubRepo(pat, loginName, repoName,
                     "✍️ " + clientTitle + " - " + clientSubtitle, Latkes.getServePath());
             if (!ok) {
-                return;
+                return false;
             }
             final String readme = genSoloBlogReadme(recentArticles, clientTitle, clientSubtitle,
                     preference.optString(Option.ID_C_FAVICON_URL), loginName + "/" + repoName);
@@ -383,16 +382,17 @@ public class ExportService {
             if (ok) {
                 ok = GitHubs.updateFile(pat, loginName, repoName, "backup.zip", zipData);
             }
-
+            return ok;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Exports public articles to your repo failed: " + e.getMessage());
+            return false;
         }
     }
 
     /**
      * Exports public articles to github index repo.
      */
-    private void exportGitHubProfile(final List<JSONObject> recentArticles, final JSONObject preference,
+    private boolean exportGitHubProfile(final List<JSONObject> recentArticles, final JSONObject preference,
             final JSONObject gitHubUser) {
         try {
             String pat = preference.optString(Option.ID_C_GITHUB_PAT);
@@ -402,24 +402,24 @@ public class ExportService {
             boolean ok = GitHubs.createOrUpdateGitHubRepo(pat, loginName, loginName,
                     "✍️ " + clientTitle + " - " + clientSubtitle, Latkes.getServePath());
             if (!ok) {
-                return;
+                return false;
             }
 
             final String readme = genMeRepoReadme(recentArticles, loginName);
-            diffUploadReadme(pat, loginName, loginName, readme, "profile-readme.md");
+            ok = diffUploadReadme(pat, loginName, loginName, readme, "profile-readme.md");
             JdbcRepository.dispose();
+            return ok;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Exports public articles to your repo failed: " + e.getMessage());
+            return false;
         }
     }
 
-    private boolean diffUploadReadme(final String pat, final String repoName, final String loginName,
+    synchronized boolean diffUploadReadme(final String pat, final String repoName, final String loginName,
             final String readme,
             final String cacheName) throws IOException {
-        final String tmpDir = System.getProperty("java.io.tmpdir");
         LOGGER.info(String.format("begin get %s README.md:", repoName));
-        String tmpFilePath = tmpDir + File.separator + cacheName;
-        File file = FileUtils.getFile(tmpFilePath);
+        final File file = githubCacheFile(loginName, repoName, cacheName);
 
         // 第一次运行的判断条件
         boolean firstTimeRun = false;
@@ -438,15 +438,26 @@ public class ExportService {
                 return true;
             }
         }
-        // 更新缓存文件
-        FileUtils.write(file, readme, StandardCharsets.UTF_8);
-        boolean ok = GitHubs.updateFile(pat, loginName, repoName, "README.md",
+        boolean ok = uploadGitHubReadme(pat, loginName, repoName, "README.md",
                 readme.getBytes(StandardCharsets.UTF_8));
         if (ok) {
+            FileUtils.write(file, readme, StandardCharsets.UTF_8);
             LOGGER.log(Level.INFO, String.format("Exported public articles to your repo [%s]", repoName));
         }
         return ok;
     }
+
+    protected boolean uploadGitHubReadme(final String pat, final String login, final String repository,
+                                         final String path, final byte[] content) {
+        return GitHubs.updateFile(pat, login, repository, path, content);
+    }
+
+    protected File githubCacheFile(final String login, final String repository, final String cacheName) {
+        return new File(System.getProperty("base.dir", ".") + File.separator + ".cache" + File.separator + "github",
+                "account-" + java.net.URLEncoder.encode(login + "/" + repository, StandardCharsets.UTF_8) + "-" + cacheName);
+    }
+
+    protected String gitHubBlogOrigin() { return Latkes.getServePath(); }
 
     /**
      * Exports public articles to admin's HacPai account.
@@ -579,7 +590,7 @@ public class ExportService {
                     .form("userName", userName,
                             "userB3Key", userB3Key,
                             "clientName", "Solo",
-                            "clientVersion", SoloServletListener.VERSION,
+                            "clientVersion", SoloApplication.VERSION,
                             "clientHost", Latkes.getServePath(),
                             "clientFavicon", preference.optString(Option.ID_C_FAVICON_URL),
                             "clientTitle", clientTitle,
@@ -599,8 +610,8 @@ public class ExportService {
     // Thanks to this lady
     // @see https://github.com/xingwanying/xingwanying/blob/main/README.md
     private String genMeRepoReadme(List<JSONObject> recentArticles, final String username) throws RepositoryException {
-        if (null != recentArticles && recentArticles.size() >= 5) {
-            recentArticles = recentArticles.subList(0, 4);
+        if (null != recentArticles && recentArticles.size() > 5) {
+            recentArticles = recentArticles.subList(0, 5);
         }
         String readme = "\n" + //
                 "\n" + //
@@ -625,10 +636,10 @@ public class ExportService {
         final StringBuilder ret = new StringBuilder("### Latest Blog Posts:\n");
         for (final JSONObject article : articles) {
             final String title = article.optString(Article.ARTICLE_TITLE);
-            final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
+            final String link = gitHubBlogOrigin() + article.optString(Article.ARTICLE_PERMALINK);
             ret.append("\n* [").append(title).append("](").append(link).append(")");
         }
-        ret.append("\n* [").append("More").append("](").append(Latkes.getServePath()).append(")");
+        ret.append("\n* [").append("More").append("](").append(gitHubBlogOrigin()).append(")");
         ret.append("\n\n");
         return ret;
     }
@@ -647,7 +658,7 @@ public class ExportService {
                 +
                 "<a title=\"GitHub repo size in bytes\" target=\"_blank\" href=\"https://github.com/${repoFullName}\"><img src=\"https://img.shields.io/github/repo-size/${repoFullName}.svg?style=flat-square\"></a>\n"
                 +
-                "<a title=\"Bolo Version\" target=\"_blank\" href=\"https://github.com/adlered/bolo-solo\"><img src=\"https://img.shields.io/badge/bolo-${soloVer}-f1e05a.svg?style=flat-square&color=blueviolet\"></a>\n"
+                "<a title=\"Volo Version\" target=\"_blank\" href=\"https://github.com/Willh92/Volo-solo\"><img src=\"https://img.shields.io/badge/Volo-${soloVer}-f1e05a.svg?style=flat-square&color=blueviolet\"></a>\n"
                 +
                 "<a title=\"Hits\" target=\"_blank\" href=\"https://github.com/88250/hits\"><img src=\"https://hits.b3log.org/${repoFullName}.svg\"></a>"
                 +
@@ -656,9 +667,9 @@ public class ExportService {
                 "${body}\n\n" +
                 "---\n" +
                 "\n" +
-                "本仓库通过 [Bolo](https://github.com/bolo-blog/bolo-solo) 自动进行同步更新 ❤️ ";
+                "本仓库通过 [Volo](https://github.com/Willh92/Volo-solo) 自动同步更新，源自 [Bolo](https://github.com/bolo-blog/bolo-solo)。";
         ret = ret.replace("${title}", blogTitle).replace("${subtitle}", blogSubTitle).replace("${favicon}", favicon)
-                .replace("${repoFullName}", repoFullName).replace("${soloVer}", SoloServletListener.BOLO_VERSION)
+                .replace("${repoFullName}", repoFullName).replace("${soloVer}", SoloApplication.BOLO_VERSION)
                 .replace("${body}", bodyBuilder.toString());
         return ret;
     }
@@ -799,7 +810,7 @@ public class ExportService {
 
     private JSONArray getJSONs(final Repository repository) {
         try {
-            return repository.get(new Query()).optJSONArray(Keys.RESULTS);
+            return org.b3log.solo.util.QueryResults.array(repository.get(new Query()));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets data from repository [" + repository.getName() + "] failed", e);
 

@@ -20,17 +20,12 @@
 <footer id="colophon" class="site-footer" role="contentinfo">
     <div class="site-info">
         <div class="footertext">
-            <div class="img-preload">
-                <img src="https://ftp.stackoverflow.wiki/bolo/moezx/cdn/img/Sakura/images/wordpress-rotating-ball-o.svg"><img
-                        src="https://ftp.stackoverflow.wiki/bolo/moezx/cdn/img/Sakura/images/disqus-preloader.svg">
-            </div>
             <p class="foo-logo"
-               style="background-image: url('https://ftp.stackoverflow.wiki/bolo/moezx/cdn/img/Sakura/images/sakura.svg');">
+               style="background-image: url('${staticServePath}/images/volo-mark.svg');">
             </p>
-            <p style="font-family: 'Ubuntu', sans-serif;">
-                <span style="color: #666666;">Crafted with <i class='fa fa-heart animated' style="color: #e74c3c;"></i> by <a rel="me" href="https://github.com/adlered/bolo-solo" target="_blank" style="color: #000000;text-decoration:none;">菠萝博客</a> X <a rel="me" href="https://hello.2heng.xin/@mashiro" target="_blank" style="color: #000000;text-decoration:none;">Mashiro</a></span>
-            </p>
-            Theme <a rel="friend" href="https://github.com/mashirozx/Sakura" target="_blank">${skinDirName}</a><br>
+            Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">Volo</a><br>
+            Theme <a rel="friend noopener noreferrer" href="https://github.com/mashirozx/Sakura" target="_blank">Sakura</a> by <a href="https://hello.2heng.xin/@mashiro" target="_blank" rel="noopener noreferrer">Mashiro</a><br>
+            <small>Adapted from <a href="https://github.com/bolo-blog/bolo-solo" target="_blank" rel="noopener noreferrer">Bolo</a> <i class="fa fa-heart" aria-hidden="true"></i></small><br>
             © ${year} <a href="${servePath}">${blogTitle}</a><br>
             <span>${viewLabel}</span>
             ${statistic.statisticBlogViewCount}
@@ -53,6 +48,7 @@
         </div>
     </div>
     <div class="site-branding">
-        <h1 class="site-title"><a href="${staticServePath}/">${blogTitle}</a></h1>
+        <h1 class="site-title"><a href="${servePath}/" title="${blogTitle?html}">${blogTitle?html}</a></h1>
     </div>
+    <div class="skin-theme-slot sakura-theme-mobile" data-bolo-theme-slot></div>
 </div>

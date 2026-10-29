@@ -22,11 +22,11 @@
         function clearMailCache() {
             noBtnSwal("请稍候", 0);
             $.ajax({
-                type: 'GET',
-                url: 'prop/mail/clear',
+                type: 'POST',
+                url: Label.servePath + '/prop/mail/clear',
                 async: true,
                 success: function (res) {
-                    noBtnSwal("清除成功！", 1000);
+                    noBtnSwal(res.sc ? "清除成功！" : (res.msg || "清除失败！"), 1000);
                 },
                 error: function (e) {
                     noBtnSwal("清除失败！", 1000);
@@ -37,14 +37,14 @@
             noBtnSwal("请稍候", 0);
             $.ajax({
                 type: 'GET',
-                url: 'prop/backup/hacpai/do/upload',
+                url: Label.servePath + '/prop/backup/hacpai/do/upload',
                 async: true,
                 success: function (res) {
                     noBtnSwal("备份成功！", 1000);
                 },
                 error: function (e) {
                     if (e.status === 404) {
-                        noBtnSwal("抱歉，当前 Bolo 版本不支持该功能！小提示：重启服务端，等待 5 分钟后，Bolo 会自动备份文章到链滴（功能开启的情况下）。", 1000);
+                        noBtnSwal("抱歉，当前 Volo 版本不支持该功能！小提示：重启服务端，等待 5 分钟后，Volo 会自动备份文章到链滴（功能开启的情况下）。", 1000);
                     } else {
                         noBtnSwal("备份失败！请检查偏好设置，并确定链滴用户名和 B3log Key 设置正确。", 1000);
                     }
@@ -54,18 +54,14 @@
         function backupToGithub() {
             noBtnSwal("请稍候", 0);
             $.ajax({
-                type: 'GET',
-                url: 'prop/backup/github/do/upload',
+                type: 'POST',
+                url: Label.servePath + '/prop/backup/github/do/upload',
                 async: true,
                 success: function (res) {
-                    noBtnSwal("备份成功！", 1000);
+                    noBtnSwal(res.msg || (res.sc ? "备份成功！" : "GitHub 同步未完成。"), 1800);
                 },
                 error: function (e) {
-                    if (e.status === 404) {
-                        noBtnSwal("抱歉，当前 Bolo 版本不支持该功能！小提示：重启服务端，等待 5 分钟后，Bolo 会自动备份文章到链滴（功能开启的情况下）。", 1000);
-                    } else {
-                        noBtnSwal("备份失败！请检查偏好设置，并确定链滴用户名和 B3log Key 设置正确。", 1000);
-                    }
+                    noBtnSwal(e.responseJSON?.msg || "备份失败，请检查 GitHub Token 的仓库读写权限和网络连接。", 2500);
                 }
             });
         }
@@ -73,14 +69,14 @@
             noBtnSwal("请稍候", 0);
             $.ajax({
                 type: 'GET',
-                url: 'admin/usite/refresh',
+                url: Label.servePath + '/admin/usite/refresh',
                 async: true,
                 success: function (res) {
                     noBtnSwal("刷新成功！", 1000);
                 },
                 error: function (e) {
                     if (e.status === 404) {
-                        noBtnSwal("抱歉，当前 Bolo 版本不支持该功能！", 1000);
+                        noBtnSwal("抱歉，当前 Volo 版本不支持该功能！", 1000);
                     } else {
                         noBtnSwal("获取失败！请检查 链滴用户名 及 B3log Key 是否正确！", 1000);
                     }
@@ -90,18 +86,15 @@
         function opensource() {
             noBtnSwal("请稍候", 0);
             $.ajax({
-                type: 'GET',
-                url: 'sync/github/repo/do/get?githubId=' + $("#githubId").val(),
+                type: 'POST',
+                url: Label.servePath + '/sync/github/repo/do/get',
+                data: {githubId: $("#githubId").val()},
                 async: true,
                 success: function (res) {
-                    noBtnSwal("刷新成功！", 1000);
+                    noBtnSwal(res.msg || (res.sc ? "刷新成功！" : "更新失败。"), 1800);
                 },
                 error: function (e) {
-                    if (e.status === 404) {
-                        noBtnSwal("抱歉，当前 Bolo 版本不支持该功能！", 1000);
-                    } else {
-                        noBtnSwal("更新失败！可能是由于API存在限制，请检查GitHub ID是否填写正确后重试。", 1000);
-                    }
+                    noBtnSwal(e.responseJSON?.msg || "更新失败，请检查 GitHub 用户名和 API 访问状态。", 2500);
                 }
             });
         }
@@ -190,7 +183,7 @@
                             更新“我的开源”页面
                         </td>
                         <td>
-                            输入你的GitHub ID，Bolo 将会自动将你的仓库列表生成为一个 “我在 GitHub 上的开源项目” 文章，生成一个导航，并展示在你的博客中。
+                            输入你的GitHub ID，Volo 将会自动将你的仓库列表生成为一个 “我在 GitHub 上的开源项目” 文章，生成一个导航，并展示在你的博客中。
                         </td>
                         <td style="padding-right: 20px;">
                             <input id="githubId" placeholder="GitHub ID">

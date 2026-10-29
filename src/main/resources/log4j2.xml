@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+  <Appenders>
+    <Console name="stdout" target="SYSTEM_OUT"><PatternLayout pattern="[%p %d{MM-dd HH:mm:ss} %c{1}:%L] %m%n" charset="UTF-8"/></Console>
+    <Ram name="ramAppender"/>
+  </Appenders>
+  <Loggers>
+    <Logger name="io.netty" level="WARN"/>
+    <Root level="INFO" includeLocation="true"><AppenderRef ref="stdout"/><AppenderRef ref="ramAppender"/></Root>
+  </Loggers>
+</Configuration>

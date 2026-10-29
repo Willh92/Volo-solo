@@ -33,20 +33,22 @@
 <#--        <button id="go-up" type="button" title="回到頂部"><i class="fas fa-arrow-up"></i></button>-->
 <#--    </div>-->
 <#--</div>-->
-<section class="rightside" id="rightside" style="opacity: 1; transform: translateX(-38px);">
-    <div id="rightside-config-hide">
+<section class="rightside" id="rightside" aria-hidden="true" inert>
+    <div id="rightside-config-hide" aria-hidden="true" inert>
 
-        <button id="readmode" title="阅读模式"><i class="fas fa-book-open"></i></button>
-        <button id="font_plus" title="放大字体"><i class="fas fa-plus"></i></button>
-        <button id="font_minus" title="缩小字体"><i class="fas fa-minus"></i></button>
+        <button id="readmode" title="阅读模式"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7c-3-3-7-3-10-2v14c3-1 7-1 10 2m0-14c3-3 7-3 10-2v14c-3-1-7-1-10 2V7Z"/></svg></button>
+        <button id="font_plus" title="放大字体"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button id="font_minus" title="缩小字体"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
 
         <button id="darkmode" title="浅色和深色模式转换"><i class="fas fa-adjust"></i></button>
     </div>
     <div id="rightside-config-show">
-        <button id="rightside_config" title="设置"><i class="fas fa-cog"></i></button>
+        <button id="rightside_config" title="设置" aria-label="展开阅读设置" aria-controls="rightside-config-hide" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.7 2.3-2 .9-2.2-.5L2 9l1.6 1.8v2.4L2 15l2.1 3.3 2.2-.5 2 .9L9 21h6l.7-2.3 2-.9 2.2.5L22 15l-1.6-1.8v-2.4L22 9l-2.1-3.3-2.2.5-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 
-        <button class="close" id="mobile-toc-button" title="目录"><i class="fas fa-list-ul"></i></button>
-        <button id="go-up" title="回到顶部"><i class="fas fa-arrow-up"></i></button>
+        <#if article?? && article.articleToC?? && article.articleToC?size gt 0>
+        <button class="close" id="mobile-toc-button" title="${tocLabel?html}"><i class="fas fa-list-ul"></i></button>
+        </#if>
+        <button id="go-up" title="回到顶部"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button>
     </div>
 </section>
 

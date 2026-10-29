@@ -18,26 +18,25 @@
 package org.b3log.solo.util;
 
 import freemarker.template.Configuration;
+import freemarker.core.TemplateClassResolver;
 import freemarker.template.Template;
 import freemarker.template.TemplateExceptionHandler;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Stopwatchs;
-import org.b3log.solo.SoloServletListener;
-import org.b3log.solo.model.Common;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Option;
 
-import javax.servlet.ServletContext;
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.solo.web.WebResources;
+import org.b3log.latke.http.Request;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -67,10 +66,16 @@ public final class Skins {
     private static final Map<String, Map<String, String>> LANG_MAP = new HashMap<>();
 
     static {
-        TEMPLATE_CFG = new Configuration(Configuration.VERSION_2_3_29);
+        TEMPLATE_CFG = new Configuration(Configuration.VERSION_2_3_35);
+        TEMPLATE_CFG.setNewBuiltinClassResolver(TemplateClassResolver.ALLOWS_NOTHING_RESOLVER);
+        TEMPLATE_CFG.setAPIBuiltinEnabled(false);
         TEMPLATE_CFG.setDefaultEncoding("UTF-8");
-        final ServletContext servletContext = SoloServletListener.getServletContext();
-        TEMPLATE_CFG.setServletContextForTemplateLoading(servletContext, "");
+        final WebResources servletContext = SoloApplication.getWebResources();
+        try {
+            TEMPLATE_CFG.setDirectoryForTemplateLoading(servletContext.root().toFile());
+        } catch (java.io.IOException e) {
+            throw new ExceptionInInitializerError(e);
+        }
         TEMPLATE_CFG.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
         TEMPLATE_CFG.setLogTemplateExceptions(false);
     }
@@ -105,7 +110,7 @@ public final class Skins {
      * @return template, returns {@code null} if not found
      */
     public static Template getSkinTemplate(final RequestContext context, final String templateName) {
-        String templateDirName = (String) context.attr(Keys.TEMAPLTE_DIR_NAME);
+        String templateDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
         if (StringUtils.isBlank(templateDirName)) {
             templateDirName = Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME;
         }
@@ -147,7 +152,7 @@ public final class Skins {
                 langs = new HashMap<>();
                 final String language = Locales.getLanguage(localeString);
                 final String country = Locales.getCountry(localeString);
-                final ServletContext servletContext = SoloServletListener.getServletContext();
+                final WebResources servletContext = SoloApplication.getWebResources();
                 final InputStream inputStream = servletContext.getResourceAsStream(
                         "/skins/" + currentSkinDirName + "/lang/lang_" + language + '_' + country + ".properties");
                 if (null != inputStream) {
@@ -192,7 +197,7 @@ public final class Skins {
     public static Set<String> getSkinDirNames() {
         final Set<String> ret = new HashSet<>();
 
-        final ServletContext servletContext = SoloServletListener.getServletContext();
+        final WebResources servletContext = SoloApplication.getWebResources();
         final Set<String> resourcePaths = servletContext.getResourcePaths("/skins");
         for (final String path : resourcePaths) {
             final Path p = Paths.get(path);
@@ -216,59 +221,19 @@ public final class Skins {
      * @return directory name, or {@code null} if not found
      */
     public static String getSkinDirName(final RequestContext context) {
-        // 1. Get skin from query
-        final String specifiedSkin = context.param(Option.CATEGORY_C_SKIN);
-        if (StringUtils.isNotBlank(specifiedSkin)) {
-            final Set<String> skinDirNames = Skins.getSkinDirNames();
-            if (skinDirNames.contains(specifiedSkin)) {
-                return specifiedSkin;
-            } else {
-                return null;
-            }
-        }
-
-        // 2. Get skin from cookie
-        return getSkinDirNameFromCookie(context.getRequest());
+        return getSkinDirNameFromQuery(context.getRequest());
     }
 
     /**
-     * Gets skin directory name from the specified request's cookie.
+     * Gets a validated preview skin from the request query. Previewing a skin
+     * never changes the configured skin or subsequent visits without the query.
      *
      * @param request the specified request
      * @return directory name, or {@code null} if not found
      */
-    public static String getSkinDirNameFromCookie(final HttpServletRequest request) {
-        final Set<String> skinDirNames = Skins.getSkinDirNames();
-        boolean isMobile = Solos.isMobile(request);
-        String skin = null, mobileSkin = null;
-        final Cookie[] cookies = request.getCookies();
-        if (null != cookies) {
-            for (final Cookie cookie : cookies) {
-                if (Common.COOKIE_NAME_SKIN.equals(cookie.getName()) && !isMobile) {
-                    final String s = cookie.getValue();
-                    if (skinDirNames.contains(s)) {
-                        skin = s;
-                        break;
-                    }
-                }
-                if (Common.COOKIE_NAME_MOBILE_SKIN.equals(cookie.getName()) && isMobile) {
-                    final String s = cookie.getValue();
-                    if (skinDirNames.contains(s)) {
-                        mobileSkin = s;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (StringUtils.isNotBlank(skin)) {
-            return skin;
-        }
-        if (StringUtils.isNotBlank(mobileSkin)) {
-            return mobileSkin;
-        }
-
-        return null;
+    public static String getSkinDirNameFromQuery(final Request request) {
+        final String skin = request.getParameter(Option.CATEGORY_C_SKIN);
+        return StringUtils.isNotBlank(skin) && getSkinDirNames().contains(skin) ? skin : null;
     }
 
     /**

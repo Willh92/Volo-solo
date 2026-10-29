@@ -17,15 +17,13 @@
  */
 package org.b3log.solo.bolo.tool;
 
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Solos;
-
-import javax.servlet.http.HttpServletResponse;
+import org.json.JSONObject;
 
 /**
  * <h3>bolo-solo</h3>
@@ -34,40 +32,29 @@ import javax.servlet.http.HttpServletResponse;
  * @author : https://github.com/adlered
  * @date : 2020-12-19 22:14
  **/
-@RequestProcessor
+@Singleton
 public class PBConvert {
 
     final private PBThread pbThread = new PBThread();
 
-    @RequestProcessing(value = "/test", method = HttpMethod.GET)
-    public void test(final RequestContext context) {
-        Logger.getLogger(PBConvert.class).error("crash!test", new NullPointerException());
-        Logger.getLogger(PBConvert.class).log(Level.ERROR, "wow");
-        return ;
-    }
-
     @RequestProcessing(value = "/PBC/status", method = {HttpMethod.GET})
     public void getPBStatus(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
             return;
         }
 
-        context.renderJSON().renderMsg(pbThread.getStatus());
+        org.b3log.solo.web.JsonResponses.json(context).renderMsg(pbThread.getStatus());
     }
 
-    @RequestProcessing(value = "/PBC/run", method = {HttpMethod.GET})
+    @RequestProcessing(value = "/PBC/run", method = HttpMethod.POST)
     public void runPB(final RequestContext context) {
-        synchronized (this) {
-            if (!Solos.isAdminLoggedIn(context)) {
-                context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
-                return;
-            }
-
-            Thread thread = new Thread(pbThread);
-            thread.start();
-
-            context.renderJSON().renderMsg("OK");
+        if (!AdminRequests.allowWrite(context)) return;
+        if (!pbThread.start()) {
+            AdminRequests.reject(context, 409, "转换任务正在运行，请勿重复提交。");
+            return;
         }
+        context.renderJSON(new JSONObject().put("sc", true).put("msg", "转换任务已启动，请稍后查看状态。"));
     }
 }

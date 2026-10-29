@@ -22,43 +22,39 @@
         <div class="navbar-brand transparent">
             <a class="navbar-item navbar-logo" href="${servePath}" rel="start">
                 <img src="${faviconURL}" alt="${blogTitle!}" height="28"/>
-                &nbsp;${blogTitle!}
+                <span class="fantastic-brand-title">${(blogTitle!'')?html}</span>
             </a>
-            <span class="navbar-burger burger" data-target="navMenu">
+            <div class="skin-theme-slot fantastic-theme-mobile" data-bolo-theme-slot></div>
+            <button type="button" class="navbar-burger burger" data-target="navMenu" aria-controls="navMenu" aria-expanded="false" aria-label="${(navigationLabel!'导航菜单')?html}">
                     <span></span>
                     <span></span>
                     <span></span>
-                </span>
+                </button>
         </div>
         <div id="navMenu" class="navbar-menu transparent">
             <div class="navbar-start transparent">
                 <div class="navbar-start">
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/">${indexLabel}</a>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/archives.html">${archiveLabel}</a>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/tags.html">${allTagsLabel}</a>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/category.html">${categoryLabel}</a>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/links.html">${linkLabel}</a>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/follows.html">${followLabel}</a>
+                    <#if interactive == "on"><a class="navbar-item fantastic-menu-core" href="${servePath}/search">${searchLabel}</a></#if>
                     <#list pageNavigations as page>
-                        <a class="navbar-item" href="${page.pagePermalink}" target="${page.pageOpenTarget}"
+                        <a class="navbar-item" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"
                            rel="section">
-                            <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon}"></#if>
-                            ${page.pageTitle}
+                            <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon?html}"></#if>
+                            ${page.pageTitle?html}
                         </a>
                     </#list>
                 </div>
             </div>
             <div class="navbar-end">
-                <#if interactive == "on">
-                    <#if isLoggedIn>
-                        <a class="navbar-item" href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                            ${adminLabel}
-                        </a>
-                        <a class="navbar-item" href="${logoutURL}">
-                            ${logoutLabel}
-                        </a>
-                    <#else>
-                        <a class="navbar-item" href="${servePath}/start">
-                            ${startToUseLabel}
-                        </a>
-                    </#if>
-                </#if>
+                <div class="skin-theme-slot fantastic-theme-desktop" data-bolo-theme-slot></div>
             </div>
         </div>
+    </div>
 </nav>
 
 

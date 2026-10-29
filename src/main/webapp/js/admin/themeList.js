@@ -53,10 +53,10 @@ admin.themeList = {
           }
 
           skinsHTML += '<div class="fn__left skinItem' + selectedClass +
-            '"><div class="ft__center">' + skins[i].skinDirName
+            '"><div class="ft__center">' + skins[i].skinDirName.replace(/^bolo-/, '')
             + '<p class="skinDesc">' + skins[i].skinName + '</p></div><img class="skinPreview" src="'
             + Label.staticServePath + '/skins/' + skins[i].skinDirName
-            + '/preview.png"/><div>'
+            + (skins[i].skinDirName === 'volo-studio' ? '/preview.svg' : '/preview.png') + '"/><div>'
 
           if (skins[i].skinDirName !== result.skin.skinDirName) {
             skinsHTML += '<button class="small update fn__left" data-name="' +

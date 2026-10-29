@@ -22,15 +22,16 @@
         <div class="left">
             <h1>
                 <a class="title" href="${servePath}">
-                    ${blogTitle}
+                    ${blogTitle?html}
                 </a>
             </h1>
             <span class="sub-title">${blogSubtitle}</span>
         </div>
+        <div class="skin-theme-slot" data-bolo-theme-slot></div>
         <#if interactive == "on">
         <form class="right" action="${servePath}/search">
-            <input id="search" type="text" name="keyword" />
-            <input type="submit" value="" class="none" />
+            <input id="search" type="search" name="keyword" placeholder="${searchLabel}" aria-label="${searchLabel}" />
+            <button class="neoease-search-submit" type="submit" aria-label="${searchLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg></button>
         </form>
         </#if>
         <div class="clear"></div>
@@ -44,18 +45,18 @@
             </li>
             <#list pageNavigations as page>
             <li>
-                <a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon}"></#if>${page.pageTitle}</a>
+                <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon?html}"></#if>${page.pageTitle?html}</a>
             </li>
-            </#list>  
+            </#list>
             <li>
-                <a href="${servePath}/tags.html">${allTagsLabel}</a>  
+                <a href="${servePath}/tags.html">${allTagsLabel}</a>
             </li>
             <li>
                 <a rel="alternate" href="${servePath}/rss.xml">RSS<img src="${staticServePath}/images/feed.png" alt="RSS"/></a>
             </li>
         </ul>
-        <div class="right">
-            <span class="translate-ico" onclick="goTranslate()"></span>
+        <div class="right nav-stats">
+            <button type="button" class="translate-ico" onclick="goTranslate()" title="Translate" aria-label="Translate">译</button>
             <div class="right">
                 ${viewCount1Label}
                 <span class="tip">

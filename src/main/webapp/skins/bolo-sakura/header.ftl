@@ -25,39 +25,7 @@
               rel="stylesheet"/>
         <link media="all" href="${staticServePath}/skins/${skinDirName}/css/style.css?${staticResourceVersion}"
               rel="stylesheet"/>
-        <script type='application/ld+json' class='yoast-schema-graph yoast-schema-graph--main'>{
-                "@context": "https://schema.org",
-                "@graph": [
-                    {
-                        "@type": "WebSite",
-                        "@id": "https://2heng.xin/#website",
-                        "url": "https://2heng.xin/",
-                        "name": "\u6a31\u82b1\u5e84\u7684\u767d\u732b",
-                        "publisher": {
-                            "@id": "https://2heng.xin/#/schema/person/"
-                        },
-                        "potentialAction": {
-                            "@type": "SearchAction",
-                            "target": "https://2heng.xin/?s={search_term_string}",
-                            "query-input": "required name=search_term_string"
-                        }
-                    },
-                    {
-                        "@type": "CollectionPage",
-                        "@id": "https://2heng.xin/#webpage",
-                        "url": "https://2heng.xin/",
-                        "inLanguage": "en-US",
-                        "name": "\u6a31\u82b1\u5e84\u7684\u767d\u732b | \u306d\u3053\u30fb\u3057\u308d\u30fb\u307e\u3057\u308d",
-                        "isPartOf": {
-                            "@id": "https://2heng.xin/#website"
-                        },
-                        "about": {
-                            "@id": "https://2heng.xin/#/schema/person/"
-                        },
-                        "description": "\u55b5\u55b5\u55b5\uff01\u56de\u5f52\u73b0\u5b9e\u7684\u5c0f\u8d85\u4eba~"
-                    }
-                ]
-            }</script>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css"/>
         <style type="text/css">
             tr th, tr td {
                 border: 1px solid #1d1f21;
@@ -97,27 +65,16 @@
             }
 
             .centerbg {
-                background-image: url("https://programmingwithlove.stackoverflow.wiki/randombg");
+                background-image: linear-gradient(135deg, #eed8df, #e4edf2);
                 background-position: center center;
                 background-attachment: inherit;
             }
         </style>
-        <script>/*Initial Variables*/
-            var mashiro_global = {};
-            var mashiro_option = new function () {
-                this.NProgressON = false;
-                this.site_name = "${blogTitle}";
-            };;
-            mashiro_option.jsdelivr_css_src = "https://ftp.stackoverflow.wiki/bolo/moezx/cdn/css/lib.min.css";
-            mashiro_option.head_notice = "on";
-            /*End of Initial Variables*/
-            console.info("%c Bolo %c", "background:#24272A; color:#ffffff", "", "https://github.com/adlered/bolo-solo");
-            mashiro_option.land_at_home = true;</script>
         <script type="text/javascript">if (!!window.ActiveXObject || "ActiveXObject" in window) { //is IE?
                 alert('朋友，IE浏览器未适配哦~（QQ、360浏览器请关闭 IE 模式访问~）');
             }</script>
         <script src="${staticServePath}/js/lib/jquery/jquery.min.js"></script>
-        <link rel="stylesheet" href="https://ftp.stackoverflow.wiki/bolo/fancybox/dist/jquery.fancybox.min.css"/>
-        <script src="https://ftp.stackoverflow.wiki/bolo/fancybox/dist/jquery.fancybox.min.js"></script>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.css"/>
+        <script src="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.js"></script>
     </@head>
 </head>

@@ -43,8 +43,8 @@ ${addLinkLabel}
     <label>${linkDescription1Label}</label>
     <input id="linkDescriptionUpdate" type="text"/>
     <label>${linkIcon1Label}</label>
-    <input id="linkIconUpdate" type="text"/><br><br>
-    <button onclick="admin.linkList.update();" class="fn__right">${updateLabel}</button>
+    <input id="linkIconUpdate" type="text"/>
+        <div class="console-form-actions"><button onclick="admin.linkList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

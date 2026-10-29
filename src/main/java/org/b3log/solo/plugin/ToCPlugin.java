@@ -17,11 +17,11 @@
  */
 package org.b3log.solo.plugin;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.event.AbstractEventListener;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.plugin.NotInteractivePlugin;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.event.EventTypes;
 import org.b3log.solo.model.Article;
 import org.json.JSONObject;
@@ -47,8 +47,12 @@ public class ToCPlugin extends NotInteractivePlugin {
     /**
      * Public constructor.
      */
-    public ToCPlugin() {
-        addEventListener(new ToCEventHandler());
+    private final ToCEventHandler listener = new ToCEventHandler();
+    @Override protected void start() {
+        org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.latke.event.EventManager.class).registerListener(listener);
+    }
+    @Override protected void stop() {
+        org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.latke.event.EventManager.class).unregisterListener(listener);
     }
 
     @Override

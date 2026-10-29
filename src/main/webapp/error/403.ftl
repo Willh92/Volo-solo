@@ -17,26 +17,5 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<#include "../common-template/macro-common_page.ftl">
-
-<@commonPage "403 权限不足">
-<h2>403 权限不足!</h2>
-<img class="img-error" src="${staticServePath}/images/403.png" alt="403" title="403 Forbidden!" />
-<div class="a-error">
-    ${msg!}
-    您的账号没有后台管理权限<br>
-    <span id="sec">3</span> 秒后返回 <a href="${servePath}">主页</a>
-    <script>
-        i = 2;
-        intervalId = setInterval("fun()", 1000);
-        function fun() {
-            if (i == 0) {
-                window.location.href = "${servePath}";
-                clearInterval(intervalId);
-            }
-            document.getElementById("sec").innerHTML = i;
-            i--;
-        }
-    </script>
-</div>
-</@commonPage>
+<#include "../common-template/macro-utility_page.ftl"/>
+<@errorPage code="403" title="暂时无法访问" description="你没有访问这个页面的权限，或请求已被安全规则拦截。" hint="当前请求已停止处理。你仍然可以返回首页继续阅读。" redirectSeconds=8/>

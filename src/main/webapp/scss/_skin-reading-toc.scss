@@ -1,0 +1,66 @@
+/* Directory typography follows the surrounding skin, with stable summary dimensions. */
+html[data-bolo-skin='bolo-9IPHP'] {
+  @media (min-width: 1200px) { aside:has(.reading-toc-disclosure) { position: sticky; top: 100px; align-self: flex-start; max-height: calc(100dvh - 130px); overflow-y: auto; } }
+  .reading-toc-disclosure > summary { font-weight: 400; padding-inline: 10px; }
+  .article__toc > li > a { padding: 7px 10px; border-radius: 3px; }
+  &[data-bolo-theme='dark'] .navbar { border-color: var(--bolo-line); }
+}
+html[data-bolo-skin='bolo-bubble'] {
+  .post__toc { box-shadow: 0 4px 18px #273f4c08; }
+  .article__toc > li > a { border-radius: 8px; }
+}
+html[data-bolo-page='public'][data-bolo-skin='bolo-butterfly'] {
+  .reading-toc-disclosure > summary { font-size: 14px; font-weight: 600; }
+  .article__toc > li > a { padding-block: 7px; border-radius: 4px; }
+  @media(min-width:1400px) {
+    .layout_post.has-reading-toc { box-sizing: border-box; width: calc(100% - 260px); max-width: 1000px; margin-left: max(20px, calc((100% - 1240px) / 2)); margin-right: 240px; }
+    .post__toc { left: auto !important; right: max(20px, calc((100% - 1240px) / 2)); display: block; }
+  }
+}
+html[data-bolo-skin='bolo-casper'] {
+  @media (min-width: 1400px) { .post__toc { display: block; left: calc(50% + 440px); right: auto; } }
+  .reading-toc-disclosure > summary { font-size: 12px; letter-spacing: .025em; }
+  .article__toc > li > a { padding-block: 7px; border-radius: 3px; }
+}
+html[data-bolo-page='public'][data-bolo-skin='bolo-casper'] .article__bottom {
+  :is(#randomArticles,#relevantArticles)::before { filter: brightness(.4) saturate(.75); opacity: 1; }
+  :is(#randomArticles,#relevantArticles) :is(a,h3,h4) { color: #f0f3f4; text-shadow: 0 1px 3px #0006; }
+  :is(#randomArticles,#relevantArticles) a { border-color: #aebac26b; }
+  :is(#randomArticles,#relevantArticles) a:hover { color: #fff; border-color: #edf2f3; }
+}
+html[data-bolo-skin='bolo-emiya'] {
+  .sidebar__toc .reading-toc-disclosure > summary { padding: 8px 0; font-size: 16px; font-weight: 600; }
+  .sidebar__toc .article__toc > li > a { font-size: 14px; padding-block: 8px; }
+}
+html[data-bolo-skin='bolo-fantastic'] {
+  #toc .reading-toc-disclosure > summary { font-size: 14px; font-weight: 600; }
+  #toc .article__toc > li > a { border-radius: 5px; }
+}
+html[data-bolo-skin='bolo-Jane'] {
+  .reading-toc-disclosure > summary { font-size: 12px; letter-spacing: .035em; }
+  .reading-toc-disclosure .article__toc > li > a { padding-block: 7px; border-radius: 2px; }
+}
+html[data-bolo-skin='bolo-NeoEase'] {
+  .reading-toc-disclosure > summary { padding-inline: 0; border-bottom: 1px solid var(--bolo-line); border-radius: 0; font-size: 14px; }
+  .article__toc > li > a { padding-block: 7px; border-radius: 2px; }
+}
+html[data-bolo-skin='bolo-nexmoe'] .nexmoe-toc .article__toc > li > a { border-radius: 10px; }
+html[data-bolo-skin='bolo-next'] {
+  .reading-toc-disclosure > summary { font-size: 13px; font-weight: 400; }
+  .sidebar .next-toc-card .article__toc > li > a { border-radius: 0; padding-block: 7px; }
+}
+html[data-bolo-skin='bolo-nijigen'] .article__toc > li > a { border-radius: 7px; }
+html[data-bolo-skin='bolo-pinghsu'] {
+  .reading-toc-disclosure > summary { font-size: 12px; letter-spacing: .04em; }
+  .article__toc > li > a { padding-block: 7px; border-radius: 3px; }
+}
+html[data-bolo-skin='bolo-sakura'] {
+  .reading-toc-inline { border-radius: 12px; }
+  .reading-toc-inline > summary { font-weight: 500; }
+  .article__toc > li > a { border-radius: 9px; }
+}
+html[data-bolo-skin='bolo-xups'] {
+  .reading-toc-inline { border-radius: 4px; }
+  .reading-toc-inline > summary { font-weight: 400; }
+  .article__toc > li > a { border-radius: 3px; }
+}

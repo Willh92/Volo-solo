@@ -104,7 +104,7 @@ public class CategoryTagRepository extends AbstractRepository {
      */
     public void removeByCategoryId(final String categoryId) throws RepositoryException {
         final Query query = new Query().setFilter(new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId));
-        final JSONArray relations = get(query).optJSONArray(Keys.RESULTS);
+        final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
         for (int i = 0; i < relations.length(); i++) {
             final JSONObject rel = relations.optJSONObject(i);
             remove(rel.optString(Keys.OBJECT_ID));
@@ -119,7 +119,7 @@ public class CategoryTagRepository extends AbstractRepository {
      */
     public void removeByTagId(final String tagId) throws RepositoryException {
         final Query query = new Query().setFilter(new PropertyFilter(Tag.TAG + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, tagId));
-        final JSONArray relations = get(query).optJSONArray(Keys.RESULTS);
+        final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
         for (int i = 0; i < relations.length(); i++) {
             final JSONObject rel = relations.optJSONObject(i);
             remove(rel.optString(Keys.OBJECT_ID));

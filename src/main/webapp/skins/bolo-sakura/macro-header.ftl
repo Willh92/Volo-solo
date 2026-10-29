@@ -59,7 +59,7 @@
     </div>
 </figure>
 <div id="video-container" style="">
-    <video id="bgvideo" class="video" video-name="" src="" width="auto" preload="auto"></video>
+    <video id="bgvideo" class="video" video-name="" width="auto" preload="none"></video>
     <!--<div id="video-btn" class="loadvideo videolive">
     </div>-->
     <div id="video-add">
@@ -75,8 +75,7 @@
     <header class="site-header no-select is-homepage" role="banner">
         <div class="site-top">
             <div class="site-branding">
-                <span class="site-title"><span class="logolink moe-mashiro"><a href="${servePath}/" alt="${blogTitle}" style="width: 330px;"><ruby>
-                                <span class="no">#</span>&nbsp;<span class="shironeko">${blogTitle}</span><rp></rp><rt class="chinese-font">${blogSubtitle}</rt><rp></rp></ruby></a></span></span>
+                <span class="site-title"><span class="logolink"><a href="${servePath}/" title="${blogTitle}"># ${blogTitle}</a></span></span>
             </div>
             <div class="lower-cantiner">
                 <div class="lower">
@@ -101,46 +100,27 @@
                             <li><a href="${servePath}/archives.html"><span class="faa-parent animated-hover"><i
                                                 class="fa fa-archive faa-horizontal" aria-hidden="true"></i> 归档</span></a></li>
                             <#list pageNavigations as page>
-                                <li><a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><span
+                                <li><a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><span
                                                 class="faa-parent animated-hover">
                                             <#if page.pageIcon?contains("/")>
                                                 <img class="icon faa-horizontal" aria-hidden="true" style="height: 16px; width: 16px;"
-                                                     src="${page.pageIcon}">
+                                                     src="${page.pageIcon?html}">
                                             <#else>
-                                                <i class="fa fa-${page.pageIcon} faa-horizontal" aria-hidden="true"></i>
-                                            </#if> ${page.pageTitle}</span></a></li>
+                                                <i class="fa fa-${page.pageIcon?html} faa-horizontal" aria-hidden="true"></i>
+                                            </#if> ${page.pageTitle?html}</span></a></li>
                             </#list>
                         </ul>
                     </nav>
                 </div>
             </div>
             <div class="header-user-avatar">
-                <#if interactive == "on">
-                <#if isLoggedIn>
-                    <a href="${servePath}/admin-index.do#main"><img class="faa-shake animated-hover"
-                                                      src="${gravatar}"
-                                                      width="30" height="30"></a>
-                    <div class="header-user-menu">
-                        <div class="herder-user-name logged-in-as">
-                            ${adminLabel}
-                        </div>
-                    </div>
-                <#else>
-                    <a href="${servePath}/start"><img class="faa-shake animated-hover"
-                                                                  src="https://ftp.stackoverflow.wiki/bolo/moezx/cdn/img/Sakura/images/none.png"
-                                                                  width="30" height="30"></a>
-                    <div class="header-user-menu">
-                        <div class="herder-user-name no-logged">
-                            ${startToUseLabel}
-                        </div>
-                    </div>
-                </#if>
-                </#if>
+
 
             </div>
+            <div class="skin-theme-slot" data-bolo-theme-slot></div>
             <#if interactive == "on">
             <div class="searchbox">
-                <i class="iconfont js-toggle-search iconsearch icon-search"></i>
+                <button class="js-toggle-search sakura-search-toggle" type="button" aria-label="${searchLabel}"><i class="fa fa-search" aria-hidden="true"></i></button>
             </div>
             </#if>
         </div>

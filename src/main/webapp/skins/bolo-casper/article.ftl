@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -41,8 +41,10 @@
     <@header type="article"></@header>
     <div class="article__top">
         <div class="fn__clear">
+            <#if article?? && article.articleToC?? && article.articleToC?size gt 0>
             <div class="toc fn__none" onclick="$('.post__toc').slideToggle()">${tocLabel}</div>
-            <div class="title fn__pointer" onclick="Util.goTop()">${article.articleTitle}</div>
+            </#if>
+            <div class="title fn__pointer" onclick="Util.goTop()">${(article.articleTitle)?html}</div>
             <#include "../../common-template/share.ftl">
         </div>
         <progress class="article__progress"></progress>
@@ -60,7 +62,7 @@
                 </#list>
             </div>
             <h2 class="item__title">
-                ${article.articleTitle}
+                ${(article.articleTitle)?html}
                 <#if article.articlePutTop>
                     <sup>
                         ${topArticleLabel}
@@ -85,13 +87,13 @@
     </div>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
         <div class="post__toc">
-            <#include "../../common-template/toc.ftl"/>
+            <#include "../../common-template/disclosure-toc.ftl"/>
         </div>
     </#if>
     <#if interactive == "on">
     <@comments commentList=articleComments article=article></@comments>
     </#if>
-    <div class="article__bottom">
+    <div class="article__bottom" data-article-recommendations>
         <div class="wrapper">
             <div class="fn__flex">
                 <div class="item" id="randomArticles"></div>

@@ -17,8 +17,8 @@
  */
 package org.b3log.solo.model.rss;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.util.XMLs;
 
 import java.util.ArrayList;
@@ -303,21 +303,21 @@ public final class Channel {
         stringBuilder.append(START);
 
         stringBuilder.append(START_TITLE_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(title));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(title));
         stringBuilder.append(END_TITLE_ELEMENT);
 
         stringBuilder.append(START_LINK_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(link));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(link));
         stringBuilder.append(END_LINK_ELEMENT);
 
         stringBuilder.append(ATOM_LINK_ELEMENT.replace(ATOM_LINK_VARIABLE, atomLink));
 
         stringBuilder.append(START_DESCRIPTION_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(description));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(description));
         stringBuilder.append(END_DESCRIPTION_ELEMENT);
 
         stringBuilder.append(START_GENERATOR_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(generator));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(generator));
         stringBuilder.append(END_GENERATOR_ELEMENT);
 
         stringBuilder.append(START_LAST_BUILD_DATE_ELEMENT);
@@ -325,7 +325,7 @@ public final class Channel {
         stringBuilder.append(END_LAST_BUILD_DATE_ELEMENT);
 
         stringBuilder.append(START_LANGUAGE_ELEMENT);
-        stringBuilder.append(StringEscapeUtils.escapeXml(language));
+        stringBuilder.append(StringEscapeUtils.escapeXml11(language));
         stringBuilder.append(END_LANGUAGE_ELEMENT);
 
         for (final Item item : items) {

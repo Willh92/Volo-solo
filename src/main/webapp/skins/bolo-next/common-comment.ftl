@@ -17,30 +17,35 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" class="fn-clear">
+<li id="${comment.oId}" class="fn-clear" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comment-body" style="margin: 8px 0 0 0px;">
         <div class="fn-clear comment-meta">
-                <span class="fn-left">
+                <span class="comment-author">
                     <#if "http://" == comment.commentURL>
-                        <a>${comment.commentName}</a>
+                        <a>${comment.commentName?html}</a>
                     <#else>
-                        <a href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+                        <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
                     </#if>
                     <#if comment.isReply>
                         @
                     <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                        onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 23);"
                        onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-                    >${comment.commentOriginalCommentName}</a>
+                    >${comment.commentOriginalCommentName?html}</a>
                     </#if>
-                        <time>${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+                </span>
+                <span class="comment-details">
+                        <time datetime="${comment.commentDate2?string('yyyy-MM-dd')}">${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
                 </span>
         <#if article.commentable>
-            <a class="fn-right" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">${replyLabel}</a>
+            <a class="comment-reply" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
         </#if>
         </div>
         <div class="comment-content post-body vditor-reset">
-        ${comment.commentContent}
+        <div data-comment-content>${comment.commentContent}</div>
         </div>
     </div>
 </li>

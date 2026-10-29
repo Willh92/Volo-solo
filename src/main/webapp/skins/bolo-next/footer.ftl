@@ -31,10 +31,10 @@
             &copy; ${year}
             <a href="${servePath}">${blogTitle}</a>
             ${footerContent}
-            Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
+            Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
 
             <div class="fn-right">
-                Theme ${skinDirName}
+                Theme ${skinDirName?remove_beginning('bolo-')}
                 <sup>[<a href="https://github.com/iissnan/hexo-theme-next" target="_blank">ref</a>]</sup>
                 by <a href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
             </div>

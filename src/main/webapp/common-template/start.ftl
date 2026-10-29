@@ -18,144 +18,61 @@
 
 -->
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN" data-bolo-admin-url="${(adminPanelPath!'/admin-index.do')?html}" data-bolo-login-url="${(adminLoginPath!'/start')?html}">
 <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
-    <meta name="viewport" content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no' name='viewport' />
-    <link href="https://ftp.stackoverflow.wiki/bolo/start/css/font.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://ftp.stackoverflow.wiki/bolo/start/css/font-awesome.min.css" />
-    <link href="https://ftp.stackoverflow.wiki/bolo/start/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="https://ftp.stackoverflow.wiki/bolo/start/css/now-ui-kit.css?v=1.1.0" rel="stylesheet" />
-    <link href="https://ftp.stackoverflow.wiki/bolo/start/css/demo.css" rel="stylesheet" />
-    <link rel="icon" type="image/png" href="${faviconURL}"/>
-    <link rel="apple-touch-icon" href="${faviconURL}">
-    <link rel="shortcut icon" type="image/x-icon" href="${faviconURL}">
-    <title>管理登录</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="robots" content="noindex,nofollow"/>
+    <meta name="theme-color" content="#173f3b"/>
+    <title>登录管理后台 · Volo</title>
+    <meta name="bolo-accent" content="${appearanceAccent!'forest'}"/>
+    <link rel="icon" href="${faviconURL?html}"/>
+    <link rel="stylesheet" href="${staticServePath}/scss/account.css?${staticResourceVersion}"/>
+    <script data-bolo-navigation src="${staticServePath}/js/auth-navigation.js?${staticResourceVersion}"></script>
+    <script data-bolo-navigation src="${staticServePath}/js/appearance.js?${staticResourceVersion}"></script>
+    <link rel="stylesheet" href="${staticServePath}/scss/appearance.css?${staticResourceVersion}"/>
 </head>
-
-<body class="login-page sidebar-collapse">
-<nav class="navbar navbar-expand-lg bg-primary fixed-top navbar-transparent" color-on-scroll="400">
-    <div class="container">
-        <div class="collapse navbar-collapse justify-content-start">
-            <ul class="navbar-nav">
-                <li class="nav-item">
-                    <a class="nav-link" rel="tooltip" title="返回主页" data-placement="bottom" href="${staticServePath}/">
-                        <i class="fa fa-home"></i>
-                        <p class="d-lg-none d-xl-none">返回主页</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" rel="tooltip" title="开源驱动：菠萝博客" data-placement="bottom" href="https://github.com/adlered/bolo-solo" target="_blank">
-                        <i class="fa fa-github"></i>
-                        <p class="d-lg-none d-xl-none">Bolo on GitHub</p>
-                    </a>
-                </li>
-            </ul>
-        </div>
-    </div>
-</nav>
-<div class="page-header" filter-color="orange">
-    <div class="page-header-image" id="bgHeader"></div>
-    <div class="container">
-        <div class="col-md-4 content-center">
-            <div class="card card-login card-plain">
-                <form class="form" action="${servePath}/oauth/bolo/login" method="POST" id="loginForm">
-                    <div class="content">
-                        <div class="input-group form-group-no-border input-lg">
-                                <span class="input-group-addon" style="padding-right: 12px;">
-                                    <i class="fa fa-user-circle-o"></i>
-                                </span>
-                            <input type="text" id="username" name="username" class="form-control" placeholder="管理员用户名" />
-                        </div>
-                        <div class="input-group form-group-no-border input-lg">
-                                <span class="input-group-addon" style="padding-right: 12px;">
-                                    <i class="fa fa-key"></i>
-                                </span>
-                            <input type="password" id="password" name="password" class="form-control" placeholder="管理员密码"  />
-                        </div>
-                    </div>
-                    <div class="footer text-center">
-                        <button class="btn btn-primary btn-round btn-lg btn-block" id="loginBtn" type="button">${loginLabel}</button>
-                    </div>
-                </form>
-                <span id="status"></span>
-            </div>
-        </div>
-    </div>
-    <script>
-        status = '${data}';
-        if (status === '2') {
-            document.getElementsByTagName("title")[0].innerText = '快速迁移到 Bolo';
-            document.getElementById('status').innerHTML = '检测到您是Solo用户 ❤️<br>请按照以下步骤进行快速迁移：<br><b>1. 备份您的数据库</b><br><b>2. 在上方填写您想设定的管理员用户名和密码</b><br><b>3. 点击开始迁移按钮，稍等片刻即可</b>';
-            document.getElementById('loginBtn').innerHTML = '开始迁移';
-            document.getElementsByClassName("navbar")[0].remove();
-            setTimeout(function () {
-                document.getElementsByClassName("footer")[1].remove();
-            }, 1000);
-            document.getElementById('loginBtn').onclick = function () {
-                if (document.getElementById('username').value !== '' && document.getElementById('password').value !== '') {
-                    let pwdRegex = new RegExp('(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}');
-                    if (!pwdRegex.test(document.getElementById('password').value)) {
-                        alert("密码强度过低！请使用8-30位密码，必须包含字母和数字。");
-                    } else {
-                        document.getElementById('loginBtn').innerHTML = '<i class="fa fa-spinner fa-pulse"></i> 正在快速迁移中，请稍候';
-                        document.getElementById('loginForm').submit();
-                    }
-                } else {
-                    alert('请填写用户名和密码！');
-                }
-            }
-        } else {
-            if (status === '0') {
-                document.getElementById('status').innerHTML = '用户名或密码错误';
-            }
-            if (status === '-1') {
-                document.getElementsByTagName("title")[0].innerText = '欢迎使用 Bolo';
-                document.getElementById('status').innerHTML = '部署成功！欢迎使用菠萝博客 ❤️<br>您的博客尚未初始化<br>请在输入框中设定管理后台用户名和密码<br>点击“开始初始化”按钮初始化你的菠萝博客';
-                document.getElementById('loginBtn').innerHTML = '开始初始化';
-                document.getElementById('password').setAttribute("type", "text");
-            }
-            document.getElementById('loginBtn').onclick = function () {
-                if (document.getElementById('username').value !== '' && document.getElementById('password').value !== '') {
-                    if (status === '-1') {
-                        let pwdRegex = new RegExp('(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}');
-                        if (!pwdRegex.test(document.getElementById('password').value)) {
-                            alert("密码强度过低！请使用8-30位密码，必须包含字母和数字。");
-                        } else {
-                            document.getElementById('loginBtn').innerHTML = '<i class="fa fa-spinner fa-pulse"></i> 正在初始化，请稍候';
-                            document.getElementById('loginForm').submit();
-                        }
-                    } else {
-                        document.getElementById('loginBtn').innerHTML = '<i class="fa fa-spinner fa-pulse"></i> 登录中';
-                        document.getElementById('loginForm').submit();
-                    }
-                } else {
-                    document.getElementById('status').innerHTML = '请填写用户名和密码！';
-                }
-            }
-        }
-    </script>
-    <footer class="footer">
-        <div class="container">
-            <div class="copyright">
-                <span id="description"></span>
-            </div>
-        </div>
-    </footer>
-</div>
+<body class="login-page auth-page">
+    <header class="auth-header">
+        <a class="auth-brand" href="${servePath}/" aria-label="Volo首页">
+            <span class="auth-brand-mark" aria-hidden="true">V.</span>
+            <span>Volo <small>VOLO</small></span>
+        </a>
+        <div class="auth-header-actions"><div data-bolo-theme-slot></div><a class="auth-back" href="${servePath}/"><span aria-hidden="true">←</span> 返回博客</a></div>
+    </header>
+    <main class="auth-layout">
+        <section class="auth-story" aria-label="Volo">
+            <span class="auth-eyebrow">属于你的文字空间</span>
+            <h1>记录日常，<br/>也记录不平凡。</h1>
+            <p>把想法写下来，让每一次表达<br class="auth-desktop-break"/>都有一个温暖的归处。</p>
+            <div class="auth-story-art" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div class="auth-story-foot"><span class="auth-dot"></span> 简单书写 · 自由表达</div>
+        </section>
+        <section class="auth-card" aria-labelledby="loginHeading">
+            <div class="auth-card-top"><span class="auth-kicker">管理中心</span><span class="auth-version">VOLO 3.0.0</span></div>
+            <h2 id="loginHeading">欢迎回来</h2>
+            <p class="auth-description" id="loginDescription">登录你的博客，继续上次的创作。</p>
+            <form id="loginForm" action="${servePath}/oauth/bolo/login" method="POST" data-mode="${data?html}">
+                <label for="username">用户名</label>
+                <div class="auth-input">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+                    <input id="username" name="username" type="text" autocomplete="username" placeholder="输入你的用户名" required autofocus/>
+                </div>
+                <label for="password">密码</label>
+                <div class="auth-input">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                    <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入你的密码" aria-describedby="status" required/>
+                    <button class="auth-password-toggle" id="togglePassword" type="button" aria-label="显示密码" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                </div>
+                <div id="status" class="auth-error" role="alert" aria-live="polite" hidden></div>
+                <button id="loginBtn" class="auth-submit" type="submit"><i aria-hidden="true"></i><span>登录管理后台</span><b aria-hidden="true">→</b></button>
+            </form>
+            <div class="auth-card-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg> 仅限博客管理者访问</div>
+        </section>
+    </main>
+    <footer class="auth-footer"><span>© ${year} Volo</span><a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">开源，让表达更自由 <span aria-hidden="true">↗</span></a></footer>
+    <script src="${staticServePath}/js/account-login.js?${staticResourceVersion}"></script>
 </body>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/core/jquery.3.2.1.min.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/core/popper.min.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/core/bootstrap.min.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/plugins/bootstrap-switch.js"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/plugins/nouislider.min.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/plugins/bootstrap-datepicker.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/plugins/jquery.sharrre.js" type="text/javascript"></script>
-<script src="https://ftp.stackoverflow.wiki/bolo/start/js/now-ui-kit.js?v=1.1.0" type="text/javascript"></script>
-<script type="text/javascript">
-    var timeStamp = Date.parse(new Date());
-    $('#description').load('https://programmingwithlove.stackoverflow.wiki/loginDescription?version=' + timeStamp);
-    $('#bgHeader').prop('style', 'background-image:url(https://programmingwithlove.stackoverflow.wiki/loginBg?version=' + timeStamp + ')');
-</script>
 </html>

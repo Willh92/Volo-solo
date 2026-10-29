@@ -123,18 +123,6 @@ var Skin = {
   },
   initArticle: function () {
     this._initArticleCommon()
-
-    setTimeout(function () {
-      if ($('#relevantArticlesWrap li').length === 0) {
-        $('#relevantArticlesWrap').prev().remove()
-        $('#relevantArticlesWrap').remove()
-      }
-
-      if ($('#randomArticlesWrap li').length === 0) {
-        $('#randomArticlesWrap').prev().remove()
-        $('#randomArticlesWrap').remove()
-      }
-    }, 1000)
   },
 }
 Skin.init()

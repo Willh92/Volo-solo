@@ -33,21 +33,11 @@
             </svg>
         </div>
     </header>
-    <div class="side__menu">
-        <svg viewBox="0 0 32 32" width="100%" height="100%">
-            <path d="M30 18h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2h28c1.1 0 2 0.9 2 2s-0.9 2-2 2zM30 6.25h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2h28c1.1 0 2 0.9 2 2s-0.9 2-2 2zM2 25.75h28c1.1 0 2 0.9 2 2s-0.9 2-2 2h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2z"></path>
-        </svg>
-        <span>
-            &nbsp; menu
-        </span>
-    </div>
-    <div class="side__main">
+    <button class="side__menu" type="button" aria-label="${(navigationLabel!'导航菜单')?html}" aria-controls="bubbleSideMenu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+    <div class="side__main" id="bubbleSideMenu">
         <div class="side__bg"></div>
         <div class="side__panel">
-            <svg class="side__close ft__a" version="1.1" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
-                 viewBox="0 0 20 20">
-                <path d="M18.362 19.324c-0.902 0.902-2.363 0.902-3.263 0l-5.098-5.827-5.098 5.825c-0.902 0.902-2.363 0.902-3.263 0-0.902-0.902-0.902-2.363 0-3.263l5.304-6.057-5.306-6.061c-0.902-0.902-0.902-2.361 0-3.263s2.361-0.902 3.263 0l5.1 5.829 5.098-5.829c0.902-0.902 2.361-0.902 3.263 0s0.902 2.363 0 3.263l-5.304 6.061 5.304 6.057c0.902 0.902 0.902 2.363 0 3.265z"></path>
-            </svg>
+            <button class="side__close" type="button" aria-label="${(closeLabel!'关闭菜单')?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
 
             <div class="side__header">
                 <a href="${servePath}" rel="start"><img class="side__logo" src="${adminUser.userAvatar}"></a>
@@ -63,6 +53,11 @@
             <div class="side__title">
                 <span>ღゝ◡╹)ノ❤️</span>
             </div>
+            <div class="side__utilities">
+                <#if interactive == "on"><a href="${servePath}/search?keyword=">${searchLabel}</a></#if>
+                <a rel="alternate" href="${servePath}/rss.xml">RSS</a>
+                <div class="skin-theme-slot" data-bolo-theme-slot data-bolo-theme-persistent></div>
+            </div>
             <ul class="side__nav">
                 <li>
                     <a href="${servePath}" rel="start">
@@ -75,8 +70,8 @@
                 </li>
                 <#list pageNavigations as page>
                     <li>
-                        <a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><#if page.pageIcon != ''><img
-                                class="page-icon" src="${page.pageIcon}"></#if>${page.pageTitle}</a>
+                        <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><#if page.pageIcon != ''><img
+                                class="page-icon" src="${page.pageIcon?html}"></#if>${page.pageTitle?html}</a>
                     </li>
                 </#list>
                 <li>
@@ -94,34 +89,6 @@
                 <li>
                     <a href="${servePath}/follows.html">${followLabel}</a>
                 </li>
-                <li>
-                    <a rel="alternate" href="${servePath}/rss.xml">RSS</a>
-                </li>
-                <#if interactive == "on">
-                <li>
-                    <a href="${servePath}/search?keyword=">Search</a>
-                </li>
-                </#if>
-                <#if interactive == "on">
-                <#if isLoggedIn>
-                    <li>
-                        <a href="${servePath}/admin-index.do#main">
-                            ${adminLabel}
-                        </a>
-                    </li>
-                    <li>
-                        <a href="${logoutURL}">
-                            ${logoutLabel}
-                        </a>
-                    </li>
-                <#else>
-                    <li>
-                        <a rel="alternate" href="${servePath}/start">
-                            ${startToUseLabel}
-                        </a>
-                    </li>
-                </#if>
-                </#if>
             </ul>
         </div>
     </div>

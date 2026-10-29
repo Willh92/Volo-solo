@@ -17,12 +17,12 @@
  */
 package org.b3log.solo.model;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Markdowns;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
-import org.jsoup.safety.Whitelist;
+import org.jsoup.safety.Safelist;
 
 /**
  * This class defines all article model relevant keys.
@@ -157,6 +157,8 @@ public final class Article {
      * Key of article image1 URL. https://github.com/b3log/solo/issues/12670
      */
     public static final String ARTICLE_IMG1_URL = "articleImg1URL";
+    /** First content image for presentation, without the legacy random-image fallback. */
+    public static final String ARTICLE_COVER_URL = "articleCoverURL";
 
     /**
      * Key of article status.
@@ -199,6 +201,25 @@ public final class Article {
      * Private constructor.
      */
     private Article() {
+    }
+
+    /** Finds a safe image in rendered article HTML without making network requests. */
+    public static String getArticleCoverURL(final String html) {
+        for (final org.jsoup.nodes.Element image : Jsoup.parseBodyFragment(html).select("img[src]")) {
+            final String source = image.attr("src").trim();
+            if (source.isBlank() || source.contains("\\") || source.chars().anyMatch(Character::isISOControl)) continue;
+            try {
+                final java.net.URI uri = java.net.URI.create(source);
+                final String scheme = uri.getScheme();
+                if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) continue;
+                if (source.startsWith("#") || source.startsWith("?") || uri.getPath() == null
+                        || uri.getPath().toLowerCase(java.util.Locale.ROOT).endsWith(".ico")) continue;
+                return Images.imageSize(source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
+            } catch (IllegalArgumentException ignored) {
+                // Malformed or non-image URLs do not become cover sources.
+            }
+        }
+        return "";
     }
 
     /**
@@ -272,7 +293,7 @@ public final class Article {
      * @return the abstract plain text
      */
     public static String getAbstractText(final String content) {
-        final String ret = Jsoup.clean(Markdowns.toHTML(content), Whitelist.none());
+        final String ret = Jsoup.clean(Markdowns.toHTML(content), Safelist.none());
         if (ret.length() > ARTICLE_ABSTRACT_LENGTH) {
             return ret.substring(0, ARTICLE_ABSTRACT_LENGTH) + "....";
         }

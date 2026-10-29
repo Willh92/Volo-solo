@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -41,7 +41,7 @@
         <header class="fn__flex">
             <h2 class="fn__flex-1">
                 <a rel="bookmark" href="${servePath}${article.articlePermalink}">
-                    ${article.articleTitle}
+                    ${(article.articleTitle)?html}
                 </a>
                 <#if article.articlePutTop>
                     <sup>
@@ -53,7 +53,6 @@
         </header>
         <div class="article__footer fn__flex">
             <span class="icon-tag fn__flex-center"></span>
-            <span>&nbsp;&nbsp;&nbsp;</span>
             <div class="tags fn__flex-1 fn__flex-center">
                 <#if article.articleCategory != "">
                 <a class="tag" rel="tag">分类：${article.articleCategory}</a>
@@ -63,7 +62,6 @@
                         ${articleTag}</a>
                 </#list>
             </div>
-            <span>&nbsp;&nbsp;&nbsp;</span>
             <#if interactive == "on">
             <#if article.articleCommentCount != 0>
                 <a href="${servePath}${article.articlePermalink}#comments"
@@ -101,12 +99,12 @@
                     <#if previousArticlePermalink??>
                         <a class="fn__flex-1 fn__flex-inline" rel="prev" href="${servePath}${previousArticlePermalink}">
                             <strong>&lt;</strong>
-                            <span>&nbsp; ${previousArticleTitle}&nbsp;&nbsp;&nbsp;</span>
+                            <span>&nbsp; ${(previousArticleTitle)?html}&nbsp;&nbsp;&nbsp;</span>
                         </a>
                     </#if>
                     <#if nextArticlePermalink??>
                         <a class="fn__flex-inline" rel="next" href="${servePath}${nextArticlePermalink}">
-                            <span>${nextArticleTitle}&nbsp; </span>
+                            <span>${(nextArticleTitle)?html}&nbsp; </span>
                             <strong>&gt;</strong>
                         </a>
                     </#if>
@@ -121,7 +119,7 @@
             <div class="fn-right">
                         <span class="icon icon-wechat"
                               data-type="wechat"
-                              data-title="${article.articleTitle}"
+                              data-title="${(article.articleTitle)?html}"
                               data-blogtitle="${blogTitle}"
                               data-url="${servePath}${article.articlePermalink}"
                               data-avatar="${article.authorThumbnailURL}"></span>
@@ -130,13 +128,14 @@
                 <span class="icon icon-qqz" data-type="qqz"></span>
             </div>
         </footer>
+        <section class="yilia-recommendations" data-article-recommendations>
         <#if 0 != relevantArticlesDisplayCount>
             <div id="relevantArticles" class="abstract"></div>
         </#if>
         <#if 0 != randomArticlesDisplayCount>
             <div id="randomArticles" class="abstract"></div>
         </#if>
-        <br>
+        </section>
     </article>
     <#if interactive == "on">
     <@comments commentList=articleComments article=article></@comments>

@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -56,7 +56,7 @@
                 </#list>
             </div>
             <h2 class="article__title">
-                ${article.articleTitle}
+                ${(article.articleTitle)?html}
                 <#if article.articlePutTop>
                     <sup>
                         ${topArticleLabel}
@@ -81,13 +81,13 @@
     </div>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
         <div class="post__toc">
-            <#include "../../common-template/toc.ftl"/>
+            <#include "../../common-template/disclosure-toc.ftl"/>
         </div>
     </#if>
     <#if interactive == "on">
     <@comments commentList=articleComments article=article></@comments>
     </#if>
-    <div class="article__bottom">
+    <div class="article__bottom" data-article-recommendations>
         <div class="wrapper">
             <div class="fn__flex">
                 <div class="item" id="randomArticles"></div>
@@ -101,11 +101,7 @@
         src="${staticServePath}/skins/${skinDirName}/js/TweenMax${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <#include "footer.ftl">
-<#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-    <svg viewBox="0 0 32 32" width="100%" height="100%" class="side__top side__top--toc">
-        <path d="M30 18h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2h28c1.1 0 2 0.9 2 2s-0.9 2-2 2zM30 6.25h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2h28c1.1 0 2 0.9 2 2s-0.9 2-2 2zM2 25.75h28c1.1 0 2 0.9 2 2s-0.9 2-2 2h-28c-1.1 0-2-0.9-2-2s0.9-2 2-2z"></path>
-    </svg>
-</#if>
+
 <#if pjax><!---- pjax {#pjax} start ----></#if>
 <@comment_script oId=article.oId commentable=article.commentable>
     <#if 0 != randomArticlesDisplayCount>

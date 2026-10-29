@@ -20,7 +20,7 @@
 <footer class="footer">
     <div class="fn-clear">
         <div class="fn-left">
-            Theme ${skinDirName}
+            Theme ${skinDirName?remove_beginning('bolo-')}
             by
             <a rel="friend" href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
         </div>
@@ -41,10 +41,10 @@
         <a href="${servePath}">${blogTitle}</a>
         ${footerContent}
         <span class="fn-right">
-            Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
+            Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
         </span>
     </div>
-    <span onclick="Util.goTop()" class="icon-goup"></span>
+    <button type="button" onclick="Util.goTop()" class="icon-goup" aria-label="返回顶部" title="返回顶部"></button>
 </footer>
 
 

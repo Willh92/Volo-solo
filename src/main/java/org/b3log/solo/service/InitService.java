@@ -24,13 +24,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.plugin.PluginManager;
@@ -175,7 +175,7 @@ public class InitService {
         try {
             inited = null != optionRepository.get(Option.ID_C_VERSION);
             if (!inited && !printedInitMsg) {
-                LOGGER.log(Level.WARN, "Bolo has not been initialized, please open your browser to init Bolo");
+                LOGGER.log(Level.WARN, "Volo has not been initialized, please open your browser to init Volo");
                 printedInitMsg = true;
             }
 
@@ -254,7 +254,7 @@ public class InitService {
         }
 
         LOGGER.info(
-                "It's your first time setup Bolo, initialize tables in database [" + Latkes.getRuntimeDatabase() + "]");
+                "It's your first time setup Volo, initialize tables in database [" + Latkes.getRuntimeDatabase() + "]");
 
         if (Latkes.RuntimeDatabase.H2 == Latkes.getRuntimeDatabase()) {
             String dataDir = Latkes.getLocalProperty("jdbc.URL");
@@ -327,7 +327,7 @@ public class InitService {
         article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(content));
         article.put(Article.ARTICLE_ABSTRACT, content);
         article.put(Article.ARTICLE_CONTENT, content);
-        article.put(Article.ARTICLE_TAGS_REF, "Bolo");
+        article.put(Article.ARTICLE_TAGS_REF, "Volo");
         article.put(Article.ARTICLE_PERMALINK, "/hello-bolo");
         article.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
         article.put(Article.ARTICLE_SIGN_ID, "1");

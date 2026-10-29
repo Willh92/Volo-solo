@@ -20,9 +20,8 @@ $("table")
     .addClass("nexmoe-album");
 
 $("#nexmoe-content img").each(function () {
-    $(this).attr("data-src", $(this).attr("src"));
-    $(this).attr("src", "");
-    $(this).addClass("lazyload");
+    if (!this.closest('.nexmoe-post-cover')) this.loading = 'lazy';
+    this.decoding = 'async';
 });
 
 

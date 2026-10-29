@@ -20,14 +20,14 @@ package org.b3log.solo.processor.console;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.OptionQueryService;
@@ -36,8 +36,8 @@ import org.b3log.solo.util.Skins;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Cookie;
+import org.b3log.latke.http.Response;
 import java.util.Set;
 
 /**
@@ -47,7 +47,7 @@ import java.util.Set;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 3.5.0
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAdminAuthAdvice.class)
 public class SkinConsole {
 
@@ -61,6 +61,39 @@ public class SkinConsole {
      */
     @Inject
     private SkinMgmtService skinMgmtService;
+
+    @Inject
+    private org.b3log.solo.service.OptionMgmtService optionMgmtService;
+
+    @org.b3log.solo.web.annotation.RequestProcessing(value = "/console/appearance", method = org.b3log.latke.http.HttpMethod.PUT)
+    public void updateAppearance(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        final String origin = context.header("Origin");
+        final java.net.URI publicUrl = java.net.URI.create(Latkes.getServePath());
+        final String expectedOrigin = publicUrl.getScheme() + "://" + publicUrl.getRawAuthority();
+        if (!"XMLHttpRequest".equals(context.header("X-Requested-With"))
+                || (origin != null && !expectedOrigin.equals(origin))) {
+            context.setStatus(403);
+            context.renderJSON(new JSONObject().put("sc", false).put("msg", "请求来源不正确。"));
+            return;
+        }
+        final JSONObject payload = context.requestJSON();
+        final String accent = payload == null ? "" : payload.optString("accent");
+        if (!org.b3log.solo.util.SiteAppearance.valid(accent)) {
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("msg", "请选择有效的强调色。"));
+            return;
+        }
+        try {
+            optionMgmtService.addOrUpdateOption(new JSONObject().put(org.b3log.latke.Keys.OBJECT_ID, org.b3log.solo.util.SiteAppearance.OPTION)
+                    .put(Option.OPTION_CATEGORY, "appearance").put(Option.OPTION_VALUE, accent));
+            context.renderJSON(new JSONObject().put("sc", true).put("accent", accent).put("msg", "强调色已保存，前后台同步生效。"));
+        } catch (ServiceException exception) {
+            LOGGER.log(Level.ERROR, "Cannot save appearance", exception);
+            context.setStatus(500);
+            context.renderJSON(new JSONObject().put("sc", false).put("msg", "保存失败，请稍后再试。"));
+        }
+    }
 
     /**
      * Option query service.
@@ -101,7 +134,7 @@ public class SkinConsole {
         try {
             final JSONObject skin = optionQueryService.getSkin();
             if (null == skin) {
-                renderer.setJSONObject(new JSONObject().put(Keys.STATUS_CODE, false));
+                renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false));
 
                 return;
             }
@@ -127,11 +160,11 @@ public class SkinConsole {
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
             ret.put(Option.CATEGORY_C_SKIN, skin);
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
@@ -165,22 +198,22 @@ public class SkinConsole {
 
             skinMgmtService.updateSkin(skin);
 
-            final HttpServletResponse response = context.getResponse();
-            final Cookie skinDirNameCookie = new Cookie(Common.COOKIE_NAME_SKIN, skin.getString(Option.ID_C_SKIN_DIR_NAME));
-            skinDirNameCookie.setMaxAge(60 * 60); // 1 hour
+            final Response response = context.getResponse();
+            final Cookie skinDirNameCookie = new Cookie(Common.COOKIE_NAME_SKIN, "");
+            skinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
             skinDirNameCookie.setPath("/");
             response.addCookie(skinDirNameCookie);
-            final Cookie mobileSkinDirNameCookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, skin.getString(Option.ID_C_MOBILE_SKIN_DIR_NAME));
-            mobileSkinDirNameCookie.setMaxAge(60 * 60); // 1 hour
+            final Cookie mobileSkinDirNameCookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, "");
+            mobileSkinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
             mobileSkinDirNameCookie.setPath("/");
             response.addCookie(mobileSkinDirNameCookie);
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }

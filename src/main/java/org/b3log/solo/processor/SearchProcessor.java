@@ -18,21 +18,21 @@
 package org.b3log.solo.processor;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.servlet.renderer.TextXmlRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.TextXmlRenderer;
 import org.b3log.latke.util.Paginator;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -42,10 +42,10 @@ import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.UserQueryService;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
-import org.jsoup.safety.Whitelist;
+import org.jsoup.safety.Safelist;
 import org.owasp.encoder.Encode;
 
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.latke.http.Request;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
@@ -59,7 +59,7 @@ import java.util.Map;
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
  * @since 2.4.0
  */
-@RequestProcessor
+@Singleton
 public class SearchProcessor {
 
     /**
@@ -111,8 +111,8 @@ public class SearchProcessor {
             final InputStream resourceAsStream = SearchProcessor.class.getResourceAsStream("/opensearch.xml");
             String content = IOUtils.toString(resourceAsStream, "UTF-8");
             final JSONObject preference = optionQueryService.getPreference();
-            content = StringUtils.replace(content, "${blogTitle}", Jsoup.clean(preference.optString(Option.ID_C_BLOG_TITLE), Whitelist.none()));
-            content = StringUtils.replace(content, "${blogSubtitle}", Jsoup.clean(preference.optString(Option.ID_C_BLOG_SUBTITLE), Whitelist.none()));
+            content = StringUtils.replace(content, "${blogTitle}", Jsoup.clean(preference.optString(Option.ID_C_BLOG_TITLE), Safelist.none()));
+            content = StringUtils.replace(content, "${blogSubtitle}", Jsoup.clean(preference.optString(Option.ID_C_BLOG_SUBTITLE), Safelist.none()));
             content = StringUtils.replace(content, "${servePath}", Latkes.getServePath());
 
             renderer.setContent(content);
@@ -128,7 +128,7 @@ public class SearchProcessor {
      */
     @RequestProcessing(value = "/search", method = HttpMethod.GET)
     public void search(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "common-template/search.ftl");
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         final Map<String, Object> dataModel = renderer.getDataModel();
@@ -139,8 +139,6 @@ public class SearchProcessor {
         if (StringUtils.isBlank(keyword)) {
             keyword = "";
         }
-        keyword = Encode.forHtml(keyword);
-
         dataModel.put(Common.KEYWORD, keyword);
         final JSONObject result = articleQueryService.searchKeyword(keyword, pageNum, 15);
         final List<JSONObject> articles = (List<JSONObject>) result.opt(Article.ARTICLES);
@@ -162,7 +160,7 @@ public class SearchProcessor {
 
             dataModel.put(Article.ARTICLES, Collections.emptyList());
         } finally {
-            dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+            dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
         }
     }
 }

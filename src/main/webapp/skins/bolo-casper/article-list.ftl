@@ -35,8 +35,8 @@
                             <a class="item__tag">无</a>
                     </#if>
                     <h2 class="item__title">
-                        <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                            ${article.articleTitle}
+                        <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                            ${(article.articleTitle)?html}
                         </a>
                         <#if article.articlePutTop>
                             <sup>
@@ -51,7 +51,7 @@
                             </sup>
                         </#if>
                     </h2>
-                    <a class="item__abstract" pjax-title="${article.articleTitle}"
+                    <a class="item__abstract" pjax-title="${(article.articleTitle)?html}"
                         href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
                         <#if article.articleAbstractText?length gt 80>
                             ${article.articleAbstractText[0..80]}

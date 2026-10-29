@@ -40,7 +40,7 @@
             <!-- 文章 -->
             <article class="post article">
                 <header class="text-center">
-                    <h3 class="post-title"><span>${article.articleTitle}</span></h3>
+                    <h3 class="post-title"><span>${(article.articleTitle)?html}</span></h3>
                 </header>
                 <p class="post-meta text-center">
                     ${article.authorName} 发表于
@@ -49,6 +49,7 @@
                     更新日期 ${article.articleUpdateDate?string("yyyy-MM-dd")}
                 </p>
                 <div class="post-content">
+                    <#include "../../common-template/inline-toc.ftl">
                     <div class="vditor-reset">
                         ${article.articleContent}
                         <#if "" != article.articleSign.signHTML?trim>
@@ -75,7 +76,7 @@
 
 <#include "footer.ftl">
 
-<div id="pjax">
+<div class="article-bootstrap">
     <#if pjax><!---- pjax {#pjax} start ----></#if>
 <@comment_script oId=article.oId commentable=article.commentable>
     <#if 0 != randomArticlesDisplayCount>

@@ -18,12 +18,12 @@
 package org.b3log.solo.processor.console;
 
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.TextHtmlRenderer;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.Before;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.TextHtmlRenderer;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.TagArticleRepository;
@@ -41,7 +41,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.3.1
  */
-@RequestProcessor
+@Singleton
 @Before(ConsoleAuthAdvice.class)
 public class RepairConsole {
 

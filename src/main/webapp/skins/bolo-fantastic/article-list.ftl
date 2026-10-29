@@ -34,7 +34,7 @@
                             <div class="blog-slider__item swiper-slide">
                                 <div class="blog-slider__img">
                                     <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                        <img src="${article.articleImg1URL}" alt="${article.articleTitle!}"
+                                        <img src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
                                             referrerpolicy="origin">
                                     </a>
                                 </div>
@@ -44,16 +44,16 @@
                                             style="display:inline-block">
                                             ${article.articleCreateDate?string("yyyy年MM月dd日")}
                                         </span>
-                                        <#if article.categoryURI??>
+                                        <#if article.articleCategory?has_content && article.categoryURI?has_content>
                                             <span><a class="has-link-black-ter"
                                                     href="${servePath}/category/${article.categoryURI}">
                                                     ${article.articleCategory}
                                                 </a></span>
                                         </#if>
                                     </div>
-                                    <div class="blog-slider__title "><a class="title is-5"
+                                    <div class="blog-slider__title "><a class="title is-5 skin-list-title" title="${(article.articleTitle!)?html}"
                                             href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                            ${article.articleTitle!}
+                                            ${(article.articleTitle!)?html}
                                         </a>
                                     </div>
                                     <div class="blog-slider__text" content="">
@@ -74,7 +74,7 @@
                     <div class="card">
                         <div class="card-image">
                             <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                <img class="thumbnail" src="${article.articleImg1URL}" alt="${article.articleTitle!}"
+                                <img class="thumbnail" src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
                                     referrerpolicy="origin">
                             </a>
                         </div>
@@ -94,9 +94,9 @@
                                 </div>
                             </div>
                             <h1 class="title is-size-5 is-size-5-mobile has-text-weight-normal">
-                                <a class="has-link-black-ter"
+                                <a class="has-link-black-ter skin-list-title" title="${(article.articleTitle!)?html}"
                                     href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                    ${article.articleTitle!}
+                                    ${(article.articleTitle!)?html}
                                 </a>
                             </h1>
                             <div id="is-hidden-touch" class="content is-hidden-touch">

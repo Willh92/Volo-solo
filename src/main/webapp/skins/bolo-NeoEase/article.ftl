@@ -27,10 +27,10 @@
             <link rel="stylesheet"
                   href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
         </@head>
     </head>
@@ -43,7 +43,7 @@
                     <div class="page">
                         <h2>
                             <a class="article-title" href="${servePath}${article.articlePermalink}">
-                                ${article.articleTitle}
+                                ${(article.articleTitle)?html}
                             </a>
                             <#if article.articlePutTop>
                             <sup class="tip">
@@ -51,7 +51,8 @@
                             </sup>
                             </#if>
                         </h2>
-                        <div class="left article-element">
+                        <div class="neoease-meta">
+            <div class="left article-element">
                             <span class="date-ico" title="${dateLabel}">
                                 ${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}
                             </span>
@@ -69,7 +70,7 @@
                                 ${article.articleViewCount}&nbsp;&nbsp;${viewLabel}
                             </a>
                         </div>
-                        <div class="clear"></div>
+                        </div>
                         <div class="vditor-reset vditor-reset--article">
                             ${article.articleContent}
                             <#if "" != article.articleSign.signHTML?trim>
@@ -92,17 +93,17 @@
                         <div class="article-panel1">
                             <#if nextArticlePermalink??>
                             <div class="right">
-                                <a href="${servePath}${nextArticlePermalink}">${nextArticle1Label}${nextArticleTitle}</a>
+                                <a href="${servePath}${nextArticlePermalink}">${nextArticle1Label}${(nextArticleTitle)?html}</a>
                             </div><div class="clear"></div>
                             </#if>
                             <#if previousArticlePermalink??>
                             <div class="right">
-                                <a href="${servePath}${previousArticlePermalink}">${previousArticle1Label}${previousArticleTitle}</a>
+                                <a href="${servePath}${previousArticlePermalink}">${previousArticle1Label}${(previousArticleTitle)?html}</a>
                             </div>
                             </#if>
                             <div class="clear"></div>
                         </div>
-                        <div class="article-panel2">
+                        <div class="article-panel2" data-article-recommendations>
                             <div id="relevantArticles" class="left" style="width: 50%;"></div>
                             <div id="randomArticles" class="left"></div>
                             <div class="clear" style="height: 15px;"></div>

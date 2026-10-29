@@ -77,27 +77,17 @@
 
     #top #hideTop:hover {
         background-image: url("${staticServePath}/images/arrow-left.gif");
-        border-radius: 0;    
+        border-radius: 0;
     }
 </style>
 <div id="showTop"></div>
 <div id="top">
-    <a href="https://github.com/adlered/bolo-solo" target="_blank" class="hover">
-        Bolo
+    <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer" class="hover">
+        Volo
     </a>
     <span class="left">&nbsp;${onlineVisitor1Label}${onlineVisitorCnt}</span>
     <span class="right" id="admin" data-login="${isLoggedIn?string}">
-        <#if isLoggedIn>
-            <span id="adminName">${userName}</span>
-            <#if !isVisitor>
-            <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                ${adminLabel}
-            </a>
-            </#if>
-            <a href="${logoutURL}" title="${logoutLabel}">${logoutLabel}</a>
-        <#else>
-            <a href="${servePath}/start" title="${startToUseLabel}">${startToUseLabel}</a>
-            </#if>
+
             <#if isMobileRequest>
             <a href="javascript:void(0)" onclick="Util.switchMobile('mobile');" title="${mobileLabel}">${mobileLabel}</a>
         </#if>

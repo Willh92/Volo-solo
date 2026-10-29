@@ -1,0 +1,83 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+package org.b3log.solo.processor.console;
+
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.solo.repository.CommentRepository;
+import org.b3log.solo.service.IpBanService;
+import org.b3log.solo.util.AdminRequests;
+import org.b3log.solo.util.IpAddresses;
+import org.b3log.solo.util.LoginThrottle;
+import org.b3log.solo.util.Solos;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.json.JSONObject;
+
+/** Administrator-only IP management, independent of the optional page-rate WAF. */
+@Singleton
+public class IpBanConsole {
+    @Inject private IpBanService ipBanService;
+    @Inject private CommentRepository commentRepository;
+    @Inject private org.b3log.solo.service.GeoAccessService geoAccessService;
+
+    @RequestProcessing(value = "/console/geo-access", method = HttpMethod.GET)
+    public void geoSettings(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (!Solos.isAdminLoggedIn(context)) { AdminRequests.reject(context, 403, "仅管理员可以查看地区访问规则。"); return; }
+        try { context.renderJSON(geoAccessService.settings(LoginThrottle.clientAddress(context.getRequest())).put("sc", true)); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "地区访问规则暂时无法读取。"); }
+    }
+
+    @RequestProcessing(value = "/console/geo-access", method = HttpMethod.PUT)
+    public void saveGeoSettings(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) return;
+        try {
+            geoAccessService.save(context.requestJSON(), LoginThrottle.clientAddress(context.getRequest()));
+            context.renderJSON(new JSONObject().put("sc", true).put("msg", "地区访问规则已保存，立即生效。"));
+        } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "地区访问规则保存失败，请重试。"); }
+    }
+
+    @RequestProcessing(value = "/console/ip-bans", method = HttpMethod.GET)
+    public void list(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (!Solos.isAdminLoggedIn(context)) { AdminRequests.reject(context, 403, "仅管理员可以查看封禁规则。"); return; }
+        try {
+            final String page = context.param("page"), size = context.param("pageSize"), keyword = context.param("keyword");
+            context.renderJSON(ipBanService.page(page == null ? 1 : Integer.parseInt(page),
+                    size == null ? 10 : Integer.parseInt(size), keyword == null ? "" : keyword).put("sc", true));
+        }
+        catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, "封禁列表查询参数不正确。"); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "封禁列表暂时无法读取。"); }
+    }
+
+    @RequestProcessing(value = "/console/ip-bans", method = HttpMethod.POST)
+    public void add(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) return;
+        try {
+            final JSONObject request = context.requestJSON();
+            String range = request.optString("range");
+            if (!request.optString("commentId").isBlank()) {
+                final JSONObject comment = commentRepository.get(request.getString("commentId"));
+                if (comment == null || comment.optString(IpAddresses.COMMENT_IP).isBlank()) {
+                    throw new IllegalArgumentException("这条评论没有可封禁的访客 IP。");
+                }
+                range = comment.optString(IpAddresses.COMMENT_IP);
+            }
+            ipBanService.add(range, request.optString("reason"), LoginThrottle.clientAddress(context.getRequest()));
+            context.renderJSON(new JSONObject().put("sc", true).put("msg", "已封禁，规则立即生效。"));
+        } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "封禁规则保存失败，请重试。"); }
+    }
+
+    @RequestProcessing(value = "/console/ip-bans/remove", method = HttpMethod.POST)
+    public void remove(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) return;
+        try {
+            ipBanService.remove(context.requestJSON().getString("range"));
+            context.renderJSON(new JSONObject().put("sc", true).put("msg", "已解除封禁。"));
+        } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "解除封禁失败，请重试。"); }
+    }
+}

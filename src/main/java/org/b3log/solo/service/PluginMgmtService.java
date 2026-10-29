@@ -17,12 +17,12 @@
  */
 package org.b3log.solo.service;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.plugin.AbstractPlugin;
 import org.b3log.latke.plugin.PluginManager;
@@ -179,7 +179,7 @@ public class PluginMgmtService {
 
                     plugin.changeStatus();
 
-                    ret.put(Keys.STATUS_CODE, true);
+                    ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
                     ret.put(Keys.MSG, langs.get("setSuccLabel"));
 
                     return ret;
@@ -190,7 +190,7 @@ public class PluginMgmtService {
 
                     LOGGER.log(Level.ERROR, "Set plugin status error", e);
 
-                    ret.put(Keys.STATUS_CODE, false);
+                    ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                     ret.put(Keys.MSG, langs.get("setFailLabel"));
 
                     return ret;
@@ -198,7 +198,7 @@ public class PluginMgmtService {
             }
         }
 
-        ret.put(Keys.STATUS_CODE, false);
+        ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
         ret.put(Keys.MSG, langs.get("refreshAndRetryLabel"));
 
         return ret;
@@ -227,7 +227,7 @@ public class PluginMgmtService {
 
                     transaction.commit();
 
-                    ret.put(Keys.STATUS_CODE, true);
+                    ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
                     ret.put(Keys.MSG, langs.get("setSuccLabel"));
 
                     return ret;
@@ -236,7 +236,7 @@ public class PluginMgmtService {
                         transaction.rollback();
                     }
                     LOGGER.log(Level.ERROR, "Set plugin status error", e);
-                    ret.put(Keys.STATUS_CODE, false);
+                    ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                     ret.put(Keys.MSG, langs.get("setFailLabel"));
 
                     return ret;
@@ -244,7 +244,7 @@ public class PluginMgmtService {
             }
         }
 
-        ret.put(Keys.STATUS_CODE, false);
+        ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
         ret.put(Keys.MSG, langs.get("refreshAndRetryLabel"));
 
         return ret;

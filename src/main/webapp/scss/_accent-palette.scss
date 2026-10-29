@@ -1,0 +1,37 @@
+/*
+ * Bolo - A stable and beautiful blogging system based in Solo.
+ * Copyright (c) 2020-present, https://github.com/bolo-blog
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Each button color has readable light text in both modes. */
+$palettes: (
+  forest: (#246b51, #1b5741, #9bcab1, #476e59, #527c65, #173f3b, #202d2a),
+  ocean: (#2d6583, #23516b, #a2c5dd, #476b85, #527c94, #1f3d50, #222d35),
+  'teal': (#286c70, #20575a, #9acbcc, #416e71, #4c7e80, #1c4143, #202f30),
+  amber: (#855c27, #6e4a20, #d6bd91, #795f3c, #886d48, #4a3824, #302b25),
+  'plum': (#70517d, #5a4167, #c8b5d7, #6d567d, #7d658d, #3d2f49, #2d2733),
+  rose: (#87525f, #714450, #d6b1bd, #7d5865, #8d6572, #4b303b, #32272b)
+);
+@each $name, $colors in $palettes {
+  html[data-bolo-accent='#{$name}'] {
+    --bolo-accent: #{nth($colors, 1)}; --bolo-button: #{nth($colors, 1)}; --bolo-button-hover: #{nth($colors, 2)};
+    --bolo-hero: #{nth($colors, 6)}; --bolo-nav: #{nth($colors, 6)};
+    --bolo-nav-mark: #{nth($colors, 3)};
+  }
+  html[data-bolo-accent='#{$name}'][data-bolo-theme='dark'] {
+    --bolo-accent: #{nth($colors, 3)}; --bolo-button: #{nth($colors, 4)}; --bolo-button-hover: #{nth($colors, 5)};
+    --bolo-hero: #{nth($colors, 7)}; --bolo-nav: #{nth($colors, 7)};
+  }
+}

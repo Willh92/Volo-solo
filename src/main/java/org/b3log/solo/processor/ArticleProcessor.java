@@ -27,37 +27,36 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.Session;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
-import org.b3log.latke.servlet.renderer.TextHtmlRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.JsonRenderer;
+import org.b3log.latke.http.renderer.TextHtmlRenderer;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Dates;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.cache.FollowArticleCache;
 import org.b3log.solo.event.EventTypes;
 import org.b3log.solo.model.ArchiveDate;
@@ -96,7 +95,7 @@ import org.jsoup.Jsoup;
  * @author <a href="http://zephyr.b3log.org">Zephyr</a>
  * @since 0.3.1
  */
-@RequestProcessor
+@Singleton
 public class ArticleProcessor {
 
     /**
@@ -242,14 +241,14 @@ public class ArticleProcessor {
     public void showArticlePwdForm(final RequestContext context) {
         final String articleId = context.param("articleId");
         if (StringUtils.isBlank(articleId)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
 
         final JSONObject article = articleQueryService.getArticleById(articleId);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -271,8 +270,8 @@ public class ArticleProcessor {
 
         final JSONObject preference = optionQueryService.getPreference();
         dataModel.put(Option.ID_C_BLOG_TITLE, preference.getString(Option.ID_C_BLOG_TITLE));
-        dataModel.put(Common.VERSION, SoloServletListener.VERSION);
-        dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+        dataModel.put(Common.VERSION, SoloApplication.VERSION);
+        dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
         dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
         dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
 
@@ -290,22 +289,22 @@ public class ArticleProcessor {
     @RequestProcessing(value = "/console/article-pwd", method = HttpMethod.POST)
     public void onArticlePwdForm(final RequestContext context) {
         try {
-            final HttpServletRequest request = context.getRequest();
+            final Request request = context.getRequest();
             final String articleId = context.param("articleId");
             final String pwdTyped = context.param("pwdTyped");
 
             final JSONObject article = articleQueryService.getArticleById(articleId);
 
             if (article.getString(Article.ARTICLE_VIEW_PWD).equals(pwdTyped)) {
-                final HttpSession session = request.getSession();
+                final Session session = request.getSession();
                 if (null != session) {
-                    Map<String, String> viewPwds = (Map<String, String>) session.getAttribute(Common.ARTICLES_VIEW_PWD);
+                    Map<String, String> viewPwds = Solos.viewPasswords(session);
                     if (null == viewPwds) {
                         viewPwds = new HashMap<>();
                     }
 
                     viewPwds.put(articleId, pwdTyped);
-                    session.setAttribute(Common.ARTICLES_VIEW_PWD, viewPwds);
+                    session.setAttribute(Common.ARTICLES_VIEW_PWD, new JSONObject(viewPwds).toString());
                 }
 
                 context.sendRedirect(Latkes.getServePath() + article.getString(Article.ARTICLE_PERMALINK));
@@ -318,7 +317,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Processes article view password form submits failed", e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -368,7 +367,7 @@ public class ArticleProcessor {
 
         final int displayCnt = preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT);
         if (0 == displayCnt) {
-            jsonObject.put(Common.RANDOM_ARTICLES, new ArrayList<JSONObject>());
+            jsonObject.put(Common.RELEVANT_ARTICLES, new ArrayList<JSONObject>());
 
             final JsonRenderer renderer = new JsonRenderer();
             context.setRenderer(renderer);
@@ -377,18 +376,18 @@ public class ArticleProcessor {
             return;
         }
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         Stopwatchs.start("Get Relevant Articles");
         final String articleId = context.pathVar("id");
         if (StringUtils.isBlank(articleId)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
 
         final JSONObject article = articleQueryService.getArticleById(articleId);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -410,7 +409,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/get-article-content", method = HttpMethod.GET)
     public void getArticleContent(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String articleId = context.param("id");
         if (StringUtils.isBlank(articleId)) {
             return;
@@ -442,11 +441,11 @@ public class ArticleProcessor {
     @RequestProcessing(value = "/articles", method = HttpMethod.GET)
     public void getArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final int currentPageNum = Paginator.getPage(request);
         Stopwatchs.start("Get Articles Paged [pageNum=" + currentPageNum + ']');
         try {
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
@@ -466,7 +465,7 @@ public class ArticleProcessor {
 
             jsonObject.put(Keys.RESULTS, result);
         } catch (final Exception e) {
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             LOGGER.log(Level.ERROR, "Gets article paged failed", e);
         } finally {
             Stopwatchs.end();
@@ -486,12 +485,12 @@ public class ArticleProcessor {
     public void getTagArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String tagTitle = context.pathVar("tagTitle");
         final int currentPageNum = Paginator.getPage(request);
         Stopwatchs.start("Get Tag-Articles Paged [tagTitle=" + tagTitle + ", pageNum=" + currentPageNum + ']');
         try {
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
@@ -520,7 +519,7 @@ public class ArticleProcessor {
             result.put(Article.ARTICLES, articles);
             jsonObject.put(Keys.RESULTS, result);
         } catch (final Exception e) {
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             LOGGER.log(Level.ERROR, "Gets article paged failed", e);
         } finally {
             Stopwatchs.end();
@@ -540,14 +539,14 @@ public class ArticleProcessor {
     public void getArchivesArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String archiveDateString = context.pathVar("yyyy") + "/" + context.pathVar("MM");
         final int currentPageNum = Paginator.getPage(request);
 
         Stopwatchs.start(
                 "Get Archive-Articles Paged [archive=" + archiveDateString + ", pageNum=" + currentPageNum + ']');
         try {
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
@@ -574,7 +573,7 @@ public class ArticleProcessor {
             result.put(Article.ARTICLES, articles);
             jsonObject.put(Keys.RESULTS, result);
         } catch (final Exception e) {
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             LOGGER.log(Level.ERROR, "Gets article paged failed", e);
         } finally {
             Stopwatchs.end();
@@ -594,20 +593,20 @@ public class ArticleProcessor {
     public void getAuthorsArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String authorId = context.pathVar("author");
         final int currentPageNum = Paginator.getPage(request);
 
         Stopwatchs.start("Get Author-Articles Paged [authorId=" + authorId + ", pageNum=" + currentPageNum + ']');
         try {
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
 
             final JSONObject authorRet = userQueryService.getUser(authorId);
             if (null == authorRet) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -615,7 +614,7 @@ public class ArticleProcessor {
             final JSONObject articlesResult = articleQueryService.getArticlesByAuthorId(authorId, currentPageNum,
                     pageSize);
             final List<JSONObject> articles = CollectionUtils
-                    .jsonArrayToList(articlesResult.optJSONArray(Keys.RESULTS));
+                    .jsonArrayToList(org.b3log.solo.util.QueryResults.array(articlesResult));
             dataModelService.setArticlesExProperties(context, articles, preference);
             final int pageCount = articlesResult.optJSONObject(Pagination.PAGINATION)
                     .optInt(Pagination.PAGINATION_PAGE_COUNT);
@@ -627,7 +626,7 @@ public class ArticleProcessor {
             result.put(Article.ARTICLES, articles);
             jsonObject.put(Keys.RESULTS, result);
         } catch (final Exception e) {
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             LOGGER.log(Level.ERROR, "Gets article paged failed", e);
         } finally {
             Stopwatchs.end();
@@ -645,7 +644,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/authors/{author}", method = HttpMethod.GET)
     public void showAuthorArticles(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "author-articles.ftl");
 
         try {
@@ -656,7 +655,7 @@ public class ArticleProcessor {
 
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -666,7 +665,7 @@ public class ArticleProcessor {
 
             final JSONObject result = userQueryService.getUser(authorId);
             if (null == result) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -674,13 +673,13 @@ public class ArticleProcessor {
             final JSONObject articlesResult = articleQueryService.getArticlesByAuthorId(authorId, currentPageNum,
                     pageSize);
             if (null == articlesResult) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
 
             final List<JSONObject> articles = CollectionUtils
-                    .jsonArrayToList(articlesResult.optJSONArray(Keys.RESULTS));
+                    .jsonArrayToList(org.b3log.solo.util.QueryResults.array(articlesResult));
             articles.forEach(article -> article.put("isRss", false));
             dataModelService.setArticlesExProperties(context, articles, preference);
             final int pageCount = articlesResult.optJSONObject(Pagination.PAGINATION)
@@ -690,18 +689,18 @@ public class ArticleProcessor {
             final Map<String, Object> dataModel = renderer.getDataModel();
             final JSONObject author = result.getJSONObject(User.USER);
             prepareShowAuthorArticles(pageNums, dataModel, pageCount, currentPageNum, articles, author);
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
 
             statisticMgmtService.incBlogViewCount(context, response);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -712,7 +711,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/archives/{yyyy}/{MM}", method = HttpMethod.GET)
     public void showArchiveArticles(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "archive-articles.ftl");
 
         try {
@@ -724,7 +723,7 @@ public class ArticleProcessor {
             if (null == result) {
                 LOGGER.log(Level.DEBUG, "Can not find articles for the specified archive date[string={0}]",
                         archiveDateString);
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -741,7 +740,7 @@ public class ArticleProcessor {
             final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveDateId,
                     currentPageNum, pageSize);
             if (articles.isEmpty()) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -750,10 +749,10 @@ public class ArticleProcessor {
 
             final Map<String, Object> dataModel = renderer.getDataModel();
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
             prepareShowArchiveArticles(preference, dataModel, articles, currentPageNum, pageCount, archiveDateString,
                     archiveDate);
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
@@ -761,23 +760,23 @@ public class ArticleProcessor {
             statisticMgmtService.incBlogViewCount(context, response);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
     @RequestProcessing(value = "/follow/articles/{followName}", method = HttpMethod.GET)
     public void showFollowUserArticles(final RequestContext context) {
         final String followName = (String) context.pathVar("followName");
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
         if (null == followName || "".equals(followName)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
             return;
         }
         try {
             final JSONObject follow = followService.getFollowByTitle(followName);
             if (null == follow.get(Follow.FOLLOW)) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
                 return;
             }
             final JSONObject preference = optionQueryService.getPreference();
@@ -787,22 +786,12 @@ public class ArticleProcessor {
                 specifiedSkin = Solos.isMobile(request) ? skinOpt.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME)
                         : skinOpt.optString(Option.ID_C_SKIN_DIR_NAME);
             }
-            request.setAttribute(Keys.TEMAPLTE_DIR_NAME, specifiedSkin);
+            request.setAttribute(Keys.TEMPLATE_DIR_NAME, specifiedSkin);
             final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "index.ftl");
             final Map<String, Object> dataModel = renderer.getDataModel();
 
-            Cookie cookie;
-            if (!Solos.isMobile(request)) {
-                cookie = new Cookie(Common.COOKIE_NAME_SKIN, specifiedSkin);
-            } else {
-                cookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, specifiedSkin);
-            }
-            cookie.setMaxAge(60 * 60); // 1 hour
-            cookie.setPath("/");
-            response.addCookie(cookie);
-
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
             final List<JSONObject> articles = followArticleCache.getFollowArticles(followName).values().stream()
                     .sorted(Comparator
                             .comparingLong(o -> {
@@ -829,7 +818,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -845,7 +834,7 @@ public class ArticleProcessor {
         final String articleTitle = (String) context.pathVar("articleTitle");
         if ((null == followName || "".equals(followName))
                 || null == articleTitle || "".equals(articleTitle)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
             return;
         }
 
@@ -856,12 +845,12 @@ public class ArticleProcessor {
         try {
             final Map<String, JSONObject> cache = followArticleCache.getFollowArticles(followName);
             if (null == cache) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
                 return;
             }
             final JSONObject article = cache.get(articleTitle);
             if (null == article) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
                 return;
             }
             dataModelService.fillCategory(article);
@@ -871,7 +860,7 @@ public class ArticleProcessor {
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
             // Bolo 告诉前端用户是否已经登录
             String logged = String.valueOf(Solos.isLoggedIn(context));
             article.put("logged", logged);
@@ -882,7 +871,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -896,7 +885,7 @@ public class ArticleProcessor {
         // See PermalinkHandler#dispatchToArticleProcessor()
         final JSONObject article = (JSONObject) context.attr(Article.ARTICLE);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -935,12 +924,12 @@ public class ArticleProcessor {
 
             prepareShowArticle(preference, dataModel, article);
 
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
 
             if (!StatisticMgmtService.hasBeenServed(context, response)) {
                 articleMgmtService.incViewCount(articleId);
@@ -954,8 +943,8 @@ public class ArticleProcessor {
             JSONObject cateS = null;
             try {
                 JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                int size = cate.optJSONArray("rslts").length();
-                cateS = (JSONObject) cate.optJSONArray("rslts").get(size - 1);
+                int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
                 String categoryOId = cateS.optString("category_oId");
                 cateS = categoryQueryService.getCategory(categoryOId);
                 article.put("articleCategory", cateS.opt("categoryTitle"));
@@ -977,7 +966,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -1027,7 +1016,7 @@ public class ArticleProcessor {
         final String previousPageNum = Integer.toString(currentPageNum > 1 ? currentPageNum - 1 : 0);
 
         dataModel.put(Pagination.PAGINATION_PREVIOUS_PAGE_NUM, "0".equals(previousPageNum) ? "" : previousPageNum);
-        if (pageCount == currentPageNum + 1) { // The next page is the last page
+        if (currentPageNum >= pageCount) {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, "");
         } else {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, currentPageNum + 1);
@@ -1075,14 +1064,14 @@ public class ArticleProcessor {
         final String previousPageNum = Integer.toString(currentPageNum > 1 ? currentPageNum - 1 : 0);
 
         dataModel.put(Pagination.PAGINATION_PREVIOUS_PAGE_NUM, "0".equals(previousPageNum) ? "" : previousPageNum);
-        if (pageCount == currentPageNum + 1) { // The next page is the last page
+        if (currentPageNum >= pageCount) {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, "");
         } else {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, currentPageNum + 1);
         }
         dataModel.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, currentPageNum);
-        dataModel.put(Pagination.PAGINATION_FIRST_PAGE_NUM, pageNums.get(0));
-        dataModel.put(Pagination.PAGINATION_LAST_PAGE_NUM, pageNums.get(pageNums.size() - 1));
+        dataModel.put(Pagination.PAGINATION_FIRST_PAGE_NUM, pageNums.isEmpty() ? 1 : pageNums.get(0));
+        dataModel.put(Pagination.PAGINATION_LAST_PAGE_NUM, pageNums.isEmpty() ? 1 : pageNums.get(pageNums.size() - 1));
         dataModel.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
         dataModel.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
         dataModel.put(Common.PATH, "/archives/" + archiveDateString);
@@ -1134,12 +1123,8 @@ public class ArticleProcessor {
         final String articleTitle = article.optString(Article.ARTICLE_TITLE);
         final String author = article.optString(Common.AUTHOR_NAME);
         final String url = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
-        String signHtml = sign.optString(Sign.SIGN_HTML);
         // 签名档内置模板变量 https://github.com/b3log/solo/issues/12758
-        signHtml = StringUtils.replace(signHtml, "{title}", articleTitle);
-        signHtml = StringUtils.replace(signHtml, "{author}", author);
-        signHtml = StringUtils.replace(signHtml, "{url}", url);
-        signHtml = StringUtils.replace(signHtml, "{blog}", Latkes.getServePath());
+        final String signHtml = Sign.render(sign.optString(Sign.SIGN_HTML), articleTitle, author, url, Latkes.getServePath());
         sign.put(Sign.SIGN_HTML, signHtml);
         article.put(Common.ARTICLE_SIGN, sign);
         LOGGER.debug("Got article sign");

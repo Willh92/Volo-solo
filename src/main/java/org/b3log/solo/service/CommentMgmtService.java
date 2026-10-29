@@ -24,15 +24,14 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
+import org.b3log.latke.Latkes;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
-import org.b3log.latke.model.Role;
-import org.b3log.latke.model.User;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
@@ -49,6 +48,8 @@ import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.repository.OptionRepository;
+import org.b3log.solo.util.CommentThreads;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
@@ -120,6 +121,9 @@ public class CommentMgmtService {
     @Inject
     private CommentRepository commentRepository;
 
+    @Inject
+    private OptionRepository optionRepository;
+
     /**
      * Article repository.
      */
@@ -177,7 +181,7 @@ public class CommentMgmtService {
         final JSONObject ret = new JSONObject();
 
         try {
-            ret.put(Keys.STATUS_CODE, false);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             final JSONObject preference = optionQueryService.getPreference();
 
             if (null == preference || !preference.optBoolean(Option.ID_C_COMMENTABLE)) {
@@ -192,7 +196,8 @@ public class CommentMgmtService {
             if (Article.ARTICLE.equals(type)) {
                 final JSONObject article = articleRepository.get(id);
 
-                if (null == article || !article.optBoolean(Article.ARTICLE_COMMENTABLE)) {
+                if (null == article || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED
+                        || !article.optBoolean(Article.ARTICLE_COMMENTABLE)) {
                     ret.put(Keys.MSG, langPropsService.get("notAllowCommentLabel"));
 
                     return ret;
@@ -204,18 +209,30 @@ public class CommentMgmtService {
             }
 
             String commentName = requestJSONObject.getString(Comment.COMMENT_NAME);
+            if (org.b3log.solo.util.CommentNames.hasMarkup(commentName)) {
+                ret.put(Keys.MSG, "昵称不能包含 HTML 标签。");
+                return ret;
+            }
             if (MAX_COMMENT_NAME_LENGTH < commentName.length() || MIN_COMMENT_NAME_LENGTH > commentName.length()) {
-                LOGGER.log(Level.WARN, "Comment name is too long [{0}]", commentName);
+                LOGGER.log(Level.WARN, "Comment nickname length is invalid");
                 ret.put(Keys.MSG, langPropsService.get("nameTooLongLabel"));
 
                 return ret;
             }
 
-            final JSONObject commenter = userRepository.getByUserName(commentName);
-            if (null == commenter) {
-                LOGGER.log(Level.INFO, "Newing user [" + commentName + "] ...");
-            }
 
+            final String parentId = requestJSONObject.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID);
+            if (parentId.length() > 64 || org.b3log.solo.util.CommentNames.hasMarkup(parentId)) {
+                ret.put(Keys.MSG, "回复的评论编号不正确。");
+                return ret;
+            }
+            if (!parentId.isBlank()) {
+                final JSONObject parent = commentRepository.get(parentId);
+                if (parent == null || !id.equals(parent.optString(Comment.COMMENT_ON_ID))) {
+                    ret.put(Keys.MSG, "回复的评论不存在，或不属于当前文章。");
+                    return ret;
+                }
+            }
             final String commentURL = requestJSONObject.optString(Comment.COMMENT_URL);
 
             if (!Strings.isURL(commentURL) || StringUtils.contains(commentURL, "<")) {
@@ -232,14 +249,14 @@ public class CommentMgmtService {
                 return ret;
             }
 
-            ret.put(Keys.STATUS_CODE, true);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             requestJSONObject.put(Comment.COMMENT_CONTENT, commentContent);
 
             return ret;
         } catch (final Exception e) {
-            LOGGER.log(Level.WARN, "Checks add comment request[" + requestJSONObject.toString() + "] failed", e);
+            LOGGER.log(Level.WARN, "Checks add comment request failed", e);
 
-            ret.put(Keys.STATUS_CODE, false);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             ret.put(Keys.MSG, langPropsService.get("addFailLabel"));
 
             return ret;
@@ -279,7 +296,7 @@ public class CommentMgmtService {
      * 
      * @throws ServiceException service exception
      */
-    public JSONObject addArticleComment(final JSONObject requestJSONObject) throws ServiceException {
+    public synchronized JSONObject addArticleComment(final JSONObject requestJSONObject) throws ServiceException {
         final JSONObject ret = new JSONObject();
         ret.put(Common.IS_REPLY, false);
 
@@ -288,11 +305,17 @@ public class CommentMgmtService {
         try {
             final String articleId = requestJSONObject.getString(Keys.OBJECT_ID);
             final JSONObject article = articleRepository.get(articleId);
+            if (article == null || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED
+                    || !article.optBoolean(Article.ARTICLE_COMMENTABLE)) throw new ServiceException("文章暂不接受评论。");
             ret.put(Article.ARTICLE, article);
             final String commentName = requestJSONObject.getString(Comment.COMMENT_NAME);
             final String commentURL = requestJSONObject.optString(Comment.COMMENT_URL);
             final String commentContent = requestJSONObject.getString(Comment.COMMENT_CONTENT);
             final String originalCommentId = requestJSONObject.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID);
+            if (org.b3log.solo.util.CommentNames.hasMarkup(commentName)
+                    || commentName.length() < MIN_COMMENT_NAME_LENGTH || commentName.length() > MAX_COMMENT_NAME_LENGTH
+                    || commentContent.length() < MIN_COMMENT_CONTENT_LENGTH || commentContent.length() > MAX_COMMENT_CONTENT_LENGTH
+                    || originalCommentId.length() > 64) throw new ServiceException("评论内容或昵称不正确。");
             ret.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, originalCommentId);
             final JSONObject comment = new JSONObject();
             comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, "");
@@ -300,10 +323,11 @@ public class CommentMgmtService {
             comment.put(Comment.COMMENT_NAME, commentName);
             comment.put(Comment.COMMENT_URL, commentURL);
             comment.put(Comment.COMMENT_CONTENT, commentContent);
-            comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID,
-                    requestJSONObject.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID));
-            comment.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME,
-                    requestJSONObject.optString(Comment.COMMENT_ORIGINAL_COMMENT_NAME));
+            comment.put("commentNotifyEmail", requestJSONObject.optString("email"));
+            comment.put(org.b3log.solo.util.CommentOwnership.KEY_HASH, requestJSONObject.optString(org.b3log.solo.util.CommentOwnership.KEY_HASH));
+            comment.put("commentDeleted", false);
+            comment.put(org.b3log.solo.util.IpAddresses.COMMENT_IP,
+                    org.b3log.solo.util.IpAddresses.canonical(requestJSONObject.optString(org.b3log.solo.util.IpAddresses.COMMENT_IP)));
             final JSONObject preference = optionQueryService.getPreference();
             final Date date = new Date();
             comment.put(Comment.COMMENT_CREATED, date.getTime());
@@ -321,34 +345,18 @@ public class CommentMgmtService {
             JSONObject originalComment;
             if (StringUtils.isNotBlank(originalCommentId)) {
                 originalComment = commentRepository.get(originalCommentId);
-                if (null != originalComment) {
-                    comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, originalCommentId);
-                    final String originalCommentName = originalComment.getString(Comment.COMMENT_NAME);
-
-                    comment.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, originalCommentName);
-                    ret.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, originalCommentName);
-
-                    ret.put(Common.IS_REPLY, true);
-                } else {
-                    LOGGER.log(Level.WARN, "Not found orginal comment[id={0}] of reply[name={1}, content={2}]",
-                            originalCommentId, commentName, commentContent);
+                if (originalComment == null || !articleId.equals(originalComment.optString(Comment.COMMENT_ON_ID))) {
+                    throw new ServiceException("回复的评论不存在，或不属于当前文章。");
                 }
+                comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, originalCommentId);
+                final String originalCommentName = org.b3log.solo.util.CommentNames.display(originalComment.optString(Comment.COMMENT_NAME));
+                comment.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, originalCommentName);
+                ret.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, originalCommentName);
+                ret.put(Common.IS_REPLY, true);
             }
-            try {
-                setCommentThumbnailURL(comment);
-            } catch (NullPointerException NPE) {
-                // Bolo - 用户名如果不存在，创建一个
-                final JSONObject newUser = new JSONObject();
-                newUser.put(User.USER_NAME, commentName);
-                newUser.put(User.USER_URL, commentURL);
-                newUser.put(User.USER_ROLE, Role.VISITOR_ROLE);
-                newUser.put(UserExt.USER_AVATAR,
-                        "https://pic.stackoverflow.wiki/uploadImages/114/246/231/87/2020/06/06/02/26/65e10ea4-41e0-4da8-82fa-a00da2770ce2.png");
-                newUser.put(UserExt.USER_B3_KEY, "0a45c98b7f065e77accc819d08882200");
-                newUser.put(UserExt.USER_GITHUB_ID, "000000");
-                userRepository.add(newUser);
-                setCommentThumbnailURL(comment);
-            }
+            // Anonymous comments do not create persistent user accounts. A missing
+            // user is normal; throwing through a proxied service rolls back Latke's transaction.
+            setCommentThumbnailURL(comment);
             ret.put(Comment.COMMENT_THUMBNAIL_URL, comment.getString(Comment.COMMENT_THUMBNAIL_URL));
             comment.put(Comment.COMMENT_ON_ID, articleId);
             final String commentId = Ids.genTimeMillisId();
@@ -358,6 +366,9 @@ public class CommentMgmtService {
             comment.put(Comment.COMMENT_SHARP_URL, commentSharpURL);
             ret.put(Comment.COMMENT_SHARP_URL, commentSharpURL);
 
+            ret.put(org.b3log.solo.util.IpAddresses.COMMENT_IP, comment.optString(org.b3log.solo.util.IpAddresses.COMMENT_IP));
+            org.b3log.solo.util.CommentNames.apply(ret);
+            org.b3log.solo.util.IpAddresses.hidePrivateAddress(ret);
             commentRepository.add(comment);
             articleMgmtService.incArticleCommentCount(articleId);
 
@@ -379,14 +390,62 @@ public class CommentMgmtService {
      * @param commentId the given comment id
      * @throws ServiceException service exception
      */
-    public void removeArticleComment(final String commentId) throws ServiceException {
+    public synchronized void updateCommentContent(final String commentId, final String content) throws ServiceException {
+        final Transaction transaction = commentRepository.beginTransaction();
+        try {
+            final JSONObject comment = commentRepository.get(commentId);
+            if (comment == null || comment.optBoolean("commentDeleted")) throw new ServiceException("评论已删除。");
+            comment.put(Comment.COMMENT_CONTENT, content);
+            commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT);
+            transaction.commit();
+        } catch (Exception failure) {
+            if (transaction.isActive()) transaction.rollback();
+            throw new ServiceException(failure);
+        }
+    }
+
+    /** Remove the content while preserving the actual parent relation and other visitors' replies. */
+    public synchronized void removeArticleComment(final String commentId) throws ServiceException {
+        final Transaction transaction = commentRepository.beginTransaction();
+        try {
+            final JSONObject comment = commentRepository.get(commentId);
+            if (comment == null) throw new ServiceException("评论不存在。");
+            comment.put(Comment.COMMENT_CONTENT, "").put("commentDeleted", true).put("commentNotifyEmail", "");
+            commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT, "commentDeleted", "commentNotifyEmail");
+            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
+            setArticleCommentCount(articleId, (int) comments.stream().filter(item -> !item.optBoolean("commentDeleted")).count());
+            final JSONObject mail = optionRepository.get(Option.ID_C_MAIL_USER_CONTEXT);
+            if (mail != null) {
+                mail.put(Option.OPTION_VALUE, CommentThreads.removeMailBindings(mail.optString(Option.OPTION_VALUE), java.util.Set.of(commentId)));
+                optionRepository.update(Option.ID_C_MAIL_USER_CONTEXT, mail);
+            }
+            transaction.commit();
+        } catch (Exception failure) {
+            if (transaction.isActive()) transaction.rollback();
+            throw new ServiceException(failure);
+        }
+    }
+
+    public synchronized void removeArticleCommentThread(final String commentId) throws ServiceException {
         final Transaction transaction = commentRepository.beginTransaction();
 
         try {
             final JSONObject comment = commentRepository.get(commentId);
+            if (comment == null) throw new ServiceException("评论不存在或已被删除。");
             final String articleId = comment.getString(Comment.COMMENT_ON_ID);
-            commentRepository.remove(commentId);
-            decArticleCommentCount(articleId);
+            final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
+            final String rootId = CommentThreads.twoLevels(comments).stream().filter(item -> commentId.equals(item.optString(Keys.OBJECT_ID)))
+                    .map(item -> item.getString("commentThreadId")).findFirst().orElse(commentId);
+            final java.util.Set<String> removed = CommentThreads.descendants(comments, articleId, rootId);
+            for (final String id : removed) commentRepository.remove(id);
+            setArticleCommentCount(articleId, (int) comments.stream().filter(item -> !removed.contains(item.optString(Keys.OBJECT_ID))
+                    && !item.optBoolean("commentDeleted")).count());
+            final JSONObject mail = optionRepository.get(Option.ID_C_MAIL_USER_CONTEXT);
+            if (mail != null) {
+                mail.put(Option.OPTION_VALUE, CommentThreads.removeMailBindings(mail.optString(Option.OPTION_VALUE), removed));
+                optionRepository.update(Option.ID_C_MAIL_USER_CONTEXT, mail);
+            }
 
             transaction.commit();
         } catch (final Exception e) {
@@ -409,21 +468,6 @@ public class CommentMgmtService {
         }
     }
 
-    /**
-     * Article comment count -1 for an article specified by the given article id.
-     *
-     * @param articleId the given article id
-     * @throws JSONException       json exception
-     * @throws RepositoryException repository exception
-     */
-    private void decArticleCommentCount(final String articleId) throws JSONException, RepositoryException {
-        final JSONObject article = articleRepository.get(articleId);
-        final JSONObject newArticle = new JSONObject(article, JSONObject.getNames(article));
-        final int commentCnt = article.getInt(Article.ARTICLE_COMMENT_COUNT);
-        newArticle.put(Article.ARTICLE_COMMENT_COUNT, commentCnt - 1);
-        articleRepository.update(articleId, newArticle, Article.ARTICLE_COMMENT_COUNT);
-    }
-
     private void setArticleCommentCount(final String articleId, final int cnt)
             throws JSONException, RepositoryException {
         final JSONObject article = articleRepository.get(articleId);
@@ -441,7 +485,8 @@ public class CommentMgmtService {
     public void setCommentThumbnailURL(final JSONObject comment) throws Exception {
         final String commenterName = comment.optString(Comment.COMMENT_NAME);
         final JSONObject commenter = userRepository.getByUserName(commenterName);
-        final String avatarURL = commenter.optString(UserExt.USER_AVATAR);
+        final String fallback = Latkes.getStaticServePath() + "/images/volo-mark.svg";
+        final String avatarURL = commenter == null ? fallback : StringUtils.defaultIfBlank(commenter.optString(UserExt.USER_AVATAR), fallback);
         comment.put(Comment.COMMENT_THUMBNAIL_URL, avatarURL);
     }
 

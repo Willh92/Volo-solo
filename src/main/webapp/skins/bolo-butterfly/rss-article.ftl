@@ -28,10 +28,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -63,7 +63,7 @@
                         </#list>
                     </div>
                     <h2 class="article__title">
-                        ${article.articleTitle}
+                        ${(article.articleTitle)?html}
                         <#if article.articlePutTop>
                             <sup>
                                 ${topArticleLabel}
@@ -73,7 +73,7 @@
                     <#include "../../common-template/share.ftl">
                 </div>
                 <div class="wrapper">
-                    <section id="article-container">
+                    <section id="article-container" class="vditor-reset">
                         ${article.articleContent}
                         <#if "" != article.articleSign.signHTML?trim>
                             <div>
@@ -85,7 +85,7 @@
             </div>
             <div class="article__bottom">
                 <div class="wrapper">
-                    <div class="fn__flex">
+                    <div class="fn__flex" data-article-recommendations>
                         <div class="item" id="randomArticles"></div>
                         <div class="item" id="relevantArticles"></div>
                     </div>

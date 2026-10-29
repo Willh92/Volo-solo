@@ -82,6 +82,7 @@ admin.pageList = {
 
                 var pages = result.pages;
                 var pageData = [];
+                var escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
                 admin.pageList.pageInfo.currentCount = pages.length;
                 admin.pageList.pageInfo.pageCount = result.pagination.paginationPageCount === 0 ? 1 : result.pagination.paginationPageCount;
                 for (var i = 0; i < pages.length; i++) {
@@ -106,17 +107,18 @@ admin.pageList = {
                     }
 
                     var pageIcon = '';
+                    var title = escape(pages[i].pageTitle), address = escape(pages[i].pagePermalink);
+                    var safeId = encodeURIComponent(pages[i].oId).replace(/'/g, '%27');
+                    var encodedTitle = encodeURIComponent(pages[i].pageTitle).replace(/'/g, '%27');
                     if (pages[i].pageIcon !== '') {
-                      pageIcon = "<img class='navigation-icon' src='" + pages[i].pageIcon + "'/> ";
+                      pageIcon = "<img class='navigation-icon' src='" + escape(pages[i].pageIcon) + "' alt=''/> ";
                     }
-                    pageData[i].pageTitle = pageIcon + "<a class='no-underline' href='" + pages[i].pagePermalink + "' target='_blank'>" +
-                            pages[i].pageTitle + "</a>";
-                    pageData[i].pagePermalink = "<a class='no-underline' href='" + pages[i].pagePermalink + "' target='_blank'>"
-                            + pages[i].pagePermalink + "</a>";
-                    pageData[i].pageTarget = pages[i].pageOpenTarget;
-                    pageData[i].expendRow = "<span><a href='" + pages[i].pagePermalink + "' target='_blank'>" + Label.viewLabel + "</a>  \
-                                <a href='javascript:void(0)' onclick=\"admin.pageList.get('" + pages[i].oId + "')\">" + Label.updateLabel + "</a>\
-                                <a href='javascript:void(0)' onclick=\"admin.pageList.del('" + pages[i].oId + "', '" + encodeURIComponent(pages[i].pageTitle) + "')\">" + Label.removeLabel + "</a></span>";
+                    pageData[i].pageTitle = pageIcon + "<a class='no-underline' href='" + address + "' target='_blank' rel='noopener noreferrer'>" + title + "</a>";
+                    pageData[i].pagePermalink = "<a class='no-underline' href='" + address + "' target='_blank' rel='noopener noreferrer'>" + address + "</a>";
+                    pageData[i].pageTarget = escape(pages[i].pageOpenTarget);
+                    pageData[i].expendRow = "<span><a href='" + address + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
+                                <a href='javascript:void(0)' onclick=\"admin.pageList.get('" + safeId + "')\">" + Label.updateLabel + "</a>\
+                                <a href='javascript:void(0)' onclick=\"admin.pageList.del('" + safeId + "', '" + encodedTitle + "')\">" + Label.removeLabel + "</a></span>";
                 }
 
                 that.tablePagination.updateTablePagination(pageData, pageNum, result.pagination);
@@ -160,7 +162,7 @@ admin.pageList = {
      * @title 自定义页面标题
      */
     del: function (id, title) {
-        var isDelete = confirm(Label.confirmRemoveLabel + Label.navLabel + '"' + Util.htmlDecode(title) + '"?');
+        var isDelete = confirm(Label.confirmRemoveLabel + Label.navLabel + '"' + decodeURIComponent(title) + '"?');
         if (isDelete) {
             $("#loadMsg").text(Label.loadingLabel);
             $("#tipMsg").text("");

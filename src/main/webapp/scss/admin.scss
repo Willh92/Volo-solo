@@ -24,7 +24,6 @@
 */
 @import 'reset';
 @import 'function';
-@import 'vditor/src/assets/scss/index';
 
 body {
   color: #767676;
@@ -1086,7 +1085,7 @@ button#submitArticle:hover {
   }
 }
 
-@media (prefers-color-scheme: dark) {
+html[data-bolo-theme='dark'] {
   .module-panel {
     background-color: #1b1b1b;
   }

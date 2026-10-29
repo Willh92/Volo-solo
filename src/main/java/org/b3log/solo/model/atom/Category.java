@@ -18,7 +18,7 @@
 package org.b3log.solo.model.atom;
 
 
-import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 
 /**
  * Category.
@@ -64,6 +64,6 @@ public final class Category {
 
     @Override
     public String toString() {
-        return CATEGORY_ELEMENT.replace(TERM_VARIABLE, StringEscapeUtils.escapeXml(term));
+        return CATEGORY_ELEMENT.replace(TERM_VARIABLE, StringEscapeUtils.escapeXml11(term));
     }
 }

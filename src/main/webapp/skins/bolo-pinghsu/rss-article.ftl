@@ -29,10 +29,10 @@
                         <link rel="stylesheet"
                             href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}" />
                         <#if previousArticlePermalink??>
-                            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+                            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
                         </#if>
                         <#if nextArticlePermalink??>
-                            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+                            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
                         </#if>
                     </@head>
                 </head>
@@ -46,7 +46,7 @@
                             <div class="post wrapper wrapper--miner">
                                 <h2 class="item__title">
                                     <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                        ${article.articleTitle}
+                                        ${(article.articleTitle)?html}
                                     </a>
                                     <#if article.articlePutTop>
                                         <sup>
@@ -102,7 +102,7 @@
                                     <#if interactive=="on">
                                         <@comments commentList=articleComments article=article></@comments>
                                     </#if>
-                                    <div class="post__list fn__flex">
+                                    <div class="post__list fn__flex" data-article-recommendations>
                                         <div class="post__list-mid fn__flex-1">
                                             <div id="randomArticles"></div>
                                         </div>
@@ -121,7 +121,7 @@
                                         <span class="tag tag--6" data-type="qqz">QZone</span>
                                         <span class="post__code tag tag--7"
                                             data-type="wechat"
-                                            data-title="${article.articleTitle}"
+                                            data-title="${(article.articleTitle)?html}"
                                             data-blogtitle="${blogTitle}"
                                             data-url="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
                                             data-avatar="${article.authorThumbnailURL}">WeChat</span>
@@ -130,19 +130,19 @@
                                         <#if previousArticlePermalink??>
                                             <a href="${servePath}${previousArticlePermalink}" rel="prev"
                                                 class="vditor-tooltipped__n vditor-tooltipped"
-                                                pjax-title="${previousArticleTitle}"
-                                                aria-label="${previousArticleLabel}: ${previousArticleTitle}">←</a>
+                                                pjax-title="${(previousArticleTitle)?html}"
+                                                aria-label="${previousArticleLabel}: ${(previousArticleTitle)?html}"><svg class="post__control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12H3m7-7-7 7 7 7"/></svg></a>
                                         </#if>
                                         <#if nextArticlePermalink??>
                                             <a href="${servePath}${nextArticlePermalink}" rel="next"
                                                 class="vditor-tooltipped__n vditor-tooltipped"
-                                                pjax-title="${nextArticleTitle}"
-                                                aria-label="${nextArticleLabel}: ${nextArticleTitle}">→</a>
+                                                pjax-title="${(nextArticleTitle)?html}"
+                                                aria-label="${nextArticleLabel}: ${(nextArticleTitle)?html}"><svg class="post__control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-7-7 7 7-7 7"/></svg></a>
                                         </#if>
                                         <a href="javascript:Util.goTop()" class="vditor-tooltipped__n vditor-tooltipped"
-                                            aria-label="${goTopLabel}">↑</a>
+                                            aria-label="${goTopLabel}"><svg class="post__control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V3m-7 7 7-7 7 7"/></svg></a>
                                         <a href="javascript:Util.goBottom()" class="vditor-tooltipped__n vditor-tooltipped"
-                                            aria-label="${goBottomLabel}">↓</a>
+                                            aria-label="${goBottomLabel}"><svg class="post__control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18m-7-7 7 7 7-7"/></svg></a>
                                     </span>
                                 </div>
                             </div>

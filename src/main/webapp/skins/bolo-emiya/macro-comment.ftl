@@ -21,45 +21,47 @@
   <div class="comment" id="${comment.oId}">
     <div class="comment__info">
       <#if "http://" == comment.commentURL>
-      <span class="username">${comment.commentName}</span>
+      <span class="username">${comment.commentName?html}</span>
       <#else>
-      <a class="username" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+      <a class="username" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
       </#if>
       <a class="btn" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
     </div>
     <main class="comment__detail">
       <div class="vditor-reset">
-        ${comment.commentContent}
+        <div data-comment-content>${comment.commentContent}</div>
       </div>
       <time class="time">${comment.commentDate?string("yyyy-MM-dd HH:mm")}</time>
+      <#if (comment.commentIPMasked!'')?has_content><span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span></#if>
     </main>
   </div>
 </#macro>
 
 <#macro article_comment comment article>
-  <div class="comment" id="${comment.oId}">
+  <div class="comment" id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comment__info">
       <#if "http://" == comment.commentURL || "https://" == comment.commentURL>
-        <span class="username">${comment.commentName}</span>
+        <span class="username">${comment.commentName?html}</span>
         <#else>
-        <a class="username" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+        <a class="username" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
       </#if>
       <#if comment.isReply>
       @<a 
         class="replyName J_replyName"
         href="javascript:;"
         data-originalId="${comment.commentOriginalCommentId}" 
-      >${comment.commentOriginalCommentName}</a>
+      >${comment.commentOriginalCommentName?html}</a>
       </#if>
       <#if article.commentable>
-        <a class="btn" href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">${replyLabel}</a>
+        <a class="btn" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
       </#if>
     </div>
     <main class="comment__detail">
       <div class="vditor-reset">
-        ${comment.commentContent}
+        <div data-comment-content>${comment.commentContent}</div>
       </div>
       <time class="time">${comment.commentDate2?string("yyyy-MM-dd HH:mm")}</time>
+      <#if (comment.commentIPMasked!'')?has_content><span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span></#if>
     </main>
   </div>
 </#macro>

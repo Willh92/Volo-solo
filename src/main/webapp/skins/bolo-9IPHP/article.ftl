@@ -27,10 +27,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -43,7 +43,7 @@
                 <header>
                     <h2>
                         <a rel="bookmark" href="${servePath}${article.articlePermalink}">
-                            ${article.articleTitle}
+                            ${(article.articleTitle)?html}
                         </a>
                         <#if article.articlePutTop>
                             <sup>
@@ -96,7 +96,7 @@
                     <#-- div class="copyright">
                         ${articleCP1Label}
                         <a rel="bookmark" href="${servePath}${article.articlePermalink}">
-                            ${article.articleTitle}
+                            ${(article.articleTitle)?html}
                         </a> -
                         <a href="${servePath}">
                             ${blogTitle}
@@ -107,7 +107,7 @@
                         <#if previousArticlePermalink??>
                             <a href="${servePath}${previousArticlePermalink}" rel="prev"
                                class="fn-left vditor-tooltipped vditor-tooltipped__n"
-                               aria-label="${previousArticleTitle}">
+                               aria-label="${(previousArticleTitle)?html}">
                                 ${previousArticleLabel}
                             </a>
                         </#if>
@@ -115,7 +115,7 @@
                         <#if nextArticlePermalink??>
                             <a href="${servePath}${nextArticlePermalink}" rel="next"
                                class="fn-right vditor-tooltipped vditor-tooltipped__n"
-                               aria-label="${nextArticleTitle}">
+                               aria-label="${(nextArticleTitle)?html}">
                                 ${nextArticleLabel}
                             </a>
                         </#if>

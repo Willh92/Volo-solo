@@ -19,17 +19,27 @@
 -->
 <#macro comment_script oId commentable>
 <#if commentable>
-    <div style="position: fixed;bottom: -300px;width: 100%;opacity: 0;background-color: #f1f7fe;padding: 20px 0;transition: all .15s ease-in-out;z-index: 100;left: 0;"
-         id="soloEditor">
-        <div style="max-width: 768px;margin: 0 auto;padding: 0 10px;">
+    <link rel="preload" as="script" href="${servePath}/js/lib/vditor/dist/index.min.js"/>
+    <div id="soloEditor" class="comment-composer" role="dialog" aria-label="${(commentLabel!'评论')?html}" aria-hidden="true" inert>
+        <div class="comment-composer__inner">
+            <div id="soloEditorVisitorCard" class="comment-composer__visitor" hidden>
+                <img id="soloEditorVisitorAvatar" alt=""/><strong id="soloEditorVisitorName"></strong><span>访客</span>
+                <button id="soloEditorEditIdentity" type="button">修改资料</button>
+            </div>
+            <div id="soloEditorIdentity" class="comment-composer__identity" hidden>
+                <label for="boloUser">昵称<span id="soloEditorNameSlot"></span></label>
+                <label for="boloSite">个人主页（选填）<span id="soloEditorSiteSlot"></span></label>
+                <label for="soloEditorEmail">通知邮箱（选填）<input id="soloEditorEmail" type="email" maxlength="254" autocomplete="email" placeholder="仅用于回复通知，不公开展示"/></label>
+            </div>
             <div id="soloEditorComment"></div>
-            <div style="display: flex;margin-top: 10px;line-height: 30px">
-                <div style="flex: 1;" id="soloEditorReplyTarget"></div>
-                <div style="color: #d23f31" id="soloEditorError"></div>
-                <span id="soloEditorCancel" style="margin: 0 10px;padding: 0 12px;cursor: pointer">
+            <div class="comment-composer__actions">
+                <div id="soloEditorReplyTarget"></div>
+                <div id="soloEditorError" role="alert"></div>
+                <button id="soloEditorCancel" type="button">
                     ${cancelLabel}
-                </span>
-                <button id="soloEditorAdd" style="border-radius: 4px;background-color: #60b044;border:1px solid #569e3d;color: #fff;padding: 0 12px">
+                </button>
+                <button id="soloEditorRetry" type="button" hidden>重新加载</button>
+                <button id="soloEditorAdd" type="button" disabled>
                     ${confirmLabel}
                 </button>
             </div>

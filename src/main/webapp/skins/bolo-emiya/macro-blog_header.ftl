@@ -19,8 +19,8 @@
 -->
 <#macro nav_items>
   <#list pageNavigations as page>
-    <li><a href="${page.pagePermalink}" target="${page.pageOpenTarget}">
-        ${page.pageTitle}
+    <li><a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">
+        ${page.pageTitle?html}
       </a></li>
   </#list>
   <li><a href="${servePath}/links.html">
@@ -29,20 +29,7 @@
   <li><a href="${servePath}/follows.html">
       ${followLabel}
     </a></li>
-  <#if interactive=="on">
-    <#if isLoggedIn>
-      <li><a href="${servePath}/admin-index.do#main">
-          ${adminLabel}
-        </a></li>
-      <li><a href="${logoutURL}">
-          ${logoutLabel}
-        </a></li>
-      <#else>
-        <li><a href="${servePath}/start">
-            ${startToUseLabel}
-          </a></li>
-    </#if>
-  </#if>
+
   <#nested>
 </#macro>
 <#macro blog_header>
@@ -51,6 +38,7 @@
       <a class="brand" href="/">
         ${blogTitle}
       </a>
+      <div class="skin-theme-slot" data-bolo-theme-slot></div>
       <button type="button" class="toggle J_navbar_toggle" data-for="toggle-items">
         <span class="icon-bar"></span>
         <span class="icon-bar"></span>
@@ -63,6 +51,7 @@
       </div>
     </div>
     <div class="navbar__container navbar__container--web">
+      <div class="skin-theme-slot" data-bolo-theme-slot></div>
       <a class="brand" href="/">
         ${blogTitle}
       </a>
@@ -92,7 +81,7 @@
       <div class="custom_header__container">
         <div class="custom_header__articleMeta">
           <h1 class="articleMeta__title">
-            ${article.articleTitle}
+            ${(article.articleTitle)?html}
           </h1>
           <div class="articleMeta__info">
             <span class="author">@${article.authorName} &nbsp;${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}

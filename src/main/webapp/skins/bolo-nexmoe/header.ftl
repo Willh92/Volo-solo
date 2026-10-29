@@ -31,6 +31,5 @@
         <div class="mdui-toolbar-spacer"></div>
         <a href="/" title="${blogTitle}" class="mdui-btn mdui-btn-icon">
             <img src="${adminUser.userAvatar}" title="${blogTitle}" alt="${blogTitle}"></a>
-        </a>
     </div>
 </div>

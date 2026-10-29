@@ -20,8 +20,8 @@ package org.b3log.solo.service;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
@@ -76,6 +76,8 @@ public class PreferenceMgmtService {
      */
     @Inject
     private CronMgmtService cronMgmtService;
+    @Inject
+    private CommentFilterService commentFilterService;
 
     /**
      * Updates the preference with the specified preference.
@@ -83,7 +85,15 @@ public class PreferenceMgmtService {
      * @param preference the specified preference
      * @throws ServiceException service exception
      */
-    public void updatePreference(final JSONObject preference) throws ServiceException {
+    public synchronized void updatePreference(final JSONObject preference) throws ServiceException {
+        preference.put(Option.ID_C_HELP_IMPROVE_PLAN, "false");
+        final JSONObject oldPreference = optionQueryService.getPreference();
+        for (final String filterKey : new String[]{Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW}) {
+            if (!preference.has(filterKey)) preference.put(filterKey, oldPreference.optString(filterKey,
+                    filterKey.equals(Option.ID_C_COMMENT_FILTER_BUILTIN) ? "on" : ""));
+        }
+        // Compile before opening a database transaction. Publish only after a successful commit.
+        final CommentFilterService.Prepared filter = commentFilterService.prepare(preference);
         final Iterator<String> keys = preference.keys();
         while (keys.hasNext()) {
             final String key = keys.next();
@@ -97,8 +107,6 @@ public class PreferenceMgmtService {
         try {
             preference.put(Option.ID_C_SIGNS, preference.get(Option.ID_C_SIGNS).toString());
 
-            final JSONObject oldPreference = optionQueryService.getPreference();
-
             final String version = oldPreference.optString(Option.ID_C_VERSION);
             preference.put(Option.ID_C_VERSION, version);
 
@@ -111,6 +119,7 @@ public class PreferenceMgmtService {
             }
 
             transaction.commit();
+            commentFilterService.activate(filter);
 
             final String showCodeBlockLnVal = preference.optString(Option.ID_C_SHOW_CODE_BLOCK_LN);
             Markdowns.SHOW_CODE_BLOCK_LN = "true".equalsIgnoreCase(showCodeBlockLnVal);

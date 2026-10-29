@@ -24,7 +24,7 @@
                 <div class="item__container">
                     <div class="item__cover" style="background-image: url(${article.articleImg1URL})"></div>
                     <div rel="bookmark" class="item__abstract">
-                        <a pjax-title="${article.articleTitle}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                        <a pjax-title="${(article.articleTitle)?html}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
                             ${article.articleAbstractText}
                         </a>
                     </div>
@@ -44,22 +44,17 @@
                             </#if>
                         </span>
                         <h2 class="item__title">
-                            <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                                ${article.articleTitle}
+                            <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                                ${(article.articleTitle)?html}
                             </a>
                         </h2>
-                        <#list article.articleTags?split(",") as articleTag>
-                            <#if articleTag_index==0>
-                                <div class="ico ico--${article_index % 10}"></div>
-                                <#if article.articleCategory?? && article.articleCategory !="">
-                                    <a class="item__tag" href="${servePath}/category/${article.categoryURI}">
-                                        ${article.articleCategory}
-                                    </a>
-                                    <#else>
-                                        <a class="item__tag">无</a>
-                                </#if>
-                            </#if>
-                        </#list>
+                        <#assign cardCategory=(article.articleCategory!'')?trim>
+                        <#assign cardTag=(article.articleTags!'')?split(',')?first?trim>
+                        <#if cardCategory?has_content>
+                            <a class="item__badge" href="${servePath}/category/${article.categoryURI?html}" title="${cardCategory?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h6l2 2h10v12H3Z"/></svg><span>${cardCategory?html}</span></a>
+                        <#elseif cardTag?has_content>
+                            <a class="item__badge" href="${servePath}/tags/${cardTag?url('UTF-8')}" title="${cardTag?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8l10 10-8 8L3 11Z"/><circle cx="7.5" cy="7.5" r="1"/></svg><span>${cardTag?html}</span></a>
+                        </#if>
                     </div>
                 </div>
             </article>

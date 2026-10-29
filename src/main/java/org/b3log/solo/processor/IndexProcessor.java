@@ -17,25 +17,27 @@
  */
 package org.b3log.solo.processor;
 
-import org.apache.commons.lang.StringUtils;
+import org.b3log.solo.util.AdminPaths;
+
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.tool.FixSizeLinkedList;
 import org.b3log.solo.log4j.RamAppender;
 import org.b3log.solo.model.Common;
@@ -45,9 +47,8 @@ import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 import java.util.Calendar;
 import java.util.Map;
 
@@ -60,7 +61,7 @@ import java.util.Map;
  * @author <a href="https://vanessa.b3log.org">Vanessa</a>
  * @since 0.3.1
  */
-@RequestProcessor
+@Singleton
 public class IndexProcessor {
 
     /**
@@ -106,8 +107,8 @@ public class IndexProcessor {
      */
     @RequestProcessing(value = {"", "/"}, method = HttpMethod.GET)
     public void showIndex(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "index.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
         try {
@@ -122,19 +123,9 @@ public class IndexProcessor {
                         skinOpt.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME) :
                         skinOpt.optString(Option.ID_C_SKIN_DIR_NAME);
             }
-            request.setAttribute(Keys.TEMAPLTE_DIR_NAME, specifiedSkin);
+            request.setAttribute(Keys.TEMPLATE_DIR_NAME, specifiedSkin);
 
-            Cookie cookie;
-            if (!Solos.isMobile(request)) {
-                cookie = new Cookie(Common.COOKIE_NAME_SKIN, specifiedSkin);
-            } else {
-                cookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, specifiedSkin);
-            }
-            cookie.setMaxAge(60 * 60); // 1 hour
-            cookie.setPath("/");
-            response.addCookie(cookie);
-
-            Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+            Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
 
             dataModelService.fillIndexArticles(context, dataModel, currentPageNum, preference);
             dataModelService.fillCommon(context, dataModel, preference);
@@ -154,7 +145,7 @@ public class IndexProcessor {
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -166,7 +157,7 @@ public class IndexProcessor {
     @RequestProcessing(value = "/start", method = HttpMethod.GET)
     public void showStart(final RequestContext context) {
         if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
-            context.sendRedirect(Latkes.getServePath() + "/admin-index.do#main");
+            context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
 
             return;
         }
@@ -178,6 +169,7 @@ public class IndexProcessor {
 
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "common-template/start.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
+        AdminPaths.fill(dataModel);
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         dataModel.putAll(langs);
         // 登录失败提示
@@ -193,11 +185,11 @@ public class IndexProcessor {
         } else {
             dataModel.put(Common.DATA, 1);
         }
-        dataModel.put(Common.VERSION, SoloServletListener.VERSION);
+        dataModel.put(Common.VERSION, SoloApplication.VERSION);
         dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
         dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
         dataModel.put(Common.REFERER, URLs.encode(referer));
-        dataModel.put(Common.BOLO_VERSION, SoloServletListener.BOLO_VERSION);
+        dataModel.put(Common.BOLO_VERSION, SoloApplication.BOLO_VERSION);
         Keys.fillRuntime(dataModel);
         dataModelService.fillMinified(dataModel);
         dataModelService.fillFaviconURL(dataModel, optionQueryService.getPreference());
@@ -214,11 +206,11 @@ public class IndexProcessor {
     @Deprecated
     public void showRoot(final RequestContext context) {
         if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
-            context.sendRedirect(Latkes.getServePath() + "/admin-index.do#main");
+            context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
 
             return;
         } else {
-            context.sendRedirect(Latkes.getServePath() + "/start");
+            context.sendRedirect(Latkes.getServePath() + AdminPaths.login());
 
             return;
         }
@@ -231,7 +223,7 @@ public class IndexProcessor {
      */
     @RequestProcessing(value = "/logout", method = HttpMethod.GET)
     public void logout(final RequestContext context) {
-        final HttpServletRequest httpServletRequest = context.getRequest();
+        final Request httpServletRequest = context.getRequest();
 
         Solos.logout(httpServletRequest, context.getResponse());
 
@@ -261,7 +253,7 @@ public class IndexProcessor {
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -282,7 +274,7 @@ public class IndexProcessor {
     @RequestProcessing(value = "/admin/logs", method = HttpMethod.GET)
     public void logs(final RequestContext context) {
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }

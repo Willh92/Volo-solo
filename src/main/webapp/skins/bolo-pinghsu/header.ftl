@@ -21,7 +21,7 @@
     <div class="wrapper">
         <a href="${servePath}" rel="start" class="header__logo">
             <img src="${adminUser.userAvatar}" />
-            ${blogTitle}
+            <span class="pinghsu-brand-title">${blogTitle?html}</span>
         </a>
         <nav class="header__nav mobile__none">
             <a href="${servePath}/tags.html" rel="section">
@@ -44,40 +44,19 @@
                 </a>
             </#if>
         </nav>
-        <div class="header__bar fn__none" onclick="$(this).next().slideToggle()">
+        <div class="skin-theme-slot" data-bolo-theme-slot></div>
+        <button type="button" class="header__bar fn__none" onclick="$(this).next().slideToggle()" aria-label="${(navigationLabel!'导航菜单')?html}">
             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-                <path fill="#444" d="M0 3h20v2h-20v-2zM0 9h20v2h-20v-2zM0 15h20v2h-20v-2z"></path>
+                <path d="M3 5h14M3 10h14M3 15h14"></path>
             </svg>
-        </div>
+        </button>
         <main class="header__menu fn__none">
             <ul>
-                <#if interactive=="on">
-                    <#if isLoggedIn>
-                        <li>
-                            <a href="${servePath}/admin-index.do#main" title="${adminLabel}">
-                                <i class="icon__setting"></i>
-                                ${adminLabel}
-                            </a>
-                        </li>
-                        <li>
-                            <a href="${logoutURL}">
-                                <i class="icon__logout"></i>
-                                ${logoutLabel}
-                            </a>
-                        </li>
-                        <#else>
-                            <li>
-                                <a href="${servePath}/start">
-                                    <i class="icon__login"></i>
-                                    ${startToUseLabel}
-                                </a>
-                            </li>
-                    </#if>
-                </#if>
+
                 <#list pageNavigations as page>
                     <li>
-                        <a href="${page.pagePermalink}" target="${page.pageOpenTarget}" rel="section">
-                            ${page.pageTitle}
+                        <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
+                            ${page.pageTitle?html}
                         </a>
                     </li>
                 </#list>

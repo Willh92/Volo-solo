@@ -22,8 +22,8 @@
         <div class="article">
             <h2>
                 <span class="left">
-                    <a rel="bookmark" class="article-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
-                        ${article.articleTitle}
+                    <a rel="bookmark" class="skin-list-title article-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                        ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
                         <sup class="tip">
@@ -41,6 +41,7 @@
                 <span class="expand-ico" onclick="getArticle(this, '${article.oId}');"></span>
                 <span class="clear"></span>
             </h2>
+            <div class="neoease-meta">
             <div class="left article-element">
                 <span class="date-ico" title="${dateLabel}">
                     <#if article.hasUpdated>
@@ -71,7 +72,7 @@
                     ${article.articleViewCount}&nbsp;&nbsp;${viewLabel}
                 </a>
             </div>
-            <div class="clear"></div>
+            </div>
             <div class="vditor-reset">
                 <div id="abstract${article.oId}">
                     ${article.articleAbstract}
@@ -100,9 +101,9 @@
     <div class="pagination">
         <#if 1 !=paginationPageNums?first>
             <a href="${servePath}${path}" title="${firstPageLabel}">
-                <<< /a>
+                &laquo;</a>
                     <a href="${servePath}${path}?p=${paginationPreviousPageNum}" title="${previousPageLabel}">
-                        << /a>
+                        &lsaquo;</a>
         </#if>
         <#list paginationPageNums as paginationPageNum>
             <#if paginationPageNum==paginationCurrentPageNum>

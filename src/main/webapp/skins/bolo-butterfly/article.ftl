@@ -28,10 +28,10 @@
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
-            <link rel="prev" title="${previousArticleTitle}" href="${servePath}${previousArticlePermalink}">
+            <link rel="prev" title="${(previousArticleTitle)?html}" href="${servePath}${previousArticlePermalink}">
         </#if>
         <#if nextArticlePermalink??>
-            <link rel="next" title="${nextArticleTitle}" href="${servePath}${nextArticlePermalink}">
+            <link rel="next" title="${(nextArticleTitle)?html}" href="${servePath}${nextArticlePermalink}">
         </#if>
     </@head>
 </head>
@@ -48,7 +48,7 @@
         <canvas id="articleTop"></canvas>
     </div>
 
-    <main class="layout_post" id="content-inner">
+    <main class="layout_post<#if article?? && article.articleToC?? && article.articleToC?size gt 0> has-reading-toc</#if>" id="content-inner">
         <article id="post">
             <div class="article">
                 <div class="ft__center">
@@ -63,7 +63,7 @@
                         </#list>
                     </div>
                     <h2 class="article__title">
-                        ${article.articleTitle}
+                        ${(article.articleTitle)?html}
                         <#if article.articlePutTop>
                             <sup>
                                 ${topArticleLabel}
@@ -73,7 +73,7 @@
                     <#include "../../common-template/share.ftl">
                 </div>
                 <div class="wrapper">
-                    <section id="article-container">
+                    <section id="article-container" class="vditor-reset">
                         ${article.articleContent}
                         <#if "" != article.articleSign.signHTML?trim>
                             <div>
@@ -83,15 +83,9 @@
                     </section>
                 </div>
             </div>
-            <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-                <div class="post__toc">
-                    <#include "../../common-template/toc.ftl"/>
-                </div>
-            </#if>
-
             <div class="article__bottom">
                 <div class="wrapper">
-                    <div class="fn__flex">
+                    <div class="fn__flex" data-article-recommendations>
                         <div class="item" id="randomArticles"></div>
                         <div class="item" id="relevantArticles"></div>
                     </div>
@@ -109,6 +103,11 @@
     </main>
     <#if pjax><!---- pjax {#pjax} end ----></#if>
 </div>
+<#if article?? && article.articleToC?? && article.articleToC?size gt 0>
+    <aside class="post__toc" aria-label="${tocLabel?html}">
+        <#include "../../common-template/disclosure-toc.ftl"/>
+    </aside>
+</#if>
 <script type="text/javascript"
         src="${staticServePath}/skins/${skinDirName}/js/TweenMax.min.js?${staticResourceVersion}"
         charset="utf-8"></script>

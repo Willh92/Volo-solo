@@ -17,13 +17,13 @@
  */
 package org.b3log.solo.service;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.RepositoryException;
@@ -133,7 +133,7 @@ public class UserMgmtService {
             }
             res.charset("UTF-8");
             final JSONObject result = new JSONObject(res.bodyText());
-            if (0 != result.optInt(Keys.STATUS_CODE)) {
+            if (0 != result.optInt(org.b3log.solo.model.Common.STATUS_CODE)) {
                 LOGGER.log(Level.DEBUG, "Updates usite option failed: Invalid Username or B3log Key.");
 
                 return;
@@ -196,6 +196,13 @@ public class UserMgmtService {
             oldUser.put(User.USER_NAME, userName);
 
             final String userRole = requestJSONObject.optString(User.USER_ROLE);
+            if (Role.ADMIN_ROLE.equals(oldUser.optString(User.USER_ROLE)) && !Role.ADMIN_ROLE.equals(userRole)) {
+                throw new ServiceException("管理员角色不能降级。");
+            }
+            if (!Role.ADMIN_ROLE.equals(oldUser.optString(User.USER_ROLE))
+                    && !Role.DEFAULT_ROLE.equals(userRole) && !Role.VISITOR_ROLE.equals(userRole)) {
+                throw new ServiceException("用户角色不正确。");
+            }
             oldUser.put(User.USER_ROLE, userRole);
 
             final String userURL = requestJSONObject.optString(User.USER_URL);
@@ -218,7 +225,7 @@ public class UserMgmtService {
 
             userRepository.update(oldUserId, oldUser);
             transaction.commit();
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
@@ -256,7 +263,7 @@ public class UserMgmtService {
             userRepository.update(userId, oldUser, User.USER_ROLE);
 
             transaction.commit();
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
@@ -324,7 +331,7 @@ public class UserMgmtService {
             transaction.commit();
 
             return user.optString(Keys.OBJECT_ID);
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
@@ -343,10 +350,15 @@ public class UserMgmtService {
     public void removeUser(final String userId) throws ServiceException {
         final Transaction transaction = userRepository.beginTransaction();
         try {
+            final JSONObject user = userRepository.get(userId);
+            if (user != null && org.b3log.latke.model.Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))) {
+                transaction.rollback();
+                throw new ServiceException("不能删除管理员账号。");
+            }
             userRepository.remove(userId);
 
             transaction.commit();
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
             }

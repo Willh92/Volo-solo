@@ -17,8 +17,8 @@
  */
 package org.b3log.solo.bolo.waf;
 
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 
 /**
  * <h3>bolo-solo</h3>

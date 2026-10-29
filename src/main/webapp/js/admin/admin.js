@@ -46,16 +46,16 @@ $.extend(Admin.prototype, {
      * @description  登出
      */
     logout: function () {
-        window.location.href = Label.servePath + '/logout'
-    },
-    toggleMenu: function () {
-        if ($('#tabs').css('left') === '-240px') {
-            $('#tabs').css('left', 0)
-            $('.tabs__bg').show()
+        if (window.BoloNavigation) {
+            window.BoloNavigation.navigate(Label.servePath + '/logout')
         } else {
-            $('#tabs').css('left', '-240px')
-            $('.tabs__bg').hide()
+            window.location.href = Label.servePath + '/logout'
         }
+    },
+    toggleMenu: function (open) {
+        var next = typeof open === 'boolean' ? open : !document.body.classList.contains('console-nav-open')
+        document.body.classList.toggle('console-nav-open', next)
+        $('.console-menu').attr('aria-expanded', String(next)).attr('aria-label', next ? '收起侧栏' : '展开侧栏')
     },
     /**
      * @description 清除提示
@@ -119,8 +119,12 @@ $.extend(Admin.prototype, {
         }
 
         if (tab === '') {
-            return
+            tab = 'main'
+            tags.hashList = ['main']
+            history.replaceState(history.state, '', '#main')
         }
+        var title = document.querySelector('#tabs_' + tab + ' a')
+        if (title) document.getElementById('consolePageTitle').textContent = title.textContent.trim()
 
         // 离开编辑器时进行提示
         try {
@@ -159,7 +163,7 @@ $.extend(Admin.prototype, {
         if ($('#tabsPanel_' + tab).length === 1) {
             if ($('#tabsPanel_' + tab).html().replace(/\s/g, '') === '') {
                 // 还未加载 HTML
-                $('#tabsPanel_' + tab).load('admin-' + tab + '.do', function () {
+                $('#tabsPanel_' + tab).load(document.documentElement.dataset.boloAdminPages + 'admin-' + tab + '.do', function () {
                     // 页面加载完后，回调初始函数
                     if (tab === 'article' && admin.article.status.id) {
                         // 当文章页面编辑器未初始化时，调用更新文章需先初始化编辑器
@@ -207,23 +211,28 @@ $.extend(Admin.prototype, {
      */
     init: function () {
         Util.killIE()
+        Util.loadVditorRuntime().catch(function () {})
         $('#loadMsg').text(Label.loadingLabel)
 
         // 构建 tabs
         $('#tabs').tabs()
 
         // tipMsg
-        setInterval(function () {
+        var tipTimer = setInterval(function () {
             if ($('#tipMsg').text() !== '') {
                 setTimeout(function () {
                     $('#tipMsg').text('')
                 }, 7000)
             }
         }, 6000)
+        if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(tipTimer) })
         $('#loadMsg').text('')
 
         window.onbeforeunload = function (event) {
-            if (window.location.hash === '#article/article') {
+            var editor = admin.editors.articleEditor
+            var hasArticle = admin.article.status.id || $('#title').val() ||
+                editor && editor.getContent && editor.getContent().trim()
+            if (window.location.hash === '#article/article' && admin.article.isConfirm && hasArticle) {
                 if (event) {
                     event.returnValue = Label.editorLeaveLabel
                 }
@@ -232,6 +241,10 @@ $.extend(Admin.prototype, {
         }
 
         $(document).ajaxError(function (event, xhr, options, exc) {
+            if (xhr.status === 401 || xhr.status === 403) {
+                $('#tipMsg').text('访问被拒绝，请确认当前会话和操作权限。')
+                return
+            }
             if (xhr.status !== 200) {
                 $('#tipMsg').text(xhr.status + ': ' + exc)
             }
@@ -255,7 +268,6 @@ $.extend(Admin.prototype, {
             }
 
             $('#tabs > ul').height('auto')
-            $('#tabs > ul').height($('#tabs > ul').height() + 80)
         })
     },
     /**

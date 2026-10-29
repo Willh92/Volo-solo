@@ -20,9 +20,9 @@
 <div class="footer">
     <div class="wrapper">
         <div class="left">
-            <span style="color: gray;">&copy; ${year}</span> <a href="${servePath}">${blogTitle}</a> ${footerContent}<br/>
-            Powered by <a href="https://github.com/adlered/bolo-solo" target="_blank">Bolo</a>
-            Theme ${skinDirName}
+            <span>&copy; ${year}</span> <a href="${servePath}">${blogTitle}</a> ${footerContent}<br/>
+            Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank">Volo</a>
+            Theme ${skinDirName?remove_beginning('bolo-')}
             by <a rel="friend" href="http://vanessa.b3log.org" target="_blank">Vanessa</a>.
         </div>
         <div class="clear"></div>

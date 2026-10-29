@@ -1,0 +1,1 @@
+Test fixtures from https://github.com/maxmind/MaxMind-DB at d1551916cff0712d12ff602c309234471b0402a2. Licensed under MIT; see LICENSE-MIT. These small synthetic test databases are not production GeoLite2 data and are not included in the release ZIP.

@@ -17,6 +17,6 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<link href="https://ftp.stackoverflow.wiki/bolo/fontawesome-free-5.14.0-web/css/all.css" rel="stylesheet">
+<link href="${staticServePath}/js/lib/fontawesome/css/all.min.css" rel="stylesheet">
 
 

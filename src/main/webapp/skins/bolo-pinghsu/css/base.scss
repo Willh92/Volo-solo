@@ -25,7 +25,6 @@
 @import "../../../scss/nprogress";
 @import "../../../scss/toc";
 @import "icon";
-@import "vditor/src/assets/scss/index";
 
 $red: #eb5055 !default;
 $black: #313131 !default;
@@ -398,6 +397,27 @@ a:active, a:focus, a:hover {
         -webkit-box-orient: vertical;
         display: -webkit-box;
       }
+    }
+
+    &__badge {
+      position: absolute;
+      right: 20px;
+      bottom: 17px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: calc(100% - 40px);
+      padding: 4px 9px;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--skin-control-accent, #eb5055) 9%, transparent);
+      color: var(--bolo-muted, #777);
+      font-size: 12px;
+      line-height: 20px;
+      box-sizing: border-box;
+      transition: color .2s, background-color .2s;
+      svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+      span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      &:hover { color: var(--skin-control-accent, #eb5055); background: color-mix(in srgb, var(--skin-control-accent, #eb5055) 15%, transparent); }
     }
 
     &__tag {

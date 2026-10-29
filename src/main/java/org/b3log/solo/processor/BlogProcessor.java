@@ -29,25 +29,24 @@ import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.solo.web.WebResources;
+import org.b3log.latke.http.Response;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
-import org.b3log.solo.SoloServletListener;
-import org.b3log.solo.bolo.SslUtils;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.JsonRenderer;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.prop.FaviconCache;
 import org.b3log.solo.bolo.tool.EditIMG;
 import org.b3log.solo.bolo.tool.MediaFileUtil;
@@ -68,8 +67,35 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.4.6
  */
-@RequestProcessor
+@Singleton
 public class BlogProcessor {
+
+    @org.b3log.solo.web.annotation.Before(org.b3log.solo.processor.console.ConsoleAuthAdvice.class)
+    @RequestProcessing(value = "/console/project-info", method = HttpMethod.GET)
+    public void projectInfo(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        context.renderJSON(org.b3log.solo.util.ProjectInfo.snapshot());
+    }
+
+    @RequestProcessing(value = "/github-stats/{username}.svg", method = HttpMethod.GET)
+    public void githubStats(final RequestContext context) {
+        final String username = context.pathVar("username");
+        if (!org.b3log.solo.util.GitHubStats.validUser(username)) {
+            context.sendError(404);
+            return;
+        }
+        JSONArray repositories = new JSONArray();
+        final JSONObject option = optionQueryService.getOptionById(Option.ID_C_GITHUB_REPOS);
+        if (option != null) {
+            try { repositories = new JSONArray(option.optString(Option.OPTION_VALUE, "[]")); }
+            catch (org.json.JSONException ignored) { }
+        }
+        context.getResponse().setContentType("image/svg+xml; charset=UTF-8");
+        context.setHeader("X-Content-Type-Options", "nosniff");
+        context.setHeader("Cache-Control", "public, max-age=300");
+        context.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+        context.sendString(org.b3log.solo.util.GitHubStats.svg(username, repositories, "dark".equals(context.getRequest().getParameter("theme"))));
+    }
 
     /**
      * Logger.
@@ -139,11 +165,13 @@ public class BlogProcessor {
             return;
         }
         final String name = preference.optString(Option.ID_C_BLOG_TITLE);
-        PWA_MANIFESTO_JSON = StringUtils.replace(PWA_MANIFESTO_JSON, "${name}", name);
         final String description = preference.optString(Option.ID_C_BLOG_SUBTITLE);
-        PWA_MANIFESTO_JSON = StringUtils.replace(PWA_MANIFESTO_JSON, "${description}", description);
         final JSONObject jsonObject = new JSONObject(PWA_MANIFESTO_JSON);
-        PWA_MANIFESTO_JSON = StringUtils.replace(PWA_MANIFESTO_JSON, "${shortName}", name);
+        jsonObject.put("name", name);
+        jsonObject.put("short_name", name);
+        jsonObject.put("description", description);
+        jsonObject.put("theme_color", org.b3log.solo.util.SiteAppearance.color());
+        jsonObject.put("background_color", "#f6f7f3");
         renderer.setJSONObject(jsonObject);
     }
 
@@ -152,110 +180,39 @@ public class BlogProcessor {
      *
      * @param context the specified context
      */
-    @RequestProcessing(value = "/favicon/{width}/{height}")
+    @RequestProcessing(value = "/favicon/{width}/{height}", method = HttpMethod.GET)
     public void getFavicon(final RequestContext context) {
-        synchronized (this) {
-            String resolution = context.pathVar("width") + "/" + context.pathVar("height");
-            try {
-                if (faviconCache.containsKey(resolution)) {
-                    final HttpServletResponse response = context.getResponse();
-                    String contentType = faviconCache.get(resolution).getMediaFileType();
-                    response.setContentType(contentType);
-                    OutputStream outputStream = response.getOutputStream();
-                    outputStream.write(faviconCache.get(resolution).getData());
-                    outputStream.close();
-                } else {
-                    final JSONObject preference = optionQueryService.getPreference();
-                    if (null == preference) {
-                        return;
-                    }
-                    String favicon = preference.optString(Option.ID_C_FAVICON_URL);
-                    // 正则表达式
-                    String regUrl = "^([hH][tT]{2}[pP]://|[hH][tT]{2}[pP][sS]://)(([A-Za-z0-9-~]+).)+([A-Za-z0-9-~\\\\/])+$";
-                    Pattern p = Pattern.compile(regUrl);
-                    Matcher m = p.matcher(favicon);
-                    if (!m.matches()) {
-                        // 非http或https开头，默认匹配本地
-                        favicon = Latkes.getServePath() + "/" + favicon;
-                    }
-
-                    File faviconFile = null;
-
-                    // 下载 favicon
-                    try {
-                        // 分析文件类型
-                        MediaFileUtil.MediaFileType mediaFileType = MediaFileUtil.getFileType(favicon);
-                        if (mediaFileType == null) {
-                            // 后缀名无法分析文件类型时，默认返回png
-                            mediaFileType = new MediaFileUtil.MediaFileType(
-                                    33,
-                                    "image/png");
-                        }
-
-                        // 分析临时目录
-                        final ServletContext servletContext = SoloServletListener.getServletContext();
-                        final String assets = "/";
-                        String path = servletContext.getResource(assets).getPath();
-                        path = URLDecoder.decode(path);
-                        String sourceFilePath = path + "tmp_favicon";
-
-                        // 创建临时文件，并定义输出流
-                        faviconFile = new File(sourceFilePath);
-                        FileOutputStream fileOutputStream = new FileOutputStream(faviconFile);
-
-                        // 下载favicon
-                        URL url = new URL(favicon);
-                        SslUtils.ignoreSsl();
-                        URLConnection connection = url.openConnection();
-                        InputStream inputStream = connection.getInputStream();
-                        int length = 0;
-                        byte[] bytes = new byte[1024];
-                        while ((length = inputStream.read(bytes)) != -1) {
-                            // 将互联网图片通过输出流写入到临时文件tmp_favicon
-                            fileOutputStream.write(bytes, 0, length);
-                        }
-                        fileOutputStream.close();
-                        inputStream.close();
-
-                        // 获取图片宽高参数
-                        int width = Integer.parseInt(context.pathVar("width"));
-                        int height = Integer.parseInt(context.pathVar("height"));
-
-                        // 裁剪图片
-                        EditIMG.createThumbnail(faviconFile, faviconFile, width, height,
-                                MediaFileUtil.getSuffixByFileType(mediaFileType));
-
-                        // 将裁剪后的图片输出至浏览器
-                        final HttpServletResponse response = context.getResponse();
-                        FileInputStream fileInputStream = new FileInputStream(faviconFile);
-                        int fileSize = fileInputStream.available();
-                        byte[] data = new byte[fileSize];
-                        fileInputStream.read(data);
-                        fileInputStream.close();
-                        String contentType = mediaFileType.mimeType;
-                        response.setContentType(contentType);
-                        OutputStream outputStream = response.getOutputStream();
-                        outputStream.write(data);
-                        // 写缓存
-                        faviconCache.put(resolution, new FaviconCache(contentType, data));
-                        outputStream.close();
-                    } catch (Exception e) {
-                        LOGGER.log(Level.ERROR, "Unable to resolve favicon");
-                        context.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-
-                        return;
-                    } finally {
-                        if (faviconFile != null) {
-                            faviconFile.delete();
-                        }
-                    }
+        final int width, height;
+        try {
+            width = Integer.parseInt(context.pathVar("width"));
+            height = Integer.parseInt(context.pathVar("height"));
+            if (width < 16 || height < 16 || width > 512 || height > 512) throw new IllegalArgumentException();
+        } catch (IllegalArgumentException exception) {
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("msg", "图标尺寸应介于 16 和 512 像素。"));
+            return;
+        }
+        final JSONObject preference = optionQueryService.getPreference();
+        final String source = preference == null ? "" : preference.optString(Option.ID_C_FAVICON_URL);
+        final String key = source + ":" + width + ":" + height;
+        try {
+            final FaviconCache icon;
+            synchronized (faviconCache) {
+                FaviconCache found = faviconCache.get(key);
+                if (found == null) {
+                    found = new FaviconCache("image/png", org.b3log.solo.util.Favicons.render(source, width, height, SoloApplication.getWebResources()));
+                    if (faviconCache.size() >= 64) faviconCache.clear();
+                    faviconCache.put(key, found);
                 }
-            } catch (Exception e) {
-                LOGGER.log(Level.ERROR, "Unable to resolve favicon");
-                context.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-
-                return;
+                icon = found;
             }
+            context.setHeader("Cache-Control", "public, max-age=300");
+            context.setHeader("X-Content-Type-Options", "nosniff");
+            context.getResponse().setContentType(icon.getMediaFileType());
+            context.sendBytes(icon.getData());
+        } catch (Exception exception) {
+            LOGGER.log(Level.ERROR, "Cannot render favicon", exception);
+            context.sendError(500);
         }
     }
 
@@ -291,7 +248,7 @@ public class BlogProcessor {
         jsonObject.put("tagCount", tagQueryService.getTagCount());
         jsonObject.put("servePath", Latkes.getServePath());
         jsonObject.put("staticServePath", Latkes.getStaticServePath());
-        jsonObject.put("version", SoloServletListener.VERSION);
+        jsonObject.put("version", SoloApplication.VERSION);
         jsonObject.put("runtimeMode", Latkes.getRuntimeMode());
         jsonObject.put("runtimeDatabase", Latkes.getRuntimeDatabase());
         jsonObject.put("locale", Latkes.getLocale());

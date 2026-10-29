@@ -57,7 +57,7 @@ public class FollowRepository extends AbstractRepository {
                 .setFilter(new PropertyFilter(Follow.FOLLOW_ADDRESS, FilterOperator.EQUAL, address))
                 .setPageCount(1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -70,7 +70,7 @@ public class FollowRepository extends AbstractRepository {
                 .setFilter(new PropertyFilter(Follow.FOLLOW_TITLE, FilterOperator.EQUAL, title))
                 .setPageCount(1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
@@ -87,7 +87,7 @@ public class FollowRepository extends AbstractRepository {
     public int getMaxOrder() throws RepositoryException {
         final Query query = new Query().addSort(Follow.FOLLOW_ORDER, SortDirection.DESCENDING);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return -1;
         }
@@ -113,7 +113,7 @@ public class FollowRepository extends AbstractRepository {
                         follow.optInt(Follow.FOLLOW_ORDER)))
                 .addSort(Follow.FOLLOW_ORDER, SortDirection.DESCENDING).setPage(1, 1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
@@ -140,7 +140,7 @@ public class FollowRepository extends AbstractRepository {
                                 follow.optInt(Follow.FOLLOW_ORDER)))
                 .addSort(Follow.FOLLOW_ORDER, SortDirection.ASCENDING).setPage(1, 1);
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
@@ -158,7 +158,7 @@ public class FollowRepository extends AbstractRepository {
     public JSONObject getByOrder(final int order) throws RepositoryException {
         final Query query = new Query().setFilter(new PropertyFilter(Follow.FOLLOW_ORDER, FilterOperator.EQUAL, order));
         final JSONObject result = get(query);
-        final JSONArray array = result.optJSONArray(Keys.RESULTS);
+        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }

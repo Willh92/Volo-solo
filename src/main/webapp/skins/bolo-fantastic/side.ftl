@@ -18,7 +18,7 @@
 
 -->
 <div
-        class="column is-4-tablet is-4-desktop  is-3-widescreen has-order-1  column-left <%= sticky_class(position) %>">
+        class="column is-4-tablet is-4-desktop is-3-widescreen has-order-1 column-left">
     <div class="card widget profile">
         <div class="card-content">
             <nav class="level">
@@ -194,7 +194,7 @@ box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);">
                             <a href="${servePath}${article.articlePermalink}" class="media-left">
                                 <p class="image is-64x64">
                                     <img class="thumbnail" src="${article.articleImg1URL!}"
-                                         alt="${article.articleTitle!}">
+                                         alt="${(article.articleTitle!)?html}">
                                 </p>
                             </a>
                         </#if>
@@ -206,7 +206,7 @@ box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);">
                                     </div>
                                 </div>
                                 <a href="${servePath}${article.articlePermalink}"
-                                   class="title has-link-black-ter is-size-6 has-text-weight-normal">${article.articleTitle!}</a>
+                                   class="title has-link-black-ter is-size-6 has-text-weight-normal"><span class="skin-list-title">${(article.articleTitle!)?html}</span></a>
                             </div>
                         </div>
                     </article>

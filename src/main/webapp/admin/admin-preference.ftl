@@ -82,10 +82,6 @@
 </div>
 <div id="tabPreferencePanel" class="sub-tabs-main">
     <div id="tabPreferencePanel_config" class="form">
-        <div class="fn__clear">
-            <button onclick="admin.preference.update()" class="fn__right">${updateLabel}</button>
-        </div>
-        <div class="fn__clear"></div>
         <label for="blogTitle">${blogTitle1Label}</label>
         <input id="blogTitle" type="text"/>
         <label for="blogSubtitle">${blogSubtitle1Label}</label>
@@ -101,16 +97,12 @@
         <label for="noticeBoard">${noticeBoard1Label}</label>
         <textarea rows="6" id="noticeBoard"></textarea>
         <label for="footerContent">${footerContent1Label}</label>
-        <textarea rows="6" id="footerContent"></textarea><br><br>
-        <div class="fn__clear">
-            <button onclick="admin.preference.update()" class="fn__right">${updateLabel}</button>
+        <textarea rows="6" id="footerContent"></textarea>
+<div class="fn__clear">
+            <div class="console-form-actions"><button onclick="admin.preference.update()" class="fn__right">${updateLabel}</button></div>
         </div>
     </div>
     <div id="tabPreferencePanel_setting" class="fn__none form">
-        <div class="fn__clear">
-            <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
-        </div>
-        <div class="fn__clear"></div>
         <label for="localeString">${localeString1Label}</label>
         <select id="localeString">
             <option value="zh_CN">简体中文</option>
@@ -154,12 +146,6 @@
             <div class="fn__flex-inline">
                 ${syncGitHubLabel}
                 <input id="syncGitHub" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <label>
-            <div class="fn__flex-inline">
-                <a href="https://doc.stackoverflow.wiki/web/#/7?page_id=180" target="_blank">用户体验改进计划</a>:
-                <input id="helpImprovePlan" type="checkbox" class="normalInput"/>
             </div>
         </label>
         <br><br>
@@ -246,28 +232,20 @@
             <label for="customVars">${customVars1Label}</label>
             <input id="customVars" class="normalInput" type="text"/>
         </details>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_signs" class="fn__none form">
-        <div class="fn__clear">
-            <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
-        </div>
-        <div class="fn__clear"></div>
         <button id="preferenceSignButton1">${signLabel}1</button>
         <textarea rows="8" id="preferenceSign1"></textarea>
         <button id="preferenceSignButton2">${signLabel}2</button>
         <textarea rows="8" id="preferenceSign2"></textarea>
         <button id="preferenceSignButton3">${signLabel}3</button>
-        <textarea rows="8" id="preferenceSign3"></textarea><br><br>
-        <button onclick="admin.preference.update()" class="fn__right">${updateLabel}</button>
+        <textarea rows="8" id="preferenceSign3"></textarea>
+        <div class="console-form-actions"><button onclick="admin.preference.update()" class="fn__right">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_markdown" class="fn__none form">
-        <div class="fn__clear">
-            <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
-        </div>
-        <div class="fn__clear"></div>
 
         <h3>${editorModeLabel}</h3>
         <br>
@@ -282,7 +260,7 @@
             <span>&nbsp;${showCodeBlockLnLabel}</span>
         </label>
 
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_imageBed" class="fn__none form">
@@ -460,14 +438,14 @@
                         break;
                 }
                 admin.preference.update();
-                alert('${picBed24Label}');
+                noBtnSwal('${picBed24Label}');
             }
 
             function checkImageBedConfig() {
                 let flag = false;
                 $.ajax({
                     type: 'GET',
-                    url: 'pic/local/check?path=' + $('#tc2').val(),
+                    url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
                     async: false,
                     success: function (res) {
                         result = res.msg;
@@ -480,10 +458,10 @@
             function checkImageBedConfigAndAlert() {
                 $.ajax({
                     type: 'GET',
-                    url: 'pic/local/check?path=' + $('#tc2').val(),
+                    url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
                     async: false,
                     success: function (res) {
-                        alert(res.msg);
+                        noBtnSwal(res.msg);
                     }
                 })
             }
@@ -527,16 +505,16 @@
         <label for="sendKey">${sendKeyLabel}</label>
         <input id="sendKey" type="text"/>
         <br><br>
-        <a style="font-size: 14px; font-weight: bold; color: #86bf47;" href="https://doc.stackoverflow.wiki/web/#/7?page_id=177" target="_blank">
+        <a href="https://github.com/Willh92/Volo-solo/blob/HEAD/UPGRADE.md#%E6%8F%90%E9%86%92%E8%AE%BE%E7%BD%AE" target="_blank">
             ${usageLabel}?
         </a>
-        <br><br>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_b3logEcology" class="fn__none form">
         <div class="fn__clear"></div>
-        <h4 style="color: #00a7e0">${liandi1Label}</h4>
+        <h4>${liandi1Label}</h4>
         <br>
         <label for="hacpaiUser">${hacpaiUser1Label}</label>
         <input id="hacpaiUser" type="text"/>
@@ -558,12 +536,12 @@
                 ${liandi4Label}
             </details>
         </div>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_fishpiEcology" class="fn__none form">
         <div class="fn__clear"></div>
-        <h4 style="color: #00a7e0">${fishpi1Label}</h4>
+        <h4>${fishpi1Label}</h4>
         <br>
         <label for="fishpiKey">API KEY</label>
         <input id="fishpiKey" type="text">
@@ -580,44 +558,111 @@
                 ${fishpi3Label}
             </details>
         </div>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_interactive" class="fn__none form">
-        <div class="fn__clear"></div>
-        <label>${nonInteractiveLabel}</label>
-        <br>
-        ${interactiveDescribeLabel}
-        <br><br>
-        <select id="interactiveSwitch">
-            <option value="on" selected="">${enableLabel}</option>
-            <option value="off">${disableLabel}</option>
-        </select>
-        <br><br>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-preference-field">
+            <label for="interactiveSwitch">${nonInteractiveLabel}</label>
+            <select id="interactiveSwitch" aria-describedby="interactiveDescription">
+                <option value="on" selected="">${enableLabel}</option>
+                <option value="off">${disableLabel}</option>
+            </select>
+            <p id="interactiveDescription" class="console-form-help">${interactiveDescribeLabel}</p>
+            <p class="console-form-help">${managementLoginPathLabel!'当前登录路径'}：<a href="${(adminLoginPath!'/start')?html}"><code>${(adminLoginPath!'/start')?html}</code></a></p>
+        </div>
+
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_security" class="fn__none form">
-        <div class="fn__clear"></div>
-        <label>${securityPowerLabel}</label>
-        <br>
-        ${securityDescribeLabel}
-        <br><br>
-        <select id="wafPower">
-            <option value="on" selected="">${enableLabel}</option>
-            <option value="off">${disableLabel}</option>
-        </select>
+        <section class="console-entry-info">
+            <h3>管理入口</h3>
+            <p>前台不展示管理链接。请在服务器的 <code>WEB-INF/classes/local.properties</code> 设置 <code>adminPath</code> 并重启，具体示例见升级说明。</p>
+            <p>当前面板：<code>${(adminPanelPath!'/admin-index.do')?html}</code><br>当前登录页：<code>${(adminLoginPath!'/start')?html}</code></p>
+        </section>
+        <section class="console-ip-bans" aria-labelledby="ipBanTitle">
+            <h3 id="ipBanTitle">IP 封禁</h3>
+            <p class="console-form-help">支持 IPv4、IPv6 单个地址或 CIDR 网段，如 192.0.2.1、192.0.2.0/24、2001:db8::/48。封禁后返回 403。位置仅供参考，网段显示起始地址的位置。</p>
+            <form id="ipBanForm" class="console-ip-ban-add" onsubmit="admin.preference.addIpBan(); return false;">
+                <label for="ipBanRange">IP / CIDR 网段</label><input id="ipBanRange" type="text" maxlength="64" placeholder="192.0.2.1 或 2001:db8::/48" required/>
+                <label for="ipBanReason">备注（选填）</label><input id="ipBanReason" type="text" maxlength="200" placeholder="例如：持续发布广告"/>
+                <button type="submit">添加封禁</button>
+            </form>
+            <p id="ipBanMessage" role="status"></p>
+            <div class="console-ip-ban-toolbar">
+                <form class="console-ip-ban-search" onsubmit="admin.preference.loadIpBans(1); return false;">
+                    <input id="ipBanQuery" type="search" maxlength="100" aria-label="搜索封禁 IP、网段或备注" placeholder="搜索 IP、网段或备注"/>
+                    <button type="submit">搜索</button>
+                </form>
+                <span id="ipBanTotal" role="status"></span>
+            </div>
+            <div id="ipBanList" aria-live="polite"></div>
+            <nav id="ipBanPagination" class="console-ip-ban-pagination" aria-label="IP 封禁列表分页"></nav>
+        </section>
+        <section class="console-geo-access" aria-labelledby="geoAccessTitle">
+            <h3 id="geoAccessTitle">地区访问规则</h3>
+            <p class="console-form-help">使用本地 IP 库识别国家、省、市，命中限制时返回 403；与 IP 封禁、访问频率限制分别生效。</p>
+            <p id="geoAccessCurrent" class="console-form-help" role="status"></p>
+            <form onsubmit="admin.preference.saveGeoAccess(); return false;">
+                <div class="console-preference-field">
+                    <label for="geoAccessMode">访问策略</label>
+                    <select id="geoAccessMode" onchange="if (this.value === 'allow') document.getElementById('geoAccessUnknown').value = 'deny';">
+                        <option value="off">不限制地区</option><option value="deny">拒绝指定地区</option><option value="allow">仅允许指定地区</option>
+                    </select>
+                </div>
+                <div class="console-preference-field">
+                    <label for="geoAccessCountries">国家或地区代码</label>
+                    <input id="geoAccessCountries" type="text" maxlength="1000" placeholder="例如 CN 或 US,CA" aria-describedby="geoAccessExamples"/>
+                    <p id="geoAccessExamples" class="console-form-help">使用两位代码，逗号分隔。拒绝 US：选“拒绝指定地区”并填写 US；只允许 CN：选“仅允许指定地区”并填写 CN。</p>
+                </div>
+                <div class="console-preference-field">
+                    <label for="geoAccessRegions">省市规则（选填）</label>
+                    <textarea id="geoAccessRegions" rows="4" maxlength="10000" placeholder="CN/浙江省&#10;CN/广东省/深圳市" aria-describedby="geoAccessRegionHelp"></textarea>
+                    <p id="geoAccessRegionHelp" class="console-form-help">每行一条，格式为“国家代码/省”或“国家代码/省/市”。与国家列表合并匹配；只限制省市时，请留空上方国家列表。名称以本地定位库显示为准，支持 ip2region 和 MMDB。</p>
+                </div>
+                <div class="console-preference-field">
+                    <label for="geoAccessUnknown">位置无法识别时</label>
+                    <select id="geoAccessUnknown"><option value="allow">允许访问</option><option value="deny">拒绝访问</option></select>
+                    <p class="console-form-help">IP 库缺失、地址未收录、内网地址或缺少所需省市信息都可能无法识别。保存时会校验当前连接，避免封禁自己。</p>
+                </div>
+                <p id="geoAccessMessage" role="status"></p>
+                <div class="console-form-actions"><button id="geoAccessSave" type="submit">保存地区规则</button></div>
+            </form>
+        </section>
+        <div class="console-preference-field">
+            <label for="wafPower">${securityPowerLabel}</label>
+            <select id="wafPower" aria-describedby="securityDescription">
+                <option value="on" selected="">${enableLabel}</option>
+                <option value="off">${disableLabel}</option>
+            </select>
+            <p id="securityDescription" class="console-form-help">${securityDescribeLabel}</p>
+            <p class="console-form-help">${clientAddressLabel!'识别的访客 IP'}：<code>${(securityClientAddress!'—')?html}</code><br>${proxyPeerAddressLabel!'连接到 Java 的 IP'}：<code>${(securityPeerAddress!'—')?html}</code><br>${proxyAddressHelpLabel}</p>
+        </div>
         <br><br>
         <label>${frequencyLimitLabel}</label>
         <br>
         <input id="wafCurrentLimitTimes" type="text" style="width: 100px"> ${securitySetTimesLabel} <input id="wafCurrentLimitSecond" type="text" style="width: 100px"> ${securitySetSecondLabel}
         <br><br>
-        <label for="spam">${CommentSpamLabel}</label>
-        <input id="spam" type="text" />
-        <div>
-            ${CommentSpamDescribeLabel}
+        <div class="console-preference-field">
+            <label for="commentFilterBuiltin">评论敏感词库</label>
+            <select id="commentFilterBuiltin" aria-describedby="commentFilterDescription">
+                <option value="on">启用内置第三方词库</option>
+                <option value="off">仅使用自定义过滤词</option>
+            </select>
+            <p id="commentFilterDescription" class="console-form-help">使用 sensitive-word 在服务器本地过滤，不会向外部服务发送评论。规则同时用于访客发表和编辑评论；管理员可保留原文进行管理。</p>
         </div>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+        <div class="console-preference-field">
+            <label for="spam">自定义评论过滤词</label>
+            <textarea id="spam" rows="3" maxlength="20000" aria-describedby="commentFilterWordsHelp"></textarea>
+            <p id="commentFilterWordsHelp" class="console-form-help">每行一个词，也可使用逗号分隔；与内置词库合并匹配。最多 2000 个词，每词最多 200 个字符。</p>
+        </div>
+        <div class="console-preference-field">
+            <label for="commentFilterAllow">评论过滤白名单</label>
+            <textarea id="commentFilterAllow" rows="3" maxlength="20000" aria-describedby="commentFilterAllowHelp"></textarea>
+            <p id="commentFilterAllowHelp" class="console-form-help">用于允许被误判的词语或短语，填写方式同上；同一条评论中的其他过滤词仍会拦截。</p>
+        </div>
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
     <div id="tabPreferencePanel_myGitHub" class="fn__none form">
@@ -640,43 +685,9 @@
         <input id="myGitHubID" type="text"/>
         <br><br>
         <p>${myGitHub2Label}</p>
-        <br><br>
-        <button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button>
+
+        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
 </div>
-<script>
-    $(function () {
-        if ("${helpImprovePlan}" === "") {
-            swal({
-                icon: "https://ftp.stackoverflow.wiki/bolo/feedback.png",
-                title: '用户体验改进计划',
-                content: {
-                    element: "p",
-                    attributes: {
-                        style: 'font-size: 14px; text-align: left',
-                        innerHTML: '为了改进您的博客使用体验，同时也让我们了解用户的使用情况，我们邀请您参与「用户体验改进计划」。<br>' +
-                            '我们<b>仅仅只会</b>收集以下内容：<br><br>' +
-                            '<i>1. 当您的 Bolo 出现错误时，会将最近的 5 条日志上传；</i><br>' +
-                            '<i>2. 为您的 Bolo 接入「博客访问统计」系统，在上传前在博客端去敏，仅保留大略信息，帮助我们改进 Bolo 的性能。</i><br><br>' +
-                            '<b>请您放心</b>，Bolo 的源代码完全开源，如果您不放心用户体验计划的任何一个环节，都可以直接审阅源代码。<br>' +
-                            '如果您对用户体验改进计划仍有疑问，可随时在 <i>偏好设置-参数设置</i> 中参加或退出体验计划。<br>' +
-                            '<a href="https://doc.stackoverflow.wiki/web/#/7?page_id=180" target="_blank">什么是「用户体验改进计划」</a>'
-                    }
-                },
-                buttons: {
-                    cancel: "不参与，不再提醒",
-                    confirm: "参与计划"
-                },
-            }).then((value) => {
-                if (value === true) {
-                    $('#helpImprovePlan').prop('checked', 'checked');
-                } else {
-                    $('#helpImprovePlan').removeAttr('checked');
-                }
-                admin.preference.update();
-            });
-        }
-    })
-</script>
 ${plugins}

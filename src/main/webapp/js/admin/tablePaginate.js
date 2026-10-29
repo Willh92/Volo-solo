@@ -32,6 +32,7 @@ $.extend(TablePaginate.prototype, {
      * @colModel table 列宽，标题等数据
      */
     buildTable: function (colModel, noExpend) {
+        this.columnModel = colModel;
         var tableData = {
             colModel: colModel,
             noDataTip: Label.noDataLabel
@@ -41,7 +42,7 @@ $.extend(TablePaginate.prototype, {
                 index: "expendRow"
             }
         }
-        $("#" + this.id + "Table").table(tableData);
+        $("#" + this.id + "Table").addClass('console-card-list').table(tableData);
     
     },
     
@@ -75,6 +76,7 @@ $.extend(TablePaginate.prototype, {
     initCommentsDialog: function () {
         var that = this;
         $("#" + this.id + "Comments").dialog({
+            "title": Label.commentLabel,
             "modal": true,
             "hideFooter": true,
             "close": function () {
@@ -100,6 +102,7 @@ $.extend(TablePaginate.prototype, {
                 groupData: data
             }]
         });
+        this.labelFields();
                     
         if (pageInfo.paginationPageCount === 0) {
             pageInfo.paginationPageCount = 1;
@@ -111,5 +114,32 @@ $.extend(TablePaginate.prototype, {
             custom: pageInfo.paginationPageNums
         });
         this.currentPage = currentPage;
+    },
+
+    // Mobile cards retain the same translated column names and action links as the desktop table.
+    labelFields: function () {
+        var columns = this.columnModel || [];
+        var primary = columns.findIndex(function (column) { return Boolean(column.text); });
+        var plugin = this.id === 'plugin';
+        var host = document.getElementById(this.id + 'Table');
+        if (!host) return;
+        host.querySelectorAll('.table-body tr:not(.table-expendRow)').forEach(function (row) {
+            var cells = Array.from(row.children);
+            if (cells.length !== columns.length || cells.some(function (cell) { return cell.tagName !== 'TD' || cell.colSpan > 1; })) return;
+            row.classList.add('console-data-row');
+            row.parentElement.classList.add('console-data-card');
+            cells.forEach(function (cell, index) {
+                cell.dataset.label = columns[index].text || '';
+                cell.dataset.column = columns[index].index || '';
+                var hasControl = Boolean(cell.querySelector('input,button,select,img,a,[onclick],[role="button"],[class*="icon-"],.fa'));
+                cell.dataset.empty = String(!cell.textContent.trim() && !hasControl);
+                if (columns[index].text && !cell.textContent.trim() && !hasControl) {
+                    var content = cell.firstElementChild || cell;
+                    content.textContent = columns[index].index === 'category' ? (Label.uncategorizedLabel || '未分类') : '—';
+                }
+                if (index === primary) cell.classList.add('console-data-primary');
+                if (/content|desc|url|uri|address/i.test(columns[index].index || '') || (plugin && columns[index].index === 'author')) cell.classList.add('console-data-wide');
+            });
+        });
     }
 });

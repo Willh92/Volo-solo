@@ -23,9 +23,9 @@
             <i class="icon__home"></i>
         </a>
         <#list pageNavigations as page>
-            <a href="${page.pagePermalink}" target="${page.pageOpenTarget}"
-                class="vditor-tooltipped__w vditor-tooltipped" rel="section" aria-label="${page.pageTitle}">
-                <#if page.pageIcon !=''><img src="${page.pageIcon}">
+            <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"
+                class="vditor-tooltipped__w vditor-tooltipped" rel="section" aria-label="${page.pageTitle?html}">
+                <#if page.pageIcon !=''><img src="${page.pageIcon?html}">
                     <#else>
                         <i class="icon__page"></i>
                 </#if>
@@ -54,26 +54,10 @@
         <a rel="alternate" href="${servePath}/rss.xml" rel="section" aria-label="RSS" class="vditor-tooltipped vditor-tooltipped__w">
             <i class="icon__rss"></i>
         </a>
+        <div class="skin-theme-slot" data-bolo-theme-slot></div>
     </div>
-    <div>
-        <#if interactive=="on">
-            <#if isLoggedIn>
-                <a href="${servePath}/admin-index.do#main"
-                    aria-label="${adminLabel}" class="vditor-tooltipped vditor-tooltipped__w">
-                    <i class="icon__setting"></i>
-                </a>
-                <a href="${logoutURL}"
-                    aria-label="${logoutLabel}" class="vditor-tooltipped vditor-tooltipped__w">
-                    <i class="icon__logout"></i>
-                </a>
-                <#else>
-                    <a href="${servePath}/start"
-                        aria-label="${startToUseLabel}" class="vditor-tooltipped vditor-tooltipped__w">
-                        <i class="icon__login"></i>
-                    </a>
-            </#if>
-        </#if>
-        <span onclick="Util.goTop()"
+    <div class="jane-header-tools">
+        <span onclick="Util.goTop()" data-jane-back-top
             aria-label="${putTopLabel}" class="vditor-tooltipped vditor-tooltipped__w">
             <i class="icon__up"></i>
         </span>

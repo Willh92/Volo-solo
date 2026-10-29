@@ -20,11 +20,11 @@
 <div id="mobile-sidebar">
     <div id="menu_mask"></div>
     <div id="mobile-sidebar-menus">
-        <span class="toggle-menu close" style="font-size: 20px; padding-left: 5px">
-            <a class="site-page">
-                <i class="fa-fw fas fa-arrow-circle-left"></i>
-            </a>
-        </span>
+        <button type="button" class="toggle-menu close sidebar-menu-close" aria-controls="mobile-sidebar-menus" aria-expanded="false" aria-label="关闭导航菜单">
+            <span class="site-page">
+                <i class="fa-fw fas fa-arrow-circle-right" aria-hidden="true"></i>
+            </span>
+        </button>
         <div class="mobile_author_icon"><img class="avatar-img"
                                              src="${adminUser.userAvatar}"
                                              onerror="onerror=null;src='${staticServePath}/skins/${skinDirName}/images/friend_404.gif'" alt="avatar">
@@ -51,17 +51,7 @@
         </div>
         <hr>
         <div class="menus_items">
-            <#if interactive == "on">
-                <#if isLoggedIn>
-                    <div class="menus_item"><a class="site-page" href="${servePath}/admin-index.do#main"><i
-                                    class="fa-fw fas fa-user"></i><span> ${adminLabel}</span></a></div>
-                    <div class="menus_item"><a class="site-page" href="${logoutURL}"><i
-                                    class="fa-fw fas fa-minus"></i><span> ${logoutLabel}</span></a></div>
-                <#else>
-                    <div class="menus_item"><a class="site-page" href="${servePath}/start"><i
-                                    class="fa-fw fas fa-user"></i><span> ${startToUseLabel}</span></a></div>
-                </#if>
-            </#if>
+
             <div class="menus_item"><a class="site-page" href="${servePath}"><i
                             class="fa-fw fas fa-home"></i><span> 主页</span></a></div>
             <div class="menus_item"><a class="site-page" href="${servePath}/timeaxis"><i
@@ -76,13 +66,13 @@
                             class="fa-fw fas fa-user-friends"></i><span> 我的关注</span></a></div>
                 <#list pageNavigations as page>
                     <div class="menus_item">
-                    <a class="site-page" href="${page.pagePermalink}" target="${page.pageOpenTarget}">
+                    <a class="site-page" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">
                                 <#if page.pageIcon != ''>
                                     <i class="fa-fw fas">
-                                        <img class="page-icon" src="${page.pageIcon}">
+                                        <img class="page-icon" src="${page.pageIcon?html}">
                                     </i>
                                 </#if>
-                                <span> ${page.pageTitle}</span>
+                                <span> ${page.pageTitle?html}</span>
                             </a>
                     </div>
                 </#list>

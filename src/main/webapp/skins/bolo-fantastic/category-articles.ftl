@@ -32,7 +32,7 @@
 <head>
     <@head title="${category.categoryTitle} - ${blogTitle}">
         <link rel="stylesheet" href="${staticServePath}/js/lib/bulma.min.css"/>
-        <link rel="stylesheet" href="https://ftp.stackoverflow.wiki/bolo/fantastic/css/all.min.css">
+        <link rel="stylesheet" href="${staticServePath}/js/lib/fontawesome/css/all.min.css">
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <link rel="stylesheet" href="${staticServePath}/js/lib/swiper.min.css">
@@ -60,7 +60,7 @@
                                         <#include "article-list.ftl">
                                     </div>
                                     <div
-                                            class="column is-4-tablet is-4-desktop  is-hidden-touch is-hidden-desktop-only is-4-widescreen is-4-fullhd   has-order-3 column-right <%= sticky_class(position) %>">
+                                            class="column is-4-tablet is-4-desktop  is-hidden-touch is-hidden-desktop-only is-4-widescreen is-4-fullhd   has-order-3 column-right">
                                         <#include "side-right.ftl">
 
 

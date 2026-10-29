@@ -26,6 +26,8 @@ package org.b3log.solo.model;
  * @since 0.3.1
  */
 public final class Common {
+    /** Legacy console response key, retained for existing clients. */
+    public static final String STATUS_CODE = "sc";
 
     /**
      * Key of skin cookie name.

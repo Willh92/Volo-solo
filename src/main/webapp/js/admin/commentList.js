@@ -44,12 +44,16 @@ admin.commentList = {
         text: Label.authorLabel,
         index: 'title',
         style: 'padding-left: 12px;',
-        width: 154,
+        width: 220,
       }, {
         text: Label.dateLabel,
         index: 'date',
-        width: 154,
+        width: 112,
         style: 'padding-left: 12px;',
+      }, {
+        text: '操作',
+        index: 'actions',
+        width: 184,
       }])
     this.tablePagination.initPagination()
     this.getList(page)
@@ -78,37 +82,53 @@ admin.commentList = {
         that.pageInfo.currentPage = pageNum
         var comments = result.comments,
           commentsData = []
+        var escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]))
         for (var i = 0; i < comments.length; i++) {
           var type = 'Article'
           commentsData[i] = {}
           commentsData[i].content = '<div class="vditor-reset">' +
             comments[i].commentContent +
             '</div><span class=\'table-tag\'> on &nbsp;&nbsp;</span><a href=\'' +
-            Label.servePath + comments[i].commentSharpURL +
-            '\' target=\'_blank\'>' + comments[i].commentTitle +
+            escape(Label.servePath + comments[i].commentSharpURL) +
+            '\' target=\'_blank\' rel=\'noopener\'>' + escape(comments[i].commentTitle) +
             '</a>'
 
-          commentsData[i].expendRow = '<a href=\'javascript:void(0)\' onclick="admin.commentList.del(\'' +
-            comments[i].oId + '\', \'' + type + '\')">' + Label.removeLabel +
+          commentsData[i].actions = '<a class=\'console-row-action\' href="#" data-comment-id="' + escape(comments[i].oId) +
+            '" onclick="admin.commentList.del(this.dataset.commentId, \'Article\'); return false;">' + Label.removeLabel +
             '</a>'
 
-          commentsData[i].title = '<img class=\'small-head\' src=\'' +
-            comments[i].commentThumbnailURL + '\'/>'
-          if ('http://' === comments[i].commentURL) {
-            commentsData[i].title += comments[i].commentName
+          if (!comments[i].commentDeleted) commentsData[i].actions = '<a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.edit(this.dataset.commentId); return false;">编辑</a> ' + commentsData[i].actions
+          commentsData[i].actions += ' <a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.del(this.dataset.commentId, \'Article\', true); return false;">删除讨论</a>'
+
+          var avatar = comments[i].commentThumbnailURL || ''
+          if (!/^(?:https?:\/\/|\/(?!\/))/i.test(avatar)) avatar = ''
+          commentsData[i].title = '<span class=\'console-comment-author\'><img class=\'small-head\' alt=\'\' data-avatar-seed=\'' +
+            escape(comments[i].commentName) + '\' src=\'' + escape(avatar) + '\'/>'
+          if (!/^https?:\/\//i.test(comments[i].commentURL) || 'http://' === comments[i].commentURL) {
+            commentsData[i].title += '<span>' + escape(comments[i].commentName) + '</span>'
           } else {
-            commentsData[i].title += '<a href=\'' + comments[i].commentURL +
-              '\' target=\'_blank\' class=\'no-underline\'>' +
-              comments[i].commentName +
+            commentsData[i].title += '<a href=\'' + escape(comments[i].commentURL) +
+              '\' target=\'_blank\' rel=\'noopener\' class=\'no-underline\'>' +
+              escape(comments[i].commentName) +
               '</a>'
           }
-          commentsData[i].title += '<br/>'
+          commentsData[i].title += '</span>'
+          var email = String(comments[i].commentEmail || '').trim()
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            commentsData[i].title += '<a class=\'console-comment-email\' title=\'' + escape(email) + '\' href=\'mailto:' + encodeURIComponent(email) + '\'>' + escape(email) + '</a>'
+          }
 
+          var address = comments[i].commentClientIP || ''
+          if (address) {
+            commentsData[i].title += '<span class="console-comment-address">' + escape(address) + (comments[i].commentRegion ? '<br>' + escape(comments[i].commentRegion) : '') + '</span>'
+            commentsData[i].actions += ' <a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.ban(this.dataset.commentId); return false;">封禁 IP</a>'
+          }
           commentsData[i].date = $.bowknot.getDate(comments[i].commentTime)
         }
 
         that.tablePagination.updateTablePagination(commentsData, pageNum,
           result.pagination)
+        Util.bindCommentAvatars(document.getElementById('commentTable'))
 
         Util.parseMarkdown()
         Util.parseLanguage()
@@ -122,13 +142,46 @@ admin.commentList = {
    * @id 评论 id
    * @type 评论类型：文章
    */
-  del: function (id, type) {
-    if (confirm(Label.confirmRemoveLabel + Label.commentLabel + '?')) {
+  edit: function (id) {
+    $.ajax({url: Label.servePath + '/article/comments/' + encodeURIComponent(id), type: 'GET', cache: false,
+      success: function (result) {
+        if (!result.sc) { $('#tipMsg').text(result.msg); return }
+        var dialog = document.createElement('dialog'), form = document.createElement('form'), title = document.createElement('h3'), area = document.createElement('textarea'), error = document.createElement('p'), actions = document.createElement('div'), cancel = document.createElement('button'), save = document.createElement('button')
+        dialog.className = 'console-comment-edit'; title.textContent = '编辑评论'
+        area.value = result.commentContent; area.maxLength = 500; area.setAttribute('aria-label', '评论内容'); area.rows = 8
+        error.setAttribute('role', 'alert'); actions.className = 'console-comment-edit-actions'
+        cancel.type = 'button'; cancel.textContent = '取消'; cancel.addEventListener('click', function () { dialog.close() })
+        save.type = 'submit'; save.textContent = '保存修改'
+        form.addEventListener('submit', function (event) {
+          event.preventDefault()
+          if (area.value.trim().length < 2 || area.value.length > 500) { error.textContent = '评论需要 2 到 500 个字符。'; return }
+          save.disabled = true
+          $.ajax({url: Label.servePath + '/article/comments/' + encodeURIComponent(id), type: 'PUT', contentType: 'application/json', data: JSON.stringify({commentContent: area.value}),
+            complete: function () { save.disabled = false },
+            success: function (saved) { if (saved.sc) { dialog.close(); admin.commentList.getList(admin.commentList.pageInfo.currentPage) } else error.textContent = saved.msg || '保存失败。' },
+            error: function (xhr) { error.textContent = xhr.responseJSON?.msg || '保存失败，请重试。' }
+          })
+        })
+        actions.append(cancel, save); form.append(title, area, error, actions); dialog.append(form)
+        dialog.addEventListener('close', function () { dialog.remove() }); document.body.append(dialog); dialog.showModal(); area.focus()
+      }, error: function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '无法读取评论。') }
+    })
+  },
+  ban: function (id) {
+    if (!confirm('封禁这条评论的来源 IP？该地址将无法访问本站，可在偏好设置的博客安全中解除。')) return
+    $.ajax({url: Label.servePath + '/console/ip-bans', type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({commentId: id, reason: '从评论封禁'}),
+      success: function (result) { $('#tipMsg').text(result.msg || (result.sc ? '已封禁。' : '封禁失败。')) },
+      error: function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '封禁失败，请重试。') }
+    })
+  },
+  del: function (id, type, thread) {
+    if (confirm(thread ? '删除这条评论所属的整个讨论（主评论及全部回复）？此操作无法撤销。' : '仅删除这条评论的内容？下级回复会保留。')) {
       $('#loadMsg').text(Label.loadingLabel)
 
       $.ajax({
         url: Label.servePath + '/console/' + type.toLowerCase() +
-        '/comment/' + id,
+        '/comment/' + id + (thread ? '?scope=thread' : ''),
         type: 'DELETE',
         cache: false,
         success: function (result, textStatus) {

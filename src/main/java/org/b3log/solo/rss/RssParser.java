@@ -27,8 +27,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.b3log.latke.Keys;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -136,6 +136,7 @@ public class RssParser {
                     final String articleCoverUrl = contentFirstImageUrl == null ? this.userIcon : contentFirstImageUrl;
                     article.put(Article.ARTICLE_IMG1_URL, articleCoverUrl);
                 }
+                article.put(Article.ARTICLE_COVER_URL, Article.getArticleCoverURL(article.optString(Article.ARTICLE_CONTENT)));
                 article.put(Article.ARTICLE_CREATED, time.getTime());
                 article.put(Article.ARTICLE_UPDATED, article.getLong(Article.ARTICLE_CREATED));
                 article.put(Article.ARTICLE_VIEW_PWD, "");

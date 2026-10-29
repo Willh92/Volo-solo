@@ -17,33 +17,36 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" class="item">
+<li id="${comment.oId}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="fn__clear">
         <div class="item__name">
             <#if "http://" == comment.commentURL>
-                <span class="ft__fade">${comment.commentName}</span>
+                <span class="ft__fade">${comment.commentName?html}</span>
             <#else>
-            <a class="ft__link" href="${comment.commentURL}" target="_blank">${comment.commentName}</a>
+            <a class="ft__link" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
             </#if>
 
             <#if comment.isReply>
             @ <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
                  onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 20);"
                  onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
-            >${comment.commentOriginalCommentName}</a>
+            >${comment.commentOriginalCommentName?html}</a>
             </#if>
         </div>
     </div>
     <div class="vditor-reset">
-    ${comment.commentContent}
+    <div data-comment-content>${comment.commentContent}</div>
     </div>
     <div class="item__meta fn__clear">
         <time>
         ${comment.commentDate2?string["MMM d, yyyy"]}
         </time>
+        <#if (comment.commentIPMasked!'')?has_content>
+            <span class="comment-location">${comment.commentIPMasked?html}<#if (comment.commentRegion!'')?has_content> · ${comment.commentRegion?html}</#if></span>
+        </#if>
         <#if article?? && article.commentable>
-            <a class="fn__right fn__none item__reply"
-               href="javascript:page.toggleEditor('${comment.oId}', '${comment.commentName}')">Reply</a>
+            <a class="fn__right item__reply"
+               href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
         </#if>
     </div>
 </li>

@@ -31,10 +31,7 @@
     </div>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
         <div>
-            <h4>
-                ${tocLabel}
-            </h4>
-            <#include "../../common-template/toc.ftl" />
+            <#include "../../common-template/disclosure-toc.ftl" />
         </div>
         <#else>
             <#if interactive=="on">
@@ -50,10 +47,10 @@
                                         <div>
                                             <span class="left">
                                                 <#if "http://"==comment.commentURL>
-                                                    ${comment.commentName}
+                                                    ${comment.commentName?html}
                                                     <#else>
-                                                        <a target="_blank" href="${comment.commentURL}">
-                                                            ${comment.commentName}
+                                                        <a target="_blank" href="${comment.commentURL?html}">
+                                                            ${comment.commentName?html}
                                                         </a>
                                                 </#if>
                                             </span>
@@ -82,8 +79,8 @@
                                 <li>
                                     <sup>[${article.articleCommentCount}]
                                     </sup>
-                                    <a title="${article.articleTitle}" href="${servePath}${article.articlePermalink}">
-                                        ${article.articleTitle}
+                                    <a title="${(article.articleTitle)?html}" href="${servePath}${article.articlePermalink}">
+                                        ${(article.articleTitle)?html}
                                     </a>
                                 </li>
                             </#list>
@@ -101,8 +98,8 @@
                             <li>
                                 <sup>[${article.articleViewCount}]
                                 </sup>
-                                <a title="${article.articleTitle}" href="${servePath}${article.articlePermalink}">
-                                    ${article.articleTitle}
+                                <a title="${(article.articleTitle)?html}" href="${servePath}${article.articlePermalink}">
+                                    ${(article.articleTitle)?html}
                                 </a>
                             </li>
                         </#list>

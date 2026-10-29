@@ -19,14 +19,14 @@ package org.b3log.solo.util;
 
 import jodd.http.HttpRequest;
 import jodd.http.HttpResponse;
-import org.apache.commons.lang.StringUtils;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -59,6 +59,7 @@ public final class GitHubs {
      * @return GitHub repos, returns {@code null} if not found
      */
     public static JSONArray getGitHubRepos(final String githubUserId) {
+        if (githubUserId == null || !githubUserId.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")) return null;
         int page = 1;
         String pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'";
         SimpleDateFormat simpleDateFormat =
@@ -67,10 +68,10 @@ public final class GitHubs {
         JSONArray compatibleResult = new JSONArray();
         try {
             String githubHome = githubUserId + "/" + githubUserId;
-            while (true) {
-                HttpResponse res = HttpRequest.get("https://api.github.com/users/" + githubUserId + "/repos?sort=updated&per_page=50&type=public&page=" + page).
+            while (page <= 100) {
+                HttpResponse res = HttpRequest.get("https://api.github.com/users/" + githubUserId + "/repos?sort=updated&per_page=100&type=public&page=" + page).
                         connectionTimeout(20000).timeout(60000).header("User-Agent", Solos.USER_AGENT).send();
-                if (HttpServletResponse.SC_OK != res.statusCode()) {
+                if (200 != res.statusCode()) {
                     return null;
                 }
                 res.charset("UTF-8");
@@ -83,11 +84,11 @@ public final class GitHubs {
                     JSONObject resultObject = result.optJSONObject(i);
                     JSONObject compatibleObject = new JSONObject();
 
-                    if (resultObject.getBoolean("fork") || resultObject.getBoolean("disabled")) {
+                    if (resultObject.optBoolean("fork") || resultObject.optBoolean("disabled")) {
                         continue;
                     }
 
-                    if (githubHome.equals(resultObject.get("full_name"))) {
+                    if (githubHome.equalsIgnoreCase(resultObject.optString("full_name"))) {
                         continue;
                     }
 
@@ -109,6 +110,7 @@ public final class GitHubs {
 
                     compatibleResult.put(compatibleObject);
                 }
+                if (result.length() < 100) break;
             }
             // 排序
             ArrayList<String> tempResultList = new ArrayList<>();
@@ -119,7 +121,7 @@ public final class GitHubs {
             tempResultList.sort((o1, o2) -> {
                 int o1star = new JSONObject(o1).optInt("githubrepoStargazersCount");
                 int o2star = new JSONObject(o2).optInt("githubrepoStargazersCount");
-                return o2star - o1star;
+                return Integer.compare(o2star, o1star);
             });
             JSONArray sortedCompatibleResult = new JSONArray();
             for (String json : tempResultList) {
@@ -149,15 +151,24 @@ public final class GitHubs {
      * @return {@code true} if ok, returns {@code false} if failed
      */
     public static boolean updateFile(final String pat, final String loginName, final String repoName, final String filePath, final byte[] content) {
-        final String fullRepoName = loginName + "/" + repoName;
+        return updateFileAt("https://api.github.com", pat, loginName, repoName, filePath, content);
+    }
+
+    /** The alternate origin is package-private for isolated HTTP contract tests. */
+    static boolean updateFileAt(final String api, final String pat, final String loginName, final String repoName,
+                                final String filePath, final byte[] content) {
+        final String fullRepoName = encodeSegment(loginName) + "/" + encodeSegment(repoName);
+        final String path = java.util.Arrays.stream(filePath.split("/", -1)).map(GitHubs::encodeSegment)
+                .collect(java.util.stream.Collectors.joining("/"));
+        final String url = api + "/repos/" + fullRepoName + "/contents/" + path;
         try {
-            HttpResponse response = HttpRequest.get("https://api.github.com/repos/" + fullRepoName + "/git/trees/master").header("Authorization", "token " + pat).
+            HttpResponse response = HttpRequest.get(url).header("Authorization", "Bearer " + pat).header("Accept", "application/vnd.github+json").
                     connectionTimeout(7000).timeout(60000).header("User-Agent", Solos.USER_AGENT).send();
             int statusCode = response.statusCode();
             response.charset("UTF-8");
             String responseBody = response.bodyText();
-            if (200 != statusCode && 409 != statusCode) {
-                LOGGER.log(Level.ERROR, "Get git tree of file [" + filePath + "] failed: " + responseBody);
+            if (200 != statusCode && 404 != statusCode) {
+                LOGGER.log(Level.ERROR, "Read GitHub file [{0}] failed: HTTP {1}", filePath, statusCode);
                 return false;
             }
 
@@ -166,23 +177,18 @@ public final class GitHubs {
                     put("content", Base64.getEncoder().encodeToString(content));
             if (200 == statusCode) {
                 final JSONObject responseData = new JSONObject(responseBody);
-                final JSONArray tree = responseData.optJSONArray("tree");
-                for (int i = 0; i < tree.length(); i++) {
-                    final JSONObject file = tree.optJSONObject(i);
-                    if (StringUtils.equals(filePath, file.optString("path"))) {
-                        body.put("sha", file.optString("sha"));
-                        break;
-                    }
-                }
+                if (responseData.optString("sha").isBlank()) return false;
+                body.put("sha", responseData.getString("sha"));
             }
 
-            response = HttpRequest.put("https://api.github.com/repos/" + fullRepoName + "/contents/" + filePath).header("Authorization", "token " + pat).
-                    connectionTimeout(7000).timeout(60000 * 2).header("User-Agent", Solos.USER_AGENT).bodyText(body.toString()).send();
+            response = HttpRequest.put(url).header("Authorization", "Bearer " + pat).header("Accept", "application/vnd.github+json")
+                    .header("Content-Type", "application/json").connectionTimeout(7000).timeout(30000)
+                    .header("User-Agent", Solos.USER_AGENT).bodyText(body.toString()).send();
             statusCode = response.statusCode();
             response.charset("UTF-8");
             responseBody = response.bodyText();
             if (200 != statusCode && 201 != statusCode) {
-                LOGGER.log(Level.ERROR, "Updates repo [" + repoName + "] file [" + filePath + "] failed: " + responseBody);
+                LOGGER.log(Level.ERROR, "Update GitHub file [{0}/{1}] failed: HTTP {2}", repoName, filePath, statusCode);
                 return false;
             }
             return true;
@@ -190,6 +196,10 @@ public final class GitHubs {
             LOGGER.log(Level.ERROR, "Updates repo [" + repoName + "] file [" + filePath + "] failed: " + e.getMessage());
             return false;
         }
+    }
+
+    private static String encodeSegment(final String value) {
+        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     /**
@@ -203,32 +213,45 @@ public final class GitHubs {
      * @return {@code true} if ok, returns {@code false} if failed
      */
     public static boolean createOrUpdateGitHubRepo(final String pat, final String loginName, final String repoName, final String repoDesc, final String repoHomepage) {
+        return ensureRepositoryAt("https://api.github.com", pat, loginName, repoName, repoDesc, repoHomepage);
+    }
+
+    static boolean ensureRepositoryAt(final String api, final String pat, final String loginName, final String repoName,
+                                      final String repoDesc, final String repoHomepage) {
         try {
+            final String repoUrl = api + "/repos/" + encodeSegment(loginName) + "/" + encodeSegment(repoName);
+            HttpResponse response = HttpRequest.get(repoUrl).header("Authorization", "Bearer " + pat)
+                    .header("Accept", "application/vnd.github+json").connectionTimeout(7000).timeout(30000)
+                    .header("User-Agent", Solos.USER_AGENT).send();
+            // Writing an existing README needs Contents permission, not repository administration permission.
+            if (response.statusCode() == 200) return true;
+            if (response.statusCode() != 404) return false;
             final JSONObject body = new JSONObject().
                     put("name", repoName).
                     put("description", repoDesc).
                     put("homepage", repoHomepage).
                     put("has_wiki", false).
                     put("has_projects", false);
-            HttpResponse response = HttpRequest.post("https://api.github.com/user/repos").header("Authorization", "token " + pat).
-                    connectionTimeout(7000).timeout(30000).header("User-Agent", Solos.USER_AGENT).bodyText(body.toString()).send();
+            response = HttpRequest.post(api + "/user/repos").header("Authorization", "Bearer " + pat)
+                    .header("Accept", "application/vnd.github+json").header("Content-Type", "application/json")
+                    .connectionTimeout(7000).timeout(30000).header("User-Agent", Solos.USER_AGENT).bodyText(body.toString()).send();
             int statusCode = response.statusCode();
             response.charset("UTF-8");
-            String responseBody = response.bodyText();
             if (201 != statusCode && 422 != statusCode) {
-                LOGGER.log(Level.ERROR, "Creates GitHub repo [" + repoName + "] failed: " + responseBody);
+                LOGGER.log(Level.ERROR, "Creates GitHub repo [{0}] failed: HTTP {1}", repoName, statusCode);
                 return false;
             }
             if (201 == statusCode) {
                 return true;
             }
 
-            response = HttpRequest.patch("https://api.github.com/repos/" + loginName + "/" + repoName).header("Authorization", "token " + pat).
-                    connectionTimeout(7000).timeout(30000).header("User-Agent", Solos.USER_AGENT).bodyText(body.toString()).send();
+            // Another synchronization may have created the repository between our GET and POST.
+            response = HttpRequest.get(repoUrl).header("Authorization", "Bearer " + pat)
+                    .header("Accept", "application/vnd.github+json").connectionTimeout(7000).timeout(30000)
+                    .header("User-Agent", Solos.USER_AGENT).send();
             statusCode = response.statusCode();
-            responseBody = response.bodyText();
             if (200 != statusCode) {
-                LOGGER.log(Level.ERROR, "Updates GitHub repo [" + repoName + "] failed: " + responseBody);
+                LOGGER.log(Level.ERROR, "Reads GitHub repo [{0}] failed: HTTP {1}", repoName, statusCode);
                 return false;
             }
             return true;

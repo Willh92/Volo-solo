@@ -17,12 +17,11 @@
  */
 package org.b3log.solo.repository;
 
-import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
-import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.b3log.latke.ioc.Inject;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.Article;
@@ -41,6 +40,9 @@ import java.util.List;
  */
 @Repository
 public class TagArticleRepository extends AbstractRepository {
+
+    @Inject
+    private ArticleRepository articleRepository;
 
     /**
      * Logger.
@@ -62,28 +64,23 @@ public class TagArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostUsedTags(final int num) throws RepositoryException {
-        final List<JSONObject> records = select("SELECT\n" +
-                "\t`tag_oId`,\n" +
-                "\tcount(*) AS cnt\n" +
-                "FROM `" + getName() + "`\n" +
-                "GROUP BY\n" +
-                "\t`tag_oId`\n" +
-                "ORDER BY\n" +
-                "\tcnt DESC\n" +
-                "LIMIT ?", num);
-        final List<JSONObject> ret = new ArrayList<>();
-        final TagRepository tagRepository = BeanManager.getInstance().getReference(TagRepository.class);
+        if (num <= 0) return new ArrayList<>();
+        final TagRepository tags = getTagRepository();
+        final List<JSONObject> records = tags.select("SELECT t.oId, t.tagTitle, count(DISTINCT a.oId) AS C FROM "
+                + tags.getName() + " AS t JOIN " + getName() + " AS r ON r.tag_oId = t.oId JOIN "
+                + articleRepository.getName() + " AS a ON a.oId = r.article_oId WHERE a.articleStatus = ?"
+                + " GROUP BY t.oId, t.tagTitle ORDER BY C DESC, t.tagTitle LIMIT ?",
+                Article.ARTICLE_STATUS_C_PUBLISHED, num);
         for (final JSONObject record : records) {
-            final String tagId = record.optString(Tag.TAG + "_" + Keys.OBJECT_ID);
-            final JSONObject tag = tagRepository.get(tagId);
-            if (null != tag) {
-                final int articleCount = getPublishedArticleCount(tagId);
-                tag.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, articleCount);
-            }
-            ret.add(tag);
+            record.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, record.getInt("C"));
+            record.remove("C");
         }
+        return records;
+    }
 
-        return ret;
+    protected TagRepository getTagRepository() {
+        // Resolve after bean construction: TagRepository already depends on this repository.
+        return BeanManager.getInstance().getReference(TagRepository.class);
     }
 
     /**
@@ -111,24 +108,27 @@ public class TagArticleRepository extends AbstractRepository {
      */
     public int getPublishedArticleCount(final String tagId) {
         try {
-            final String tableNamePrefix = StringUtils.isNotBlank(Latkes.getLocalProperty("jdbc.tablePrefix"))
-                    ? Latkes.getLocalProperty("jdbc.tablePrefix") + "_"
-                    : "";
-            final List<JSONObject> result = select("SELECT\n" +
-                    "\tcount(*) AS `C`\n" +
-                    "FROM\n" +
-                    "\t" + tableNamePrefix + "tag_article AS t,\n" +
-                    "\t" + tableNamePrefix + "article AS a\n" +
-                    "WHERE\n" +
-                    "\tt.article_oId = a.oId\n" +
-                    "AND a.articleStatus = ?\n" +
-                    "AND t.tag_oId = ?", Article.ARTICLE_STATUS_C_PUBLISHED, tagId);
+            final List<JSONObject> result = select("SELECT count(*) AS C FROM " + articleRepository.getName()
+                    + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + getName()
+                    + " AS t WHERE t.article_oId = a.oId AND t.tag_oId = ?)",
+                    Article.ARTICLE_STATUS_C_PUBLISHED, tagId);
             return result.get(0).optInt("C");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets tag [" + tagId + "]'s published article count failed", e);
 
             return -1;
         }
+    }
+
+    /** Returns published articles after filtering, so drafts and duplicate links cannot consume a page. */
+    public List<JSONObject> getPublishedArticles(final String tagId, final int currentPageNum, final int pageSize)
+            throws RepositoryException {
+        if (currentPageNum < 1 || pageSize < 1) return new ArrayList<>();
+        return articleRepository.select("SELECT a.* FROM " + articleRepository.getName()
+                + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + getName()
+                + " AS t WHERE t.article_oId = a.oId AND t.tag_oId = ?)"
+                + " ORDER BY a.oId DESC LIMIT ? OFFSET ?", Article.ARTICLE_STATUS_C_PUBLISHED, tagId,
+                pageSize, (long) (currentPageNum - 1) * pageSize);
     }
 
     /**

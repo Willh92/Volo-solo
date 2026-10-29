@@ -17,7 +17,7 @@
  */
 package org.b3log.solo.model.rss;
 
-import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 
 /**
  * Category.
@@ -58,6 +58,6 @@ public final class Category {
 
     @Override
     public String toString() {
-        return CATEGORY_ELEMENT.replace("${term}", StringEscapeUtils.escapeXml(term));
+        return CATEGORY_ELEMENT.replace("${term}", StringEscapeUtils.escapeXml11(term));
     }
 }

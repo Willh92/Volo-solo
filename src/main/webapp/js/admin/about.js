@@ -15,136 +15,53 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-/**
- *  about for admin
- *
- * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
- * @author <a href="http://88250.b3log.org">Liang Ding (Solo Author)</a>
- * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
- * @author <a href="https://github.com/gakkiyomi">gakkiyomi (Bolo Commiter)</a>
- */
-
-/* about 相关操作 */
 admin.about = {
-  init: async function () {
-    const rawVersion = version.split(" ")[0].substr(1);
-    const current = parseVersion(rawVersion);
-    let latest = [...current];
-    const checked = new Set();
-
-    if (version.split(" ")[1] === "内测版") {
-      $('#updateCheck').html('🍍 <font style="color: #3caf36">您正在使用菠萝博客内测版本，感谢您对开源的贡献！</font>');
-      return;
-    }
-
-    function parseVersion (v) {
-      return v.split('.').map(n => parseInt(n, 10));
-    }
-
-    function versionToStr (v) {
-      return 'v' + v.join('.');
-    }
-
-    function versionToFilename (v) {
-      return 'bolo_v' + v.join('_') + '_stable.zip';
-    }
-
-    function checkExists (v) {
-      if (checked.has(versionToStr(v))) return Promise.resolve(false);
-      checked.add(versionToStr(v));
-      const url = 'https://ftp.stackoverflow.wiki/bolo/releases/' + versionToFilename(v);
-      return new Promise(resolve => {
-        $.ajax({
-          url: url,
-          type: 'HEAD',
-          success: () => resolve(true),
-          error: () => resolve(false),
-        });
-      });
-    }
-
-    function compareVersions (a, b) {
-      const maxLen = Math.max(a.length, b.length);
-      for (let i = 0; i < maxLen; i++) {
-        const ai = a[i] || 0, bi = b[i] || 0;
-        if (ai !== bi) return ai - bi;
-      }
-      return 0;
-    }
-
-    // 限制版本号最多3位
-    function nextVersions (v) {
-      const results = [];
-      const len = v.length;
-
-      for (let i = 0; i < len; i++) {
-        let next = v.slice();
-        next[i]++;
-        for (let j = i + 1; j < len; j++) next[j] = 0;
-        if (next.length <= 3) results.push(next);
-      }
-
-      if (len < 3) {
-        let extended = v.slice();
-        extended.push(0);
-        for (let i = 0; i < extended.length; i++) {
-          let next = extended.slice();
-          next[i]++;
-          for (let j = i + 1; j < extended.length; j++) next[j] = 0;
-          if (next.length <= 3) results.push(next);
-        }
-      }
-
-      return results;
-    }
-
-    async function findLatest () {
-      const queue = [current];
-
-      while (queue.length > 0) {
-        const ver = queue.shift();
-
-        const candidates = nextVersions(ver);
-        for (const candidate of candidates) {
-          const exists = await checkExists(candidate);
-          if (exists && compareVersions(candidate, latest) > 0) {
-            latest = candidate;
-            queue.push(candidate);
-          }
-        }
-      }
-    }
-
-    const currentExists = await checkExists(current);
-    if (!currentExists) {
-      $('#updateCheck').html('<font style="color: #e94c89">版本更新检查失败，网络错误或该版本为内测版本。</font>');
-      return;
-    }
-
-    console.info('开始检测新版本...');
-    await findLatest();
-
-    if (compareVersions(current, latest) === 0) {
-      $('#updateCheck').html('🍍 <font style="color: #3caf36">你正在使用菠萝博客最新版！</font>');
-    } else {
-      $('#updateCheck').html(
-        `<a href="https://github.com/adlered/bolo-solo/releases" target="_blank" style="color: #991a1a">菠萝博客 ${versionToStr(latest)} 已推出，赶快更新吧！</a>`
-      );
-    }
-
-    $("#tipMsg").text("");
-    $("#loadMsg").text("");
-  }
-}
-
-
-/*
- * 注册到 admin 进行管理 
- */
-admin.register['about'] = {
-  'obj': admin.about,
-  'init': admin.about.init,
-  'refresh': function () {
+  init: function () {
     admin.clearTip()
-  }
-};
+    var node = document.getElementById('projectSyncStatus')
+    if (!node) return
+    var controller = new AbortController()
+    var timer
+    if (window.BoloNavigation) BoloNavigation.onLeave(function () { controller.abort(); clearTimeout(timer) })
+    function text (id, value) { var element = document.getElementById(id); if (element) element.textContent = value || '—' }
+    function date (value) { var parsed = new Date(value); return isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString() }
+    async function load (remaining) {
+      if (!node.isConnected) return
+      try {
+        var response = await fetch(Label.servePath + '/console/project-info', {credentials: 'same-origin', signal: controller.signal})
+        if (!response.ok) throw new Error('GitHub information is unavailable')
+        var info = await response.json()
+        if (!node.isConnected) return
+        if (info.available) {
+          text('projectDescription', info.description || 'Volo — 从 Bolo 分支开发的 Java 博客系统。')
+          text('projectStars', String(info.stars)); text('projectForks', String(info.forks)); text('projectIssues', String(info.issues))
+          text('projectLanguage', info.language); text('projectBranch', info.branch); text('projectLicense', info.license); text('projectPushed', date(info.pushedAt))
+          if (info.release) {
+            text('projectRelease', info.release.name || info.release.tag)
+            var tag = /^v?(\d+)\.(\d+)(?:\.(\d+))?$/.exec(info.release.tag)
+            var current = String(boloVersion).match(/\d+/g) || []
+            var newer = false
+            if (tag) for (var i = 0; i < 3; i++) { var delta = Number(tag[i + 1] || 0) - Number(current[i] || 0); if (delta) { newer = delta > 0; break } }
+            text('updateCheck', newer ? '仓库有新版本，可查看发布说明后更新。' : 'GitHub 最新正式发布：' + info.release.tag)
+            var link = new URL(info.release.url)
+            if (link.origin === 'https://github.com' && link.pathname.startsWith('/Willh92/Volo-solo/releases/')) document.getElementById('projectReleaseLink').href = link.href
+          } else {
+            text('projectRelease', '仓库尚未发布正式 Release')
+            text('updateCheck', '当前运行版本为 ' + boloVersion + '。可在 GitHub 查看项目动态。')
+          }
+          text('projectSyncStatus', (info.stale ? '正在显示上次同步的数据 · ' : '已从 GitHub 同步 · ') + date(info.syncedAt))
+        } else if (!info.loading) {
+          text('projectDescription', 'Volo — 从 Bolo 分支开发的 Java 博客系统。')
+          text('projectRelease', '发布信息暂不可用')
+          text('projectSyncStatus', '暂时无法连接 GitHub，可通过仓库链接查看。')
+        }
+        if (info.loading && remaining > 0) timer = setTimeout(function () { load(remaining - 1) }, 1000)
+        else if (!info.available && info.loading) text('projectSyncStatus', '读取耗时较长，可稍后重新打开关于页。')
+      } catch (error) {
+        if (error.name !== 'AbortError') text('projectSyncStatus', '项目信息暂不可用，可通过仓库链接查看。')
+      }
+    }
+    load(7)
+  },
+}
+admin.register.about = {obj: admin.about, init: admin.about.init, refresh: admin.about.init}

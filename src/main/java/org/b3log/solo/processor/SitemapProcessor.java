@@ -17,22 +17,22 @@
  */
 package org.b3log.solo.processor;
 
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.text.StringEscapeUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.FilterOperator;
 import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.SortDirection;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.TextXmlRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.TextXmlRenderer;
 import org.b3log.latke.util.URLs;
 import org.b3log.latke.util.XMLs;
 import org.b3log.solo.model.ArchiveDate;
@@ -48,7 +48,7 @@ import org.b3log.solo.repository.TagRepository;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Response;
 
 /**
  * Sitemap processor.
@@ -57,7 +57,7 @@ import javax.servlet.http.HttpServletResponse;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 0.3.1
  */
-@RequestProcessor
+@Singleton
 public class SitemapProcessor {
 
     /**
@@ -113,7 +113,7 @@ public class SitemapProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Generates sitemap failed", e);
 
-            context.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            context.sendError(503);
         }
     }
 
@@ -129,14 +129,14 @@ public class SitemapProcessor {
                 addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).
                 select(Article.ARTICLE_PERMALINK, Article.ARTICLE_UPDATED);
         final JSONObject articleResult = articleRepository.get(query);
-        final JSONArray articles = articleResult.getJSONArray(Keys.RESULTS);
+        final JSONArray articles = org.b3log.solo.util.QueryResults.array(articleResult);
 
         for (int i = 0; i < articles.length(); i++) {
             final JSONObject article = articles.getJSONObject(i);
             final String permalink = article.getString(Article.ARTICLE_PERMALINK);
 
             final URL url = new URL();
-            url.setLoc(StringEscapeUtils.escapeXml(Latkes.getServePath() + permalink));
+            url.setLoc(StringEscapeUtils.escapeXml11(Latkes.getServePath() + permalink));
             final long updated = article.getLong(Article.ARTICLE_UPDATED);
             final String lastMod = DateFormatUtils.ISO_DATETIME_TIME_ZONE_FORMAT.format(updated);
             url.setLastMod(lastMod);
@@ -153,7 +153,7 @@ public class SitemapProcessor {
      */
     private void addNavigations(final Sitemap sitemap) throws Exception {
         final JSONObject result = pageRepository.get(new Query());
-        final JSONArray pages = result.getJSONArray(Keys.RESULTS);
+        final JSONArray pages = org.b3log.solo.util.QueryResults.array(result);
 
         for (int i = 0; i < pages.length(); i++) {
             final JSONObject page = pages.getJSONObject(i);
@@ -181,7 +181,7 @@ public class SitemapProcessor {
      */
     private void addTags(final Sitemap sitemap) throws Exception {
         final JSONObject result = tagRepository.get(new Query());
-        final JSONArray tags = result.getJSONArray(Keys.RESULTS);
+        final JSONArray tags = org.b3log.solo.util.QueryResults.array(result);
 
         for (int i = 0; i < tags.length(); i++) {
             final JSONObject tag = tags.getJSONObject(i);
@@ -209,7 +209,7 @@ public class SitemapProcessor {
      */
     private void addArchives(final Sitemap sitemap) throws Exception {
         final JSONObject result = archiveDateRepository.get(new Query());
-        final JSONArray archiveDates = result.getJSONArray(Keys.RESULTS);
+        final JSONArray archiveDates = org.b3log.solo.util.QueryResults.array(result);
 
         for (int i = 0; i < archiveDates.length(); i++) {
             final JSONObject archiveDate = archiveDates.getJSONObject(i);

@@ -93,26 +93,35 @@ var getArticle = function (it, id) {
 }
 
 var goTranslate = function () {
-  window.open('http://translate.google.com/translate?sl=auto&tl=auto&u=' +
-    location.href)
+  window.open('https://translate.google.com/translate?sl=auto&tl=auto&u=' +
+    encodeURIComponent(location.href), '_blank', 'noopener,noreferrer')
 }
 
 $(document).ready(function () {
   // go top icon show or hide
-  $(window).scroll(function () {
+  function updateReturnTop () {
     var y = $(window).scrollTop()
+    var bodyH = $(window).height()
+    var mobile = window.innerWidth <= 600
+    var $button = $('#goTop')
+    var top = y + bodyH - 21
+    if ($('body').height() - 58 <= y + bodyH) top = $('.footer').offset().top - 21
 
     if (y > 182) {
-      var bodyH = $(window).height()
-      var top = y + bodyH - 21
-      if ($('body').height() - 58 <= y + bodyH) {
-        top = $('.footer').offset().top - 21
-      }
-      $('#goTop').fadeIn('slow').css('top', top)
+      if (!$button.is(':visible')) $button.fadeIn('slow')
     } else {
-      $('#goTop').hide()
+      $button.stop(true, true).hide()
     }
-  })
+    $button.css('top', mobile ? '' : top)
+    document.documentElement.style.setProperty('--neoease-control-width', $button.outerWidth() + 'px')
+    var appearance = document.querySelector('.bolo-appearance--floating')
+    if (appearance) {
+      appearance.style.right = mobile ? '18px' : '56px'
+      appearance.style.bottom = (mobile ? 78 : y > 182 ? bodyH - (top - y) + 12 : 33) + 'px'
+    }
+  }
+  $(window).on('scroll resize', updateReturnTop)
+  updateReturnTop()
 
   // archive
   var currentYear = (new Date()).getFullYear(),

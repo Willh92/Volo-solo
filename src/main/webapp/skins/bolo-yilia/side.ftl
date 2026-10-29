@@ -19,9 +19,11 @@
 -->
 <div class="side fn__flex-column">
     <div class="overlay">
-        <a onclick="$('.side .toc').show()" href="javascript:void(0)" class="toc-btn">
+        <#if article?? && article.articleToC?? && article.articleToC?size gt 0>
+        <button type="button" onclick="Yilia.toggleToc(true)" class="toc-btn" aria-expanded="true">
             ${tocLabel}
-        </a>
+        </button>
+        </#if>
     </div>
     <#include "../../common-template/macro-user_site.ftl" />
     <div class="user__sites">
@@ -38,16 +40,14 @@
                 </a>
             </h1>
         </hgroup>
-        <p class="subtitle">
-            ${blogSubtitle}
-        </p>
+        <div class="yilia-profile-tools"><p class="subtitle">${blogSubtitle}</p><div class="skin-theme-slot" data-bolo-theme-slot></div></div>
         <nav>
             <ul>
                 <#list pageNavigations as page>
                     <li>
-                        <a href="${page.pagePermalink}" target="${page.pageOpenTarget}">
-                            <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon}"></#if>
-                            ${page.pageTitle}
+                        <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">
+                            <#if page.pageIcon !=''><img class="page-icon" src="${page.pageIcon?html}"></#if>
+                            ${page.pageTitle?html}
                         </a>
                     </li>
                 </#list>
@@ -88,21 +88,17 @@
                 ${noticeBoard}
             </div>
         </#if>
-        <#if interactive=="on">
-            <#if isLoggedIn>
-                <a href="${servePath}/admin-index.do#main" title="${adminLabel}" class="icon-setting"></a>
-                &nbsp; &nbsp;
-                <a title="${logoutLabel}" class="icon-logout" href="${logoutURL}"></a>
-                <#else>
-                    <a href="${servePath}/start" title="${startToUseLabel}" class="icon-login"></a>
-            </#if>
-        </#if> &nbsp; &nbsp;
+         &nbsp; &nbsp;
         <a rel="alternate" href="${servePath}/rss.xml" title="${subscribeLabel}" class="icon-rss"></a>
     </footer>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
-        <div class="toc">
-            <a onclick="$('.side .toc').hide();" href="javascript:void(0)" class="close">X</a>
+        <nav class="toc" aria-label="${tocLabel?html}" hidden>
+            <div class="yilia-toc-heading">
+                <strong>${tocLabel}</strong><span class="yilia-toc-count">${article.articleToC?size}</span><div class="skin-theme-slot yilia-toc-theme" data-bolo-theme-slot></div>
+                <button type="button" onclick="Yilia.toggleToc(false)" class="yilia-toc-close" aria-label="${closeLabel!'关闭目录'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            </div>
+            <div class="yilia-toc-progress" role="progressbar" aria-label="${tocLabel?html}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
             <#include "../../common-template/toc.ftl" />
-        </div>
+        </nav>
     </#if>
 </div>

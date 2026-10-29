@@ -22,27 +22,27 @@ import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import org.b3log.latke.http.Cookie;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.Session;
 
-import org.apache.commons.lang.RandomStringUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
-import org.b3log.latke.servlet.RequestContext;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Crypts;
 import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.bolo.prop.Options;
 import org.b3log.solo.model.Article;
@@ -65,6 +65,15 @@ import jodd.http.HttpResponse;
  * @since 2.8.0
  */
 public final class Solos {
+    public static Map<String, String> viewPasswords(final Session session) {
+        final Map<String, String> passwords = new HashMap<>();
+        final String stored = session.getAttribute(Common.ARTICLES_VIEW_PWD);
+        if (stored != null) {
+            final JSONObject values = new JSONObject(stored);
+            for (final String key : values.keySet()) passwords.put(key, values.optString(key));
+        }
+        return passwords;
+    }
 
     /**
      * Favicon API.
@@ -73,13 +82,13 @@ public final class Solos {
     /**
      * Solo User-Agent.
      */
-    public static final String USER_AGENT = "Solo/" + SoloServletListener.VERSION + "; +https://github.com/b3log/solo";
+    public static final String USER_AGENT = "Volo/" + SoloApplication.VERSION + "; +https://github.com/Willh92/Volo-solo";
 
     /**
      * Bolo User-Agent.
      */
-    public static final String BOLO_USER_AGENT = "Bolo/" + SoloServletListener.BOLO_VERSION_SOURCE
-            + "; +https://github.com/adlered/bolo-solo";
+    public static final String BOLO_USER_AGENT = "Volo/" + SoloApplication.BOLO_VERSION_SOURCE
+            + "; +https://github.com/Willh92/Volo-solo";
     /**
      * Cookie name.
      */
@@ -156,7 +165,7 @@ public final class Solos {
         }
         COOKIE_SECRET = cookieSecret;
 
-        COOKIE_HTTP_ONLY = Boolean.valueOf(Latkes.getLocalProperty("cookieHttpOnly"));
+        COOKIE_HTTP_ONLY = !"false".equalsIgnoreCase(Latkes.getLocalProperty("cookieHttpOnly"));
     }
 
     /**
@@ -237,62 +246,54 @@ public final class Solos {
             }
 
             final BeanManager beanManager = BeanManager.getInstance();
+            final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
+            final JSONObject imageBed = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG);
+            final String imageBedConfig = imageBed == null ? "" : imageBed.optString(Option.OPTION_VALUE).trim();
+            // Custom image beds are served by this application and need no community token.
+            // Resolve this before reading the community-token cache or contacting its API.
+            if (!imageBedConfig.isEmpty() && !"hacpai".equals(imageBedConfig)) {
+                return new JSONObject().put(Common.UPLOAD_TOKEN, "")
+                        .put(Common.UPLOAD_URL, Latkes.getContextPath() + "/pic/upload")
+                        .put(Common.UPLOAD_MSG, "");
+            }
             UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);
             String userName = userQueryService.getB3username();
             String userB3Key = userQueryService.getB3password();
 
             final long now = System.currentTimeMillis();
-            if (3600000 >= now - uploadTokenTime) {
+            if (!uploadToken.isEmpty() && 3600000 >= now - uploadTokenTime) {
                 return new JSONObject().put(Common.UPLOAD_TOKEN, uploadToken).put(Common.UPLOAD_URL, uploadURL)
                         .put(Common.UPLOAD_MSG, uploadMsg);
             }
 
             if (15000 >= now - uploadTokenCheckTime) {
+                if (uploadToken.isEmpty()) return null;
                 return new JSONObject().put(Common.UPLOAD_TOKEN, uploadToken).put(Common.UPLOAD_URL, uploadURL)
                         .put(Common.UPLOAD_MSG, uploadMsg);
             }
 
             final JSONObject requestJSON = new JSONObject().put(User.USER_NAME, userName).put(UserExt.USER_B3_KEY,
                     userB3Key);
+            uploadTokenCheckTime = now;
+            uploadToken = "";
             final HttpResponse res = HttpRequest.post("https://" + Global.HACPAI_DOMAIN + "/apis/upload/token")
                     .body(requestJSON.toString()).connectionTimeout(3000).timeout(7000)
                     .header("User-Agent", Solos.USER_AGENT).send();
-            uploadTokenCheckTime = now;
-            if (HttpServletResponse.SC_OK != res.statusCode()) {
+            if (200 != res.statusCode()) {
                 return null;
             }
             res.charset("UTF-8");
             final JSONObject result = new JSONObject(res.bodyText());
             if (0 != result.optInt(Keys.CODE)) {
-                uploadMsg = result.optString(Keys.MSG);
-                // 去除后台 B3 Key 提示
-                // LOGGER.log(Level.ERROR, uploadMsg);
-
-                // return null;
+                return null;
             }
 
             final JSONObject data = result.optJSONObject(Common.DATA);
+            if (data == null || StringUtils.isBlank(data.optString("uploadURL"))
+                    || StringUtils.isBlank(data.optString("uploadToken"))) return null;
             uploadTokenTime = now;
-            // 自定义图床字段
-            final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
-            String config = "hacpai";
-            try {
-                config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
-            } catch (Exception e) {
-            }
-            if (config.equals("hacpai") || config.isEmpty()) {
-                try {
-                    uploadURL = data.optString("uploadURL");
-                } catch (NullPointerException NPE) {
-                }
-            } else {
-                uploadURL = Latkes.getStaticServePath() + "/pic/upload";
-            }
-            try {
-                uploadToken = data.optString("uploadToken");
-            } catch (NullPointerException NPE) {
-                uploadToken = "";
-            }
+            uploadURL = data.optString("uploadURL");
+            uploadToken = data.optString("uploadToken");
             uploadMsg = "";
 
             return new JSONObject().put(Common.UPLOAD_TOKEN, uploadToken).put(Common.UPLOAD_URL, uploadURL)
@@ -336,8 +337,8 @@ public final class Solos {
      * @param response the specified response
      * @return the current logged-in user, returns {@code null} if not found
      */
-    public static JSONObject getCurrentUser(final HttpServletRequest request, final HttpServletResponse response) {
-        final Cookie[] cookies = request.getCookies();
+    public static JSONObject getCurrentUser(final Request request, final Response response) {
+        final Cookie[] cookies = request.getCookies().toArray(new Cookie[0]);
         if (null == cookies || 0 == cookies.length) {
             return null;
         }
@@ -376,10 +377,7 @@ public final class Solos {
         } catch (final Exception e) {
             LOGGER.log(Level.TRACE, "Parses cookie failed, clears the cookie [name=" + COOKIE_NAME + "]");
 
-            final Cookie cookie = new Cookie(COOKIE_NAME, null);
-            cookie.setMaxAge(0);
-            cookie.setPath("/");
-            response.addCookie(cookie);
+            logout(request, response);
         }
 
         return null;
@@ -391,7 +389,7 @@ public final class Solos {
      * @param response the specified response
      * @param user     the specified user
      */
-    public static void login(final JSONObject user, final HttpServletResponse response) {
+    public static void login(final JSONObject user, final Response response) {
         try {
             final String userId = user.optString(Keys.OBJECT_ID);
             final JSONObject cookieJSONObject = new JSONObject();
@@ -404,9 +402,13 @@ public final class Solos {
             cookie.setPath("/");
             cookie.setMaxAge(COOKIE_EXPIRY);
             cookie.setHttpOnly(COOKIE_HTTP_ONLY);
+            cookie.setSecure("https".equalsIgnoreCase(Latkes.getServerScheme()));
+            cookie.setSameSite("Lax");
+            response.getCookies().removeIf(existing -> COOKIE_NAME.equals(existing.getName()));
             response.addCookie(cookie);
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Can not write cookie", e);
+            throw new IllegalStateException("Cannot issue login cookie", e);
         }
     }
 
@@ -417,11 +419,16 @@ public final class Solos {
      * @param response the specified response
      * @return {@code true} if succeed, otherwise returns {@code false}
      */
-    public static void logout(final HttpServletRequest request, final HttpServletResponse response) {
+    public static void logout(final Request request, final Response response) {
         if (null != response) {
-            final Cookie cookie = new Cookie(COOKIE_NAME, null);
+            // Netty rejects null values. Remove the echoed incoming cookie before expiring it.
+            response.getCookies().removeIf(existing -> COOKIE_NAME.equals(existing.getName()));
+            final Cookie cookie = new Cookie(COOKIE_NAME, "");
             cookie.setMaxAge(0);
             cookie.setPath("/");
+            cookie.setHttpOnly(COOKIE_HTTP_ONLY);
+            cookie.setSecure("https".equalsIgnoreCase(Latkes.getServerScheme()));
+            cookie.setSameSite("Lax");
             response.addCookie(cookie);
         }
     }
@@ -494,14 +501,14 @@ public final class Solos {
             return false;
         }
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         if (null == request) {
             return true;
         }
 
-        final HttpSession session = request.getSession();
+        final Session session = request.getSession();
         if (null != session) {
-            Map<String, String> viewPwds = (Map<String, String>) session.getAttribute(Common.ARTICLES_VIEW_PWD);
+            Map<String, String> viewPwds = viewPasswords(session);
             if (null == viewPwds) {
                 viewPwds = new HashMap<>();
             }
@@ -511,7 +518,7 @@ public final class Solos {
             }
         }
 
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         final JSONObject currentUser = getCurrentUser(request, response);
 
         return !(null != currentUser && !Role.VISITOR_ROLE.equals(currentUser.optString(User.USER_ROLE)));
@@ -523,7 +530,7 @@ public final class Solos {
      * @param request the specified request
      * @return {@code true} if it is, returns {@code false} otherwise
      */
-    public static boolean isMobile(final HttpServletRequest request) {
+    public static boolean isMobile(final Request request) {
         final Object val = request.getAttribute(Keys.HttpRequest.IS_MOBILE_BOT);
         if (!(val instanceof Boolean)) {
             return false;
@@ -538,7 +545,7 @@ public final class Solos {
      * @param request the specified request
      * @return {@code true} if it is, returns {@code false} otherwise
      */
-    public static boolean isBot(final HttpServletRequest request) {
+    public static boolean isBot(final Request request) {
         final Object val = request.getAttribute(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT);
         if (!(val instanceof Boolean)) {
             return false;

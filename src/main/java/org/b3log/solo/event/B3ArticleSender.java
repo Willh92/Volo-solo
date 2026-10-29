@@ -19,17 +19,17 @@ package org.b3log.solo.event;
 
 import jodd.http.HttpRequest;
 import jodd.http.HttpResponse;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.AbstractEventListener;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Singleton;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -86,7 +86,7 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
 
             // 注释本地关闭推送功能
             /* if (isLocalServer()) {
-                LOGGER.log(Level.INFO, "Solo is running on a local server [servePath=" + Latkes.getServePath() +
+                LOGGER.log(Level.INFO, "Volo is running on a local server [servePath=" + Latkes.getServePath() +
                         ", serverHost=" + Latkes.getServerHost() + ", serverPort=" + Latkes.getServerPort() + "], ignored push article [title=" + title + "] to Rhy");
                 return;
             } */
@@ -118,7 +118,7 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
                     put("title", preference.getString(Option.ID_C_BLOG_TITLE)).
                     put("host", Latkes.getServePath()).
                     put("name", "Solo").
-                    put("ver", SoloServletListener.VERSION).
+                    put("ver", SoloApplication.VERSION).
                     put("userName", userName).
                     put("userB3Key", userB3Key);
             final JSONObject requestJSONObject = new JSONObject().

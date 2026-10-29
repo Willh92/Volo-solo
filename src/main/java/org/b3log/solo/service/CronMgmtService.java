@@ -22,8 +22,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.solo.model.Option;
@@ -90,7 +90,6 @@ public class CronMgmtService {
      * Start all cron tasks.
      */
     public void start() {
-        final JSONObject preference = optionQueryService.getPreference();
         long delay = 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
@@ -106,28 +105,7 @@ public class CronMgmtService {
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
             try {
-                boolean enableAutoFlushGitHub;
-                boolean enableAutoFlushGitHubProfile;
-                String myGitHubID;
-                try {
-                    enableAutoFlushGitHub = preference.getBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB);
-                    myGitHubID = preference.getString(Option.ID_C_MY_GITHUB_ID);
-                } catch (NullPointerException | JSONException e) {
-                    enableAutoFlushGitHub = false;
-                    myGitHubID = "";
-                }
-                if (enableAutoFlushGitHub) {
-                    if (!myGitHubID.isEmpty()) {
-                        articleMgmtService.refreshGitHub(myGitHubID);
-                    }
-                }
-                try {
-                    enableAutoFlushGitHubProfile = preference
-                            .getBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_BLOG_TO_GITHUB_PROFILE);
-                } catch (NullPointerException | JSONException e) {
-                    enableAutoFlushGitHubProfile = false;
-                }
-                exportService.exportGitHub(enableAutoFlushGitHubProfile);
+                synchronizeGitHub();
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
@@ -174,8 +152,19 @@ public class CronMgmtService {
     }
 
     /**
-     * Stop all cron tasks.
+     * Read current preferences for each GitHub synchronization run.
      */
+    public void synchronizeGitHub() {
+        final JSONObject current = optionQueryService.getPreference();
+        if (current == null) return;
+        final String username = current.optString(Option.ID_C_MY_GITHUB_ID).strip();
+        if (current.optBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB) && !username.isEmpty()) {
+            articleMgmtService.refreshGitHub(username);
+        }
+        exportService.exportGitHub(current.optBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_BLOG_TO_GITHUB_PROFILE));
+    }
+
+    /** Stop all cron tasks. */
     public void stop() {
         SCHEDULED_EXECUTOR_SERVICE.shutdown();
     }

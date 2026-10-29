@@ -17,43 +17,25 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<footer class="footer">
+<footer class="footer fantastic-footer">
     <div class="container">
-        <div class="level">
-            <div class="level-start has-text-centered-mobile">
-                <p class="is-size-6">
-                    &copy; ${.now?string('yyyy')} ${blogTitle!}
-                    Powered by <a href="https://github.com/AdlerED/bolo-solo" target="_blank">Bolo</a>
-                    <br>
-                    &nbsp;&nbsp;&nbsp;Theme <a href="https://github.com/csfwff/bolo-fantastic">Fantastic</a> by
-                    <a href="https://github.com/csfwff" target="_blank">唐墨夏</a>
-                    <br />
+        <div class="fantastic-footer-main">
+            <div class="fantastic-footer-credit">
+                <p>&copy; ${.now?string('yyyy')} ${(blogTitle!'')?html}</p>
+                <p class="fantastic-footer-source">
+                    <span>Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">Volo</a></span>
+                    <span>Theme <a href="https://github.com/csfwff/bolo-fantastic">Fantastic</a> by <a href="https://github.com/csfwff" target="_blank" rel="noopener noreferrer">唐墨夏</a></span>
                 </p>
             </div>
-            <div class="level-end">
-                <div class="field has-addons is-flex-center-mobile has-mt-5-mobile is-flex-wrap is-flex-middle">
-                    <#if interactive=="on"><a href="${servePath}/search"> 搜索</a>&nbsp;•&nbsp;</#if>
-                    <a href="${servePath}/tags.html">
-                        ${allTagsLabel}
-                    </a>&nbsp;•&nbsp;
-                    <a href="${servePath}/archives.html">
-                        ${archiveLabel}
-                    </a>&nbsp;•&nbsp;
-                    <a href="${servePath}/links.html">
-                        ${linkLabel}
-                    </a>&nbsp;•&nbsp;
-                    <a href="${servePath}/follows.html">
-                        ${followLabel}
-                    </a>
-                </div>
-                <div class="field has-addons is-flex-center-mobile has-mt-5-mobile is-flex-wrap is-flex-middle">
-                    <div>
-                        ${footerContent}
-                        <br>
-                    </div>
-                </div>
-            </div>
+            <nav class="fantastic-footer-links" aria-label="页脚导航">
+                <#if interactive=="on"><a href="${servePath}/search">搜索</a></#if>
+                <a href="${servePath}/tags.html">${allTagsLabel}</a>
+                <a href="${servePath}/archives.html">${archiveLabel}</a>
+                <a href="${servePath}/links.html">${linkLabel}</a>
+                <a href="${servePath}/follows.html">${followLabel}</a>
+            </nav>
         </div>
+        <#if footerContent?has_content><div class="fantastic-footer-custom">${footerContent}</div></#if>
     </div>
 </footer>
 <script type="text/javascript" src="${staticServePath}/js/lib/jquery/jquery.min.js" charset="utf-8"></script>

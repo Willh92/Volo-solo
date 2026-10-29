@@ -18,24 +18,24 @@
 package org.b3log.solo.processor;
 
 import freemarker.template.Template;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.service.ArticleMgmtService;
 import org.b3log.solo.util.Skins;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
+import org.b3log.latke.http.Request;
 import java.io.StringWriter;
 import java.util.Map;
 
@@ -79,21 +79,8 @@ public final class SkinRenderer extends AbstractFreeMarkerRenderer {
             ret = Skins.getTemplate(templateName);
         }
         if (null == ret) {
-            // Bolo 默认皮肤名称，如果迁移过来的可能还是 solo-nexmoe，更新一下，防止错误
-            try {
-                LOGGER.log(Level.INFO, "It seems like we can't found the skin for mobile. Restoring this setting default, please refresh your page, it should be OK.");
-                final BeanManager beanManager = BeanManager.getInstance();
-                final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
-                final Transaction transaction = optionRepository.beginTransaction();
-
-                final JSONObject mobileSkinDirNameOpt = optionRepository.get(Option.ID_C_MOBILE_SKIN_DIR_NAME);
-                mobileSkinDirNameOpt.put(Option.OPTION_VALUE, Option.DefaultPreference.DEFAULT_MOBILE_SKIN_DIR_NAME);
-                optionRepository.update(Option.ID_C_MOBILE_SKIN_DIR_NAME, mobileSkinDirNameOpt);
-
-                transaction.commit();
-            } catch (RepositoryException RE) {
-                RE.printStackTrace();
-            }
+            // Rendering a missing page must never change the site's selected skin.
+            LOGGER.log(Level.WARN, "Template not found [name={0}]", templateName);
         }
 
         return ret;
@@ -109,7 +96,7 @@ public final class SkinRenderer extends AbstractFreeMarkerRenderer {
      * @throws Exception exception
      */
     @Override
-    protected String genHTML(final HttpServletRequest request, final Map<String, Object> dataModel, final Template template)
+    protected String genHTML(final Request request, final Map<String, Object> dataModel, final Template template)
             throws Exception {
         final boolean isPJAX = isPJAX(context);
         dataModel.put("pjax", isPJAX);

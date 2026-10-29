@@ -20,22 +20,22 @@ package org.b3log.solo.processor;
 import java.util.List;
 import java.util.Map;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.Response;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.logging.Level;
-import org.b3log.latke.logging.Logger;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.URLs;
@@ -60,7 +60,7 @@ import org.json.JSONObject;
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  * @since 2.0.0
  */
-@RequestProcessor
+@Singleton
 public class CategoryProcessor {
 
     /**
@@ -119,7 +119,7 @@ public class CategoryProcessor {
     public void getCategoryArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String categoryURI = context.pathVar("categoryURI");
         final int currentPageNum = Paginator.getPage(request);
 
@@ -128,12 +128,12 @@ public class CategoryProcessor {
         try {
             final JSONObject category = categoryQueryService.getByURI(categoryURI);
             if (null == category) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
 
-            jsonObject.put(Keys.STATUS_CODE, true);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             final String categoryId = category.optString(Keys.OBJECT_ID);
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
@@ -151,7 +151,7 @@ public class CategoryProcessor {
             result.put(Article.ARTICLES, articles);
             jsonObject.put(Keys.RESULTS, result);
         } catch (final Exception e) {
-            jsonObject.put(Keys.STATUS_CODE, false);
+            jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             LOGGER.log(Level.ERROR, "Gets article paged failed", e);
         } finally {
             Stopwatchs.end();
@@ -172,8 +172,8 @@ public class CategoryProcessor {
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "category-articles.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
 
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
 
         try {
             String categoryURI = context.pathVar("categoryURI");
@@ -183,7 +183,7 @@ public class CategoryProcessor {
             // 读取category表，无关键操作
             final JSONObject category = categoryQueryService.getByURI(categoryURI);
             if (null == category) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -201,12 +201,12 @@ public class CategoryProcessor {
             articles.forEach(article -> article.put("isRss", false));
             final int pageCount = result.optJSONObject(Pagination.PAGINATION).optInt(Pagination.PAGINATION_PAGE_COUNT);
             // if (0 == pageCount) {
-            // context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            // context.sendError(404);
             // return;
             // }
 
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
-                    (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
+                    (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
             dataModelService.setArticlesExProperties(context, articles, preference);
 
             final List<Integer> pageNums = (List) result.optJSONObject(Pagination.PAGINATION)
@@ -222,7 +222,7 @@ public class CategoryProcessor {
         } catch (final ServiceException | JSONException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -243,7 +243,7 @@ public class CategoryProcessor {
         final String previousPageNum = Integer.toString(currentPageNum > 1 ? currentPageNum - 1 : 0);
 
         dataModel.put(Pagination.PAGINATION_PREVIOUS_PAGE_NUM, "0".equals(previousPageNum) ? "" : previousPageNum);
-        if (pageCount == currentPageNum + 1) { // The next page is the last page
+        if (currentPageNum >= pageCount) {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, "");
         } else {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, currentPageNum + 1);
