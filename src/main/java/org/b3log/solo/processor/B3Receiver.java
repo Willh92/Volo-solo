@@ -140,7 +140,7 @@ public class B3Receiver {
         context.renderJSON(ret);
 
         final JSONObject requestJSONObject = context.requestJSON();
-        LOGGER.log(Level.INFO, "Adds an article from Sym [" + requestJSONObject.toString() + "]");
+        LOGGER.log(Level.DEBUG, "Received an article from community");
 
         try {
             final JSONObject client = requestJSONObject.optJSONObject("client");

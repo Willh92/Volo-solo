@@ -17,7 +17,7 @@
  */
 package org.b3log.solo.rss;
 
-import java.net.URL;
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,8 +27,6 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.b3log.latke.Keys;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -47,8 +45,6 @@ public class RssParser {
     private String userIcon;
     private String userName;
 
-    private static final Logger LOGGER = Logger.getLogger(RssParser.class);
-
     public RssParser(String rssUrl, String userIcon, String userName) {
         this.rssUrl = rssUrl;
         this.userIcon = userIcon;
@@ -61,23 +57,32 @@ public class RssParser {
     public List<JSONObject> parse2Article() {
         SyndFeedInput input = new SyndFeedInput();
         final List<JSONObject> articles = new ArrayList<>();
-        try (XmlReader reader = new XmlReader(new URL(this.rssUrl).openStream())) {
+        try (XmlReader reader = new XmlReader(new ByteArrayInputStream(Jsoup.connect(this.rssUrl)
+                .ignoreContentType(true).timeout(5000).maxBodySize(2 * 1024 * 1024)
+                .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml")
+                .execute().bodyAsBytes()))) {
             SyndFeed feed = input.build(reader);
+            final String feedTitle = feed.getTitle() == null ? userName : feed.getTitle();
             String feedDesc = feed.getDescription();
             if (feedDesc == null || feedDesc.isEmpty()) {
-                feedDesc = feed.getTitle();
+                feedDesc = feedTitle;
             }
             Instant now = Instant.now();
             for (SyndEntry entry : feed.getEntries()) {
+                final String title = entry.getTitle() == null ? entry.getLink() : entry.getTitle();
+                if (title == null || title.isBlank()) continue;
+                final String author = entry.getAuthor() == null || entry.getAuthor().isBlank() ? userName : entry.getAuthor();
+                final String description = entry.getDescription() == null || entry.getDescription().getValue() == null
+                        ? "" : entry.getDescription().getValue();
                 final JSONObject article = new JSONObject();
-                article.put(Option.ID_C_BLOG_TITLE, feed.getTitle());
+                article.put(Option.ID_C_BLOG_TITLE, feedTitle);
                 article.put(Option.ID_C_BLOG_SUBTITLE, feedDesc);
                 article.put(Common.AUTHOR_ID, "");
                 article.put(Article.ARTICLE_T_TOC, (Object) Collections.emptyList());
                 article.put(Article.ARTICLE_AUTHOR_ID, userName);
-                article.put(Keys.OBJECT_ID, entry.getAuthor());
-                article.put(Common.AUTHOR_NAME, entry.getAuthor());
-                article.put(Article.ARTICLE_TITLE, entry.getTitle());
+                article.put(Keys.OBJECT_ID, author);
+                article.put(Common.AUTHOR_NAME, author);
+                article.put(Article.ARTICLE_TITLE, title);
                 article.put(Article.ARTICLE_PUT_TOP, false);
                 article.put(Option.ID_C_COMMENTABLE, false);
                 article.put(Common.ARTICLE_SIGN, new JSONObject().put("signHTML", ""));
@@ -91,14 +96,13 @@ public class RssParser {
                     article.put(Common.AUTHOR_THUMBNAIL_URL, this.userIcon);
                 }
                 article.put(Article.ARTICLE_PERMALINK,
-                        String.format("/follow/%s/article/%s", this.userName, entry.getTitle()));
+                        String.format("/follow/%s/article/%s", this.userName, title));
                 article.put("isRss", false);
                 if (null == entry.getContents() || entry.getContents().isEmpty()) {
-                    article.put(Article.ARTICLE_CONTENT, entry.getDescription().getValue());
-                    article.put(Article.ARTICLE_ABSTRACT,
-                            Article.getAbstractText(entry.getDescription().getValue()));
+                    article.put(Article.ARTICLE_CONTENT, description);
+                    article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(description));
                     article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
-                    if (!isRichContent(entry.getDescription().getValue())) {
+                    if (!isRichContent(description) && entry.getLink() != null && !entry.getLink().isBlank()) {
                         article.put("isRss", true);
                         article.put(Article.ARTICLE_PERMALINK, entry.getLink());
                     }
@@ -126,7 +130,7 @@ public class RssParser {
                 }
                 // 设置文章封面
                 Optional<SyndEnclosure> optionalEnclosure = entry.getEnclosures().stream()
-                        .filter(enclosure -> enclosure.getType().startsWith("image/"))
+                        .filter(enclosure -> enclosure.getType() != null && enclosure.getType().startsWith("image/"))
                         .findFirst();
                 if (optionalEnclosure.isPresent()) {
                     article.put(Article.ARTICLE_IMG1_URL, optionalEnclosure.get().getUrl());
@@ -151,7 +155,7 @@ public class RssParser {
                 articles.add(article);
             }
         } catch (Exception e) {
-            LOGGER.log(Level.ERROR, "Error parsing RSS feed: {0}", e.getMessage());
+            throw new IllegalStateException("Unable to read RSS/Atom feed: " + e.getMessage(), e);
         }
         return articles;
     }

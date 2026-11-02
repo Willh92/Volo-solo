@@ -24,6 +24,7 @@
 var TablePaginate = function (id) {
     this.id = id;
     this.currentPage = 1;
+    this.keyword = '';
 };
 
 $.extend(TablePaginate.prototype, {
@@ -32,16 +33,15 @@ $.extend(TablePaginate.prototype, {
      * @colModel table 列宽，标题等数据
      */
     buildTable: function (colModel, noExpend) {
-        this.columnModel = colModel;
+        this.columnModel = colModel.slice();
+        if (!noExpend && !colModel.some(function (column) { return column.index === 'actions' || column.index === 'expendRow'; })) {
+            this.columnModel.push({text: Label.operationsLabel || '操作', index: 'expendRow', width: this.id === 'article' ? 230 : 170});
+        }
         var tableData = {
-            colModel: colModel,
+            colModel: this.columnModel,
             noDataTip: Label.noDataLabel
         }
-        if (!noExpend) {
-            tableData.expendRow = {
-                index: "expendRow"
-            }
-        }
+        // Keep actions in normal cells: the legacy hover rows depend on the removed $.browser API.
         $("#" + this.id + "Table").addClass('console-card-list').table(tableData);
     
     },
@@ -51,24 +51,38 @@ $.extend(TablePaginate.prototype, {
      */
     initPagination: function () {
         var id = this.id;
-        $("#" + id + "Pagination").paginate({
-            "bind": function(currentPage, errorMessage) {
-                if (errorMessage) {
-                    $("#tipMsg").text(errorMessage);
-                } else {
-                    admin.setHashByPage(currentPage);
-                }
-            },
-            "currentPage": 1,
-            "errorMessage": Label.inputErrorLabel,
-            "nextPageText": '>',
-            "previousPageText": '<',
-            "goText": Label.gotoLabel,
-            "type": "custom",
-            "custom": [1],
-            "pageCount": 1
-        });
+        this.initSearch();
+        admin.pagination.render(id + 'Pagination', 1, 1, admin.setHashByPage);
+
     },
+
+    initSearch: function () {
+        if (!['article', 'draft', 'category', 'page', 'link', 'follow', 'comment'].includes(this.id)) return;
+        var host = document.getElementById(this.id + 'Table'), that = this;
+        if (!host) return;
+        var input = document.getElementById(this.id + 'ListInput');
+        var form = input ? input.closest('form') : null;
+        if (!form) {
+            form = document.createElement('form');
+            form.className = 'form fn__margin12 console-list-search console-list-filter';
+            input = document.createElement('input');
+            input.id = this.id + 'ListInput'; input.type = 'search';
+            var button = document.createElement('button');
+            button.type = 'submit'; button.className = 'search-btn'; button.textContent = Label.searchLabel || '搜索';
+            form.append(input, button); host.before(form);
+        }
+        input.maxLength = 200; input.value = this.keyword;
+        input.setAttribute('aria-label', Label.searchLabel || '搜索');
+        input.placeholder = this.id === 'comment' ? '内容、昵称、邮箱或 IP' : (Label.searchLabel || '搜索');
+        form.onsubmit = function (event) {
+            event.preventDefault(); that.keyword = input.value.trim();
+            var previousHash = window.location.hash;
+            admin.setHashByPage(1);
+            if (window.location.hash === previousHash) admin[that.id + 'List'].getList(1);
+        };
+    },
+
+    keywordQuery: function () { return this.keyword ? '?k=' + encodeURIComponent(this.keyword) : ''; },
 
     /*
      * 初始化评论对话框
@@ -96,10 +110,20 @@ $.extend(TablePaginate.prototype, {
             $("#loadMsg").text("");
             return;
         }
+        var filtering = Boolean(this.keyword);
         $("#" + this.id + "Table").table("update", {
             data: [{
                 groupName: "all",
-                groupData: data
+                groupData: data.map(function (row) {
+                    var item = Object.assign({}, row);
+                    if (filtering && Object.prototype.hasOwnProperty.call(item, 'linkOrder')) item.linkOrder = '';
+                    ['expendRow', 'actions'].forEach(function (key) {
+                        if (typeof item[key] === 'string' && item[key].trim()) {
+                            item[key] = '<div class="console-row-actions">' + item[key] + '</div>';
+                        }
+                    });
+                    return item;
+                })
             }]
         });
         this.labelFields();
@@ -108,11 +132,7 @@ $.extend(TablePaginate.prototype, {
             pageInfo.paginationPageCount = 1;
         }
         
-        $("#" + this.id + "Pagination").paginate("update", {
-            pageCount: pageInfo.paginationPageCount,
-            currentPage: currentPage,
-            custom: pageInfo.paginationPageNums
-        });
+        admin.pagination.render(this.id + 'Pagination', currentPage, pageInfo.paginationPageCount, admin.setHashByPage);
         this.currentPage = currentPage;
     },
 
@@ -138,6 +158,7 @@ $.extend(TablePaginate.prototype, {
                     content.textContent = columns[index].index === 'category' ? (Label.uncategorizedLabel || '未分类') : '—';
                 }
                 if (index === primary) cell.classList.add('console-data-primary');
+                if (columns[index].index === 'expendRow' || columns[index].index === 'actions') cell.classList.add('console-data-actions');
                 if (/content|desc|url|uri|address/i.test(columns[index].index || '') || (plugin && columns[index].index === 'author')) cell.classList.add('console-data-wide');
             });
         });

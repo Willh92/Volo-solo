@@ -28,7 +28,6 @@ admin.main = {
 /*
  * 注册到 admin 进行管理 
  */
-var lastMain = -1;
 admin.register.main =  {
     "obj": admin.main,
     "init": function () {
@@ -42,43 +41,5 @@ admin.register.main =  {
     "refresh": function () {
         admin.clearTip();
     },
-    getLog: () => {
-        if (window.location.hash !== '#main') return;
-        $.ajax({
-            url: Label.servePath + '/admin/logs',
-            cache: false,
-            timeout: 2000,
-            dataType: 'json',
-            success: function (result) {
-                if (!result || !Array.isArray(result.result)) return;
-                const escape = value => $('<span>').text(String(value == null ? '' : value)).html();
-                let json = result.result;
-                for (let i = 0; i < json.length; i++) {
-                    let r = json[i];
-                    let rId = r.id;
-                    if (rId > lastMain) {
-                        let rDate = r.date;
-                        let rLevel = r.level;
-                        let rSrc = escape(r.name + ':' + r.lineNumber);
-                        let msg = escape(r.message);
-                        if (r.throwable !== undefined) {
-                            msg += '<br>' + escape(r.throwable.class + ': ' + r.throwable.message);
-                            for (const line of r.throwable.stackTrace || []) msg += '<br>' + escape(line);
-                        }
-                        let buildStart = '<tbody class="table-oddRow"><tr class="table-hasExpend">';
-                        rDate = rDate.substring(0, 19);
-                        const levelClass = ['WARN', 'INFO', 'ERROR'].includes(rLevel) ? rLevel.toLowerCase() : 'other';
-                        let build1 = '<td style="width: 40px; vertical-align: top"><span class="console-log-level console-log-level--' + levelClass + '">' + escape(rLevel) + '</span></td>';
-                        let build2 = '<td style="width: 135px; vertical-align: top"><span class="console-log-time">' + escape(rDate) + '</span></td>';
-                        let build3 = '<td style="vertical-align: top"><span style="word-wrap: break-word; white-space: normal; word-break: break-all"><span class="console-log-source">' + rSrc + '</span><br>' + msg + '</span></td>';
-                        let buildEnd = '</tr></tbody>';
-                        let res = buildStart + build1 + build2 + build3 + buildEnd;
-                        $('#recentLogs').prepend(res);
-                        $('#recentLogs').children('tbody').slice(300).remove();
-                        lastMain = rId;
-                    }
-                }
-            }
-        });
-    },
+    getLog: () => { admin.logs.load(true); },
 };

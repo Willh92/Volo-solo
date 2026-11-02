@@ -93,7 +93,7 @@ assert.equal(constructions,2);assert(!classes.has('is-open'));assert.equal(edito
 assert(!editorHost['aria-busy']);
 {
   let submitted=0,prompts=0;
-  const mailPage=new sandbox.Page({oId:'mail',commentContentCannotEmptyLabel:'评论长度不正确'});
+  const mailPage=new sandbox.Page({oId:'mail',commentAdministrator:true,commentContentCannotEmptyLabel:'评论长度不正确'});
   window.vditor={vditor:{wysiwyg:{}},getValue:()=> '已经就绪的评论'};
   mailPage.commentEditorHost=editorHost;mailPage.commentEditorReady=true;
   mailPage.submitComment=()=>submitted++;
@@ -106,23 +106,34 @@ assert(!editorHost['aria-busy']);
   const node=value=>({value:value||'',dataset:{},hidden:false,removeAttribute(){},focus(){this.focused=true},appendChild(input){input.parentElement=this}});
   let elements;
   const reset=()=>{ elements={soloEditorIdentity:node(),soloEditorNameSlot:node(),soloEditorSiteSlot:node(),
-    boloUser:node(),boloSite:node(),soloEditorEmail:node(),soloEditorVisitorCard:node(),soloEditorVisitorName:node(),soloEditorVisitorAvatar:node()}; };
+    boloUser:node(),boloSite:node(),soloEditorEmail:node(),soloEditorVisitorCard:node(),soloEditorVisitorName:node(),soloEditorVisitorAvatar:node(),soloEditorCaptcha:node()}; };
   reset();const originalGet=document.getElementById;
   document.getElementById=id=>elements[id]||originalGet(id);
   const guest=new sandbox.Page({oId:'guest',commentContentCannotEmptyLabel:'评论长度不正确'});
   guest.commentEditorHost=editorHost;guest.commentEditorReady=true;guest.submitComment=()=>submitted++;
+  let captchaValid=true,mounted=0;
+  window.VoloCaptcha={mount:(host,purpose,changed)=>{
+    assert.equal(host,elements.soloEditorCaptcha,'The challenge belongs inside the existing reply composer');
+    assert.equal(purpose,'comment');mounted++;changed({ready:true,required:true});
+    return {valid:()=>captchaValid,payload:()=>({captchaId:'test-id',captchaAnswer:'AB234'}),ensureFresh(){},destroy(){}};
+  }};
   guest.prepareCommentIdentity(false);
   assert(!elements.soloEditorIdentity.hidden);assert(elements.soloEditorVisitorCard.hidden);
-  guest.requestCommentSubmission(false);assert.equal(submitted,1,'A guest must provide a nickname');
+  guest.requestCommentSubmission(false);await Promise.resolve();assert.equal(submitted,1,'A guest must provide a nickname');
   elements.boloUser.value='本地访客';elements.boloSite.value='https://example.test/';elements.soloEditorEmail.value='invalid';
-  guest.requestCommentSubmission(false);assert.equal(submitted,1,'Invalid notification emails stay inline without submitting');
-  elements.soloEditorEmail.value='visitor@example.test';guest.requestCommentSubmission(false);
+  guest.requestCommentSubmission(false);await Promise.resolve();assert.equal(submitted,1,'Invalid notification emails stay inline without submitting');
+  elements.soloEditorEmail.value='visitor@example.test';guest.requestCommentSubmission(false);await Promise.resolve();
   assert.equal(submitted,2);assert.equal(prompts,0,'Guest email is inline, never a second dialog');
+  assert.equal(mounted,1);assert.equal(guest.commentCaptcha.captchaId,'test-id');
+  captchaValid=false;guest.requestCommentSubmission(false);
+  assert.equal(submitted,2,'An incomplete inline challenge must not send a comment');
+  assert.equal(mounted,1,'Repeated clicks reuse the inline challenge instead of opening another dialog');
+  captchaValid=true;
   assert.equal(JSON.parse(storage.get('volo.comment.profile.v1')).name,'本地访客');
   assert.equal(elements.boloUser.maxLength,20);assert.equal(elements.boloSite.maxLength,255);
   for (const [field,invalid] of [['boloUser','读'.repeat(21)],['boloSite','https://example.test/'+ 'a'.repeat(240)],['boloSite','javascript:alert(1)'],['soloEditorEmail','a'.repeat(245)+'@example.test'],['soloEditorEmail','a;b@example.test']]) {
     const input=elements[field],previous=input.value;input.value=invalid;
-    guest.requestCommentSubmission(false);assert.equal(submitted,2,'Invalid '+field+' must be rejected before sending');input.value=previous;
+    guest.requestCommentSubmission(false);await Promise.resolve();assert.equal(submitted,2,'Invalid '+field+' must be rejected before sending');input.value=previous;
   }
   const credential=JSON.parse(storage.get('volo.comment.profile.v1')).token;
   assert.match(credential,/^[a-f0-9]{64}$/,'Guest ownership uses a browser-generated credential');
@@ -223,10 +234,10 @@ await sandbox.Util.loadVditor();assert.equal(scripts.length,2,'A loaded construc
   assert.equal(location.children[0].dataset.commentBan,'visitor');
   moderation.applyCommentModeration([]);
   const previous=requests,originalSwal=sandbox.swal;sandbox.swal=()=>Promise.resolve(false);
-  moderation.banCommentSource('visitor');await Promise.resolve();assert.equal(requests,previous,'Cancelling a ban must not mutate access rules');
-  sandbox.swal=()=>Promise.resolve(true);moderation.banCommentSource('visitor');await Promise.resolve();
+  moderation.banCommentSource('visitor');await new Promise(resolve=>setImmediate(resolve));assert.equal(requests,previous,'Cancelling a ban must not mutate access rules');
+  sandbox.swal=()=>Promise.resolve(true);moderation.banCommentSource('visitor');await new Promise(resolve=>setImmediate(resolve));
   assert.equal(request.url,'http://localhost/console/ip-bans');
-  assert.equal(JSON.parse(request.data).commentId,'visitor');
+  assert.equal(JSON.parse(request.data).commentId,'visitor');assert.equal(JSON.parse(request.data).durationSeconds,0);
   assert(!request.data.includes('2001:db8'),'The server must derive the source IP from the stored comment');
   request.complete();document.createElement=create;sandbox.swal=originalSwal;
 }
@@ -236,4 +247,28 @@ for(const skin of fs.readdirSync('src/main/webapp/skins')) {
     assert(!/(?:onclick|href)="[^"\n]*page\.toggleEditor\([^"\n]*\$\{comment\.commentName/.test(fs.readFileSync(path,'utf8')),skin+' must pass comment names as data, never JavaScript source');
   }
 }
-console.log('Comment checks passed: viewport, drafts, contact limits, loading/retry, local identity, edit/delete permissions, safe reply templates, PJAX cancellation and contact disclosure rebinding.');
+{
+  const nodes=[];let now=1000,requests=0,reply={sc:true,required:true,captchaId:'fixture',image:'data:image/png;base64,fixture',expiresAt:181000};
+  function element(tag) {
+    const node={tag,children:[],dataset:{context:'/blog'},attrs:{},events:{},classList:{add(){}},value:'',
+      append(...children){this.children.push(...children)},replaceChildren(...children){this.children=children},
+      setAttribute(key,value){this.attrs[key]=value},removeAttribute(key){delete this.attrs[key]},
+      addEventListener(name,callback){this.events[name]=callback},focus(){},reportValidity(){return /^[A-Za-z0-9]{5}$/.test(this.value)}};
+    nodes.push(node);return node;
+  }
+  const states=[],host=element('div'),sandbox={window:{},document:{createElement:element},AbortController,Date:{now:()=>now},setTimeout:()=>1,clearTimeout(){},
+    fetch:async(url,options)=>{requests++;assert.equal(url,'/blog/captcha?purpose=comment');assert.equal(options.credentials,'same-origin');return {ok:reply.sc,json:async()=>reply}}};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/captcha.js','utf8'),sandbox);
+  const widget=sandbox.window.VoloCaptcha.mount(host,'comment',state=>states.push(state));
+  assert.equal(widget.valid(),false,'A pending image cannot be submitted');await widget.ready;
+  assert.equal(nodes.filter(node=>node.tag==='dialog').length,0,'CAPTCHA must not create a separate confirmation dialog');
+  const input=nodes.find(node=>node.tag==='input');assert.equal(widget.valid(),false);input.value='AB234';assert(widget.valid());
+  assert.equal(widget.payload().captchaAnswer,'AB234');assert.equal(host.attrs['aria-busy'],undefined);
+  widget.ensureFresh();assert.equal(requests,1,'An unexpired challenge survives closing and reopening the composer');
+  now=181001;widget.ensureFresh();await Promise.resolve();await Promise.resolve();
+  assert.equal(requests,2,'Expired challenges refresh on reopening');assert.equal(input.value,'');
+  reply={sc:false,msg:'请稍后重试'};await widget.refresh();assert.equal(widget.valid(),false);assert(!states.at(-1).ready);
+  reply={sc:true,required:false};await widget.refresh();assert(host.hidden);assert(widget.valid(),'Turning CAPTCHA off must immediately allow ordinary submission');
+  assert.equal(Object.keys(widget.payload()).length,0);widget.destroy();
+}
+console.log('Comment checks passed: viewport, drafts, contact limits, loading/retry, local identity, edit/delete permissions, inline CAPTCHA, safe reply templates, PJAX cancellation and contact disclosure rebinding.');

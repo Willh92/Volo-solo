@@ -390,9 +390,11 @@ public final class Option {
     public static final String ID_C_COMMENT_FILTER_ALLOW = "commentFilterAllow";
 
     /**
-     * Key of interactive switch.
+     * Frontend comment visibility; retained key for existing installations.
      */
     public static final String ID_C_INTERACTIVE = "interactive";
+    /** Whether public navigation offers the administrator login page; hidden by default. */
+    public static final String ID_C_SHOW_LOGIN_ENTRY = "showLoginEntry";
 
     /**
      * Key of WAF.

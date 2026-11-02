@@ -68,9 +68,9 @@ function loginEnvironment(response) {
   const form={dataset:{mode:'1'},action:'https://example.test/oauth/bolo/login',classList:{toggle(){}},reportValidity:()=>true,
     addEventListener(type,listener){handlers[type]=listener;},setAttribute(name,value){attrs[name]=value;},removeAttribute(name){delete attrs[name];}};
   const status={textContent:'',hidden:true};const password={value:'wrong',type:'password',setAttribute(){},focus(){this.focused=true;}};
-  const button={disabled:false,querySelector:()=>span};const nodes={loginForm:form,loginBtn:button,status,password,loginHeading:{},loginDescription:{},togglePassword:{addEventListener(){}}};
+  const button={disabled:false,querySelector:()=>span};const nodes={loginCaptcha:{dataset:{}},loginCaptchaId:{},loginForm:form,loginBtn:button,status,password,loginHeading:{},loginDescription:{},togglePassword:{addEventListener(){}}};
   const navigations=[];
-  const sandbox={window:{location:{href:'https://example.test/start',origin:'https://example.test'},BoloNavigation:{onLeave(){},navigate:async (...args)=>navigations.push(args)}},document:{getElementById:id=>nodes[id]},URL,URLSearchParams,
+  const sandbox={window:{VoloCaptcha:{mount:()=>({valid:()=>true,payload:()=>({captchaId:"test-id"}),refresh(){},destroy(){}})},location:{href:'https://example.test/start',origin:'https://example.test'},BoloNavigation:{onLeave(){},navigate:async (...args)=>navigations.push(args)}},document:{getElementById:id=>nodes[id]},URL,URLSearchParams,
     FormData:class { *[Symbol.iterator](){yield ['username','test-user'];yield ['password',password.value];}},
     Date:{now:()=>now},setInterval(callback){tick=callback;return 1;},clearInterval(){},fetch:async()=>{calls++;return typeof response === 'function' ? response() : response;}};
   vm.runInNewContext(account,sandbox);

@@ -151,11 +151,11 @@ public class UserTemplateProcessor {
      * 
      * @param context
      */
-    @RequestProcessing(value = "/admin/usite/refresh", method = HttpMethod.GET)
+    @RequestProcessing(value = "/admin/usite/refresh", method = HttpMethod.POST)
     public void refreshUsite(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(401);
-
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
+        if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) {
+            context.sendError(404);
             return;
         }
 
@@ -167,11 +167,7 @@ public class UserTemplateProcessor {
 
     @RequestProcessing(value = "/admin/usite/set", method = HttpMethod.POST)
     public void setUsite(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(401);
-
-            return;
-        }
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
         JSONObject usiteOpt = optionQueryService.getOptionById(Option.ID_C_USITE);
         if (null == usiteOpt) {
@@ -207,7 +203,7 @@ public class UserTemplateProcessor {
         usiteOpt.put(Option.OPTION_VALUE, usite);
         try {
             optionMgmtService.addOrUpdateOption(usiteOpt);
-            LOGGER.log(Level.INFO, "Usite refresh from Local successful: " + usite);
+            LOGGER.log(Level.INFO, "Contact settings updated");
             org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
 
             return;
@@ -229,7 +225,7 @@ public class UserTemplateProcessor {
 
         try {
             JSONObject usiteOpt = optionQueryService.getOptionById(Option.ID_C_USITE);
-            String usite = usiteOpt.optString(Option.OPTION_VALUE);
+            String usite = usiteOpt == null ? "" : usiteOpt.optString(Option.OPTION_VALUE);
             org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg(usite);
         } catch (Exception e) {

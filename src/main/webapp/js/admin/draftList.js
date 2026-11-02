@@ -71,7 +71,7 @@ admin.draftList = {
         var that = this;
         
         $.ajax({
-            url: Label.servePath + "/console/articles/status/unpublished/" + pageNum + "/" + Label.PAGE_SIZE + "/" +  Label.WINDOW_SIZE,
+            url: Label.servePath + "/console/articles/status/unpublished/" + pageNum + "/" + Label.PAGE_SIZE + "/" +  Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
             type: "GET",
             cache: false,
             success: function(result, textStatus){

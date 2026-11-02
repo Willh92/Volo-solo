@@ -59,6 +59,10 @@ public final class GitHubs {
      * @return GitHub repos, returns {@code null} if not found
      */
     public static JSONArray getGitHubRepos(final String githubUserId) {
+        return getGitHubReposAt("https://api.github.com", githubUserId);
+    }
+
+    static JSONArray getGitHubReposAt(final String apiBase, final String githubUserId) {
         if (githubUserId == null || !githubUserId.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")) return null;
         int page = 1;
         String pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'";
@@ -67,9 +71,8 @@ public final class GitHubs {
         simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
         JSONArray compatibleResult = new JSONArray();
         try {
-            String githubHome = githubUserId + "/" + githubUserId;
             while (page <= 100) {
-                HttpResponse res = HttpRequest.get("https://api.github.com/users/" + githubUserId + "/repos?sort=updated&per_page=100&type=public&page=" + page).
+                HttpResponse res = HttpRequest.get(apiBase + "/users/" + githubUserId + "/repos?sort=full_name&per_page=100&type=owner&page=" + page).
                         connectionTimeout(20000).timeout(60000).header("User-Agent", Solos.USER_AGENT).send();
                 if (200 != res.statusCode()) {
                     return null;
@@ -84,17 +87,17 @@ public final class GitHubs {
                     JSONObject resultObject = result.optJSONObject(i);
                     JSONObject compatibleObject = new JSONObject();
 
-                    if (resultObject.optBoolean("fork") || resultObject.optBoolean("disabled")) {
+                    if (resultObject.optBoolean("private") || resultObject.optBoolean("disabled")) {
                         continue;
                     }
-
-                    if (githubHome.equalsIgnoreCase(resultObject.optString("full_name"))) {
+                    if (!githubUserId.equalsIgnoreCase(resultObject.getJSONObject("owner").optString("login"))) {
                         continue;
                     }
 
                     compatibleObject.put("githubrepoId", resultObject.optString("id"));
                     compatibleObject.put("githubrepoStatus", 0);
-                    compatibleObject.put("oId", "" + System.currentTimeMillis());
+                    compatibleObject.put("oId", resultObject.getString("full_name"));
+                    compatibleObject.put("githubrepoFork", resultObject.optBoolean("fork"));
                     compatibleObject.put("githubrepoDescription", resultObject.optString("description"));
                     compatibleObject.put("githubrepoHomepage", resultObject.optString("homepage"));
                     compatibleObject.put("githubrepoForksCount", resultObject.optLong("forks_count"));

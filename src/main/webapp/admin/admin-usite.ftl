@@ -17,16 +17,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div id="tabUsite" class="sub-tabs">
-    <ul>
-        <li>
-            <div id="tabUsite_edit">
-                <a class="tab-current" href="#tools/usite/edit">${usite11Label}</a>
-            </div>
-        </li>
-    </ul>
-</div>
-<div id="tabUsitePanel" class="sub-tabs-main usite">
+<div id="tabUsitePanel" class="sub-tabs-main usite console-contact-settings">
     <div id="tabUsitePanel_edit" class="form">
         <div class="fn__clear">
             ${usite1Label}

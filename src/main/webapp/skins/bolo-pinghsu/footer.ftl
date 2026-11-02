@@ -29,7 +29,7 @@
             </a>
         </#list>
         <a class="ft__link" rel="alternate" href="${servePath}/rss.xml" rel="section">RSS</a>
-
+        <#include "../../common-template/macro-management.ftl"><@managementLinks linkClass="ft__link"/>
     </nav>
     <div class="footer__border mobile__none"></div>
     <div class="wrapper fn__flex">

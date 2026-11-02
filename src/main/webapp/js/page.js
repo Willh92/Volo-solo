@@ -116,6 +116,7 @@ $.extend(Page.prototype, {
         }
         if (window.BoloNavigation) BoloNavigation.onLeave(function () {
             that.commentDisposed = true;
+            that.commentCaptchaWidget?.destroy();
             clearTimeout(that.commentEditorTimeout);
             if (window.requestIdleCallback) window.cancelIdleCallback(that.commentWarmup);
             else clearTimeout(that.commentWarmup);
@@ -133,8 +134,30 @@ $.extend(Page.prototype, {
             && !!window.vditor?.vditor?.wysiwyg;
     },
     updateCommentSubmitState: function () {
-        if (!this.isCommentEditorReady() || this.commentPending) $('#soloEditorAdd').attr('disabled', 'disabled');
+        var captchaLoading = this.tips.commentAdministrator !== true && document.getElementById('soloEditorCaptcha') && !this.commentCaptchaReady;
+        if (!this.isCommentEditorReady() || this.commentPending || captchaLoading) $('#soloEditorAdd').attr('disabled', 'disabled');
         else $('#soloEditorAdd').removeAttr('disabled');
+    },
+    prepareCommentCaptcha: function () {
+        var host = document.getElementById('soloEditorCaptcha');
+        if (!host || this.commentDisposed) return;
+        if (this.tips.commentAdministrator === true) { host.hidden = true; return; }
+        if (this.commentCaptchaWidget && this.commentCaptchaHost === host) { this.commentCaptchaWidget.ensureFresh(); return; }
+        if (!window.VoloCaptcha) { $('#soloEditorError').text('验证码组件尚未载入，请刷新页面重试。'); return; }
+        this.commentCaptchaWidget?.destroy();
+        this.commentCaptchaHost = host;
+        host.hidden = false;
+        host.dataset.context = new URL(Label.servePath, window.location.href).pathname.replace(/\/$/, '');
+        var that = this;
+        this.commentCaptchaWidget = window.VoloCaptcha.mount(host, 'comment', function (state) {
+            if (that.commentDisposed || that.commentCaptchaHost !== host) return;
+            that.commentCaptchaReady = state.ready;
+            that.updateCommentSubmitState();
+        });
+    },
+    resetCommentCaptcha: function () {
+        delete this.commentCaptcha;
+        if (!this.commentDisposed) this.commentCaptchaWidget?.refresh();
     },
     prepareCommentIdentity: function (loggedIn) {
         this.commentLoggedIn = loggedIn === true || loggedIn === 'true';
@@ -194,7 +217,7 @@ $.extend(Page.prototype, {
             $('#soloEditorError').text(this.tips.commentContentCannotEmptyLabel);
             return;
         }
-        if (this.editingCommentId) { this.saveCommentEdit(); return; }
+
         if (!this.commentLoggedIn) {
             var name = document.getElementById('boloUser');
             if (!String(name ? name.value : $('#boloUser').val() || '').trim()) {
@@ -225,8 +248,13 @@ $.extend(Page.prototype, {
                 return;
             }
         }
+        if (this.tips.commentAdministrator !== true) {
+            this.prepareCommentCaptcha();
+            if (!this.commentCaptchaWidget || !this.commentCaptchaWidget.valid()) return;
+            this.commentCaptcha = this.commentCaptchaWidget.payload();
+        }
         this.rememberCommentIdentity();
-        this.submitComment();
+        if (this.editingCommentId) this.saveCommentEdit(); else this.submitComment();
     },
     createVisitorKey: function () {
         if (!window.crypto?.getRandomValues) return '';
@@ -289,12 +317,11 @@ $.extend(Page.prototype, {
     banCommentSource: function (id) {
         if (this.commentBanPending || typeof swal !== 'function') return;
         var that = this;
-        swal({title: '封禁评论来源', text: '封禁这条评论的来源 IP？该地址将无法访问本站，可在后台博客安全中解除。', icon: 'warning',
-            buttons: {cancel: '取消', confirm: '封禁'}}).then(function (confirmed) {
-            if (!confirmed || that.commentDisposed || that.commentBanPending) return;
-            that.commentBanPending = true;
+        that.commentBanPending = true;
+        Util.chooseBanDuration().then(function (duration) {
+            if (duration == null || that.commentDisposed) { that.commentBanPending = false; return; }
             $.ajax({url: Label.servePath + '/console/ip-bans', type: 'POST', contentType: 'application/json',
-                data: JSON.stringify({commentId: id, reason: '从评论封禁'}),
+                data: JSON.stringify({commentId: id, reason: '从评论封禁', durationSeconds: duration}),
                 complete: function () { that.commentBanPending = false; },
                 success: function (result) { if (!that.commentDisposed) swal({text: result.msg || (result.sc ? '已封禁。' : '封禁失败。'), icon: result.sc ? 'success' : 'warning'}); },
                 error: function (xhr) { if (!that.commentDisposed) swal({text: xhr.responseJSON?.msg || '封禁失败，请重试。', icon: 'warning'}); }
@@ -340,8 +367,8 @@ $.extend(Page.prototype, {
         var that = this, id = this.editingCommentId;
         this.commentPending = true; this.updateCommentSubmitState();
         $.ajax({url: Label.servePath + '/article/comments/' + encodeURIComponent(id), type: 'PUT', contentType: 'application/json',
-            headers: {'X-Volo-Visitor-Key': this.guestProfile?.token || ''}, data: JSON.stringify({commentContent: window.vditor.getValue()}),
-            complete: function () { that.commentPending = false; if (!that.commentDisposed) that.updateCommentSubmitState(); },
+            headers: {'X-Volo-Visitor-Key': this.guestProfile?.token || ''}, data: JSON.stringify(Object.assign({commentContent: window.vditor.getValue()}, this.commentCaptcha || {})),
+            complete: function () { that.commentPending = false; that.resetCommentCaptcha(); if (!that.commentDisposed) that.updateCommentSubmitState(); },
             error: function (xhr) { if (!that.commentDisposed) $('#soloEditorError').text(xhr.responseJSON?.msg || '保存失败，请重试。'); },
             success: function (result) {
                 if (that.commentDisposed || !result.sc) return;
@@ -386,6 +413,7 @@ $.extend(Page.prototype, {
         editor.setAttribute('aria-hidden', String(!open));
         if (open) editor.removeAttribute('inert');
         else editor.setAttribute('inert', '');
+        if (open) this.prepareCommentCaptcha();
         var trigger = document.getElementById('comment');
         if (trigger) {
             trigger.setAttribute('aria-expanded', String(open));
@@ -637,6 +665,8 @@ $.extend(Page.prototype, {
                 'boloSite': this.commentLoggedIn ? '' : $("#boloSite").val(),
                 'email': this.commentLoggedIn ? '' : (document.getElementById('soloEditorEmail')?.value.trim() || ''),
                 'visitorKey': this.commentLoggedIn ? '' : (this.guestProfile?.token || ''),
+                'captchaId': this.commentCaptcha?.captchaId || '',
+                'captchaAnswer': this.commentCaptcha?.captchaAnswer || '',
                 'URI': window.location.href
             };
 
@@ -653,6 +683,7 @@ $.extend(Page.prototype, {
                 data: JSON.stringify(requestJSONObject),
                 complete: function () {
                     that.commentPending = false;
+                    that.resetCommentCaptcha();
                     if (!that.commentDisposed) that.updateCommentSubmitState();
                 },
                 error: function (xhr) {

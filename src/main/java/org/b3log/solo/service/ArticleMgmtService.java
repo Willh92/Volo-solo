@@ -38,6 +38,7 @@ import org.b3log.solo.event.FishPiArticleSender;
 import org.b3log.solo.model.*;
 import org.b3log.solo.repository.*;
 import org.b3log.solo.util.GitHubs;
+import org.b3log.solo.util.GitHubStats;
 import org.b3log.solo.util.PluginUtil;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -188,6 +189,9 @@ public class ArticleMgmtService {
     @Inject
     private OptionMgmtService optionMgmtService;
 
+    @Inject
+    private GitHubRepositoryService gitHubRepositoryService;
+
     /**
      * Category management service.
      */
@@ -203,7 +207,7 @@ public class ArticleMgmtService {
     /**
      * Refreshes GitHub repos. 同步拉取 GitHub 仓库 https://github.com/b3log/solo/issues/12514
      */
-    public boolean refreshGitHub(String githubId) {
+    public synchronized boolean refreshGitHub(String githubId) {
         if (!initService.isInited()) {
             return false;
         }
@@ -224,34 +228,48 @@ public class ArticleMgmtService {
             return false;
         }
 
-        final JSONArray gitHubRepos = GitHubs.getGitHubRepos(githubId);
-        if (null == gitHubRepos || gitHubRepos.length() == 0) {
+        final JSONArray gitHubRepos = fetchGitHubRepositories(githubId);
+        if (null == gitHubRepos) {
             return false;
         }
-
-        JSONObject githubReposOpt = optionQueryService.getOptionById(Option.ID_C_GITHUB_REPOS);
-        if (null == githubReposOpt) {
-            githubReposOpt = new JSONObject();
-            githubReposOpt.put(Keys.OBJECT_ID, Option.ID_C_GITHUB_REPOS);
-            githubReposOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_GITHUB);
-        }
-        githubReposOpt.put(Option.OPTION_VALUE, gitHubRepos.toString());
-
         try {
-            optionMgmtService.addOrUpdateOption(githubReposOpt);
+            gitHubRepositoryService.storeSnapshot(githubId, gitHubRepos);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates github repos option failed", e);
             return false;
         }
+        return publishGitHub(githubId, admin, gitHubRepositoryService.visibleFor(githubId));
+    }
 
+    protected JSONArray fetchGitHubRepositories(final String username) {
+        return GitHubs.getGitHubRepos(username);
+    }
+
+    /** Rebuild from the complete saved snapshot without contacting GitHub. */
+    public synchronized boolean rebuildGitHub(final String username) {
+        if (!GitHubStats.validUser(username) || !gitHubRepositoryService.hasSnapshot(username)) return true;
+        try {
+            final JSONObject admin = userRepository.getAdmin();
+            return admin != null && publishGitHub(username, admin, gitHubRepositoryService.visibleFor(username));
+        } catch (Exception e) {
+            LOGGER.log(Level.ERROR, "Rebuilds github repos page failed", e);
+            return false;
+        }
+    }
+
+    private boolean publishGitHub(final String githubId, final JSONObject admin, final JSONArray gitHubRepos) {
         final StringBuilder contentBuilder = new StringBuilder();
-        String stats = "\n![GitHub Stats](" + Latkes.getContextPath() + "/github-stats/"
-                + java.net.URLEncoder.encode(githubId, java.nio.charset.StandardCharsets.UTF_8) + ".svg)\n\n";
-        contentBuilder.append("![GitHub Repo](/images/github_repo.jpg)\n\n");
-        contentBuilder.append("## Github Stats\n").append(stats);
-        contentBuilder.append("## 所有开源项目\n");
-        contentBuilder.append("| 仓库 |  项目简介 | Stars | fork | 编程语言 |\n");
-        contentBuilder.append("| ---- | ---- | ---- | ---- | ---- |\n");
+        final String profile = "https://github.com/" + githubId;
+        String stats = "\n[![GitHub Stats](" + Latkes.getContextPath() + "/github-stats/"
+                + java.net.URLEncoder.encode(githubId, java.nio.charset.StandardCharsets.UTF_8) + ".svg?v=" + System.currentTimeMillis() + ")](" + profile + ")\n\n";
+        contentBuilder.append("[![GitHub Repo](").append(Latkes.getContextPath()).append("/images/github_repo.jpg)](").append(profile).append(")\n\n");
+        contentBuilder.append("## [GitHub Stats](").append(profile).append(")\n").append(stats);
+        contentBuilder.append("## 开源项目\n");
+        if (gitHubRepos.isEmpty()) contentBuilder.append("暂未选择展示仓库。\n");
+        else {
+            contentBuilder.append("| 仓库 | 项目简介 | Stars | Forks | 编程语言 |\n");
+            contentBuilder.append("| ---- | ---- | ---- | ---- | ---- |\n");
+        }
         for (int i = 0; i < gitHubRepos.length(); i++) {
             final JSONObject repo = gitHubRepos.optJSONObject(i);
             final String url = repo.optString("githubrepoHTMLURL");
@@ -260,7 +278,8 @@ public class ArticleMgmtService {
             final String stars = repo.optString("githubrepoStargazersCount");
             final String forks = repo.optString("githubrepoForksCount");
             final String lang = repo.optString("githubrepoLanguage");
-            contentBuilder.append("| [").append(gitHubTableText(name)).append("](").append(url).append(") | ")
+            contentBuilder.append("| [").append(gitHubTableText(name)).append("](").append(url).append(")")
+                .append(repo.optBoolean("githubrepoFork") ? " · Fork" : "").append(" | ")
                 .append(gitHubTableText(desc)).append(" | ")
                 .append(stars).append(" | ")
                 .append(forks).append(" | ")
@@ -1039,16 +1058,15 @@ public class ArticleMgmtService {
      */
     private void fillAutoProperties(final JSONObject oldArticle, final JSONObject article) throws JSONException {
         final long created = oldArticle.getLong(ARTICLE_CREATED);
-        try {
-            final long newCreated = article.getLong(ARTICLE_CREATED);
-            // 测试时间戳是否合法
-            SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            String newDate = simpleDateFormat.format(new Date(newCreated));
-            LOGGER.log(Level.INFO, "New article date: " + newDate);
-            article.put(ARTICLE_CREATED, newCreated);
-        } catch (Exception e) {
-            LOGGER.log(Level.ERROR, "Customize article create time: timestamp syntax error, using earlier...");
+        if (!article.has(ARTICLE_CREATED) || article.isNull(ARTICLE_CREATED) || article.optString(ARTICLE_CREATED).isBlank()) {
             article.put(ARTICLE_CREATED, created);
+        } else {
+            try {
+                article.put(ARTICLE_CREATED, article.getLong(ARTICLE_CREATED));
+            } catch (JSONException invalidDate) {
+                LOGGER.log(Level.WARN, "Invalid article creation date; retaining its previous value");
+                article.put(ARTICLE_CREATED, created);
+            }
         }
         article.put(ARTICLE_COMMENT_COUNT, oldArticle.getInt(ARTICLE_COMMENT_COUNT));
         article.put(ARTICLE_VIEW_COUNT, oldArticle.getInt(ARTICLE_VIEW_COUNT));

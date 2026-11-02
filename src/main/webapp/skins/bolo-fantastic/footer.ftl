@@ -28,7 +28,7 @@
                 </p>
             </div>
             <nav class="fantastic-footer-links" aria-label="页脚导航">
-                <#if interactive=="on"><a href="${servePath}/search">搜索</a></#if>
+                <a href="${servePath}/search">搜索</a>
                 <a href="${servePath}/tags.html">${allTagsLabel}</a>
                 <a href="${servePath}/archives.html">${archiveLabel}</a>
                 <a href="${servePath}/links.html">${linkLabel}</a>

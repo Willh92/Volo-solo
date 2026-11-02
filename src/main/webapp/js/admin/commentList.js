@@ -69,7 +69,7 @@ admin.commentList = {
 
     $.ajax({
       url: Label.servePath + '/console/comments/' + pageNum + '/' +
-      Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE,
+      Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
       type: 'GET',
       cache: false,
       success: function (result, textStatus) {
@@ -168,11 +168,13 @@ admin.commentList = {
     })
   },
   ban: function (id) {
-    if (!confirm('封禁这条评论的来源 IP？该地址将无法访问本站，可在偏好设置的博客安全中解除。')) return
-    $.ajax({url: Label.servePath + '/console/ip-bans', type: 'POST', contentType: 'application/json',
-      data: JSON.stringify({commentId: id, reason: '从评论封禁'}),
-      success: function (result) { $('#tipMsg').text(result.msg || (result.sc ? '已封禁。' : '封禁失败。')) },
-      error: function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '封禁失败，请重试。') }
+    Util.chooseBanDuration().then(function (duration) {
+      if (duration == null) return
+      $.ajax({url: Label.servePath + '/console/ip-bans', type: 'POST', contentType: 'application/json',
+        data: JSON.stringify({commentId: id, reason: '从评论封禁', durationSeconds: duration}),
+        success: function (result) { $('#tipMsg').text(result.msg || (result.sc ? '已封禁。' : '封禁失败。')) },
+        error: function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '封禁失败，请重试。') }
+      })
     })
   },
   del: function (id, type, thread) {

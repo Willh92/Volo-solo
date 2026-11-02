@@ -41,11 +41,11 @@
             </a>
         </#list>
 
-        <#if interactive == "on">
+
         <a href="${servePath}/search">
             ${searchLabel}
         </a>
-        </#if>
+
 
         <div class="fn__right">
             <#include "../../common-template/macro-user_site.ftl">
@@ -53,6 +53,7 @@
             <a rel="alternate" href="${servePath}/rss.xml">
                 RSS
             </a>
+            <#include "../../common-template/macro-management.ftl"><@managementLinks/>
             <div class="skin-theme-slot" data-bolo-theme-slot></div>
         </div>
     </nav>

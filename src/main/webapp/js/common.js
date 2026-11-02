@@ -28,6 +28,18 @@
  * @static
  */
 var Util = {
+  chooseBanDuration: function () {
+    if (typeof swal !== 'function') return Promise.resolve(null)
+    var label = document.createElement('label'), caption = document.createElement('span'), select = document.createElement('select')
+    label.className = 'volo-ban-duration'; caption.textContent = '封禁时长'
+    ;[[0,'永久'],[1,'1 天'],[3,'3 天'],[7,'7 天'],[30,'30 天']].forEach(function (item) {
+      var option = document.createElement('option'); option.value = String(item[0] * 86400); option.textContent = item[1]; select.append(option)
+    })
+    select.value = '0'
+    label.append(caption, select)
+    return swal({title:'封禁评论来源',text:'封禁此评论的来源 IP。可在后台“安全 → IP 封禁”中提前解除。',content:label,icon:'warning',buttons:{cancel:'取消',confirm:'封禁'}})
+      .then(function (confirmed) { return confirmed ? Number(select.value) : null })
+  },
   generatedAvatar: function (seed) {
     var name = String(seed || '').normalize('NFKC').trim(), text = name.toLowerCase(), hash = 2166136261
     for (var i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0
@@ -219,7 +231,7 @@ var Util = {
    */
   previewImg: function () {
     $('body').on('click', '.vditor-reset img', function () {
-      if ($(this).hasClass('prevent')) {
+      if ($(this).hasClass('prevent') || this.closest('a[href]')) {
         return
       }
       window.open(this.src)

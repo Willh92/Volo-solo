@@ -75,6 +75,7 @@ admin.article = {
         }
 
         $('#tag').val(tagsString)
+        admin.tagPicker.refresh()
         $('#permalink').val(result.article.articlePermalink)
         $('#viewPwd').val(result.article.articleViewPwd)
         $("#categorySelector").val(result.category);
@@ -323,17 +324,7 @@ admin.article = {
           return
         }
 
-        if (0 >= result.tags.length) {
-          return
-        }
-
-        $('#tagCheckboxPanel>span').remove('')
-
-        var spans = ''
-        for (var i = 0; i < result.tags.length; i++) {
-          spans += '<span>' + result.tags[i].tagTitle + '</span>'
-        }
-        $('#tagCheckboxPanel').html(spans + '<div class="fn__clear"></div>')
+        admin.tagPicker.setTags(result.tags)
 
         $('#loadMsg').text('')
       },
@@ -374,7 +365,7 @@ admin.article = {
 
     // reset tag
     $('#tag').val('')
-    $('#tagCheckboxPanel').hide().find('span').removeClass('selected')
+    admin.tagPicker.reset()
 
     $('#permalink').val('')
     $('#articleCammentable').prop('checked', true)
@@ -396,6 +387,7 @@ admin.article = {
    */
   init: function (fun) {
     $('#submitArticle,#saveArticle,#unSubmitArticle').prop('disabled', true)
+    admin.tagPicker.init()
     // Inits Signs.
     $('.signs button').click(function (i) {
       $('.signs button').removeClass('selected')
@@ -404,7 +396,7 @@ admin.article = {
 
     $('#tipMsg').text(Label.uploadMsg)
 
-    // For tag auto-completion
+    // Load safe, keyboard-accessible tag choices below the input.
     $.ajax({// Gets all tags
       url: Label.servePath + '/console/tags',
       type: 'GET',
@@ -416,20 +408,7 @@ admin.article = {
           return
         }
 
-        if (0 >= result.tags.length) {
-          return
-        }
-
-        var tags = []
-        for (var i = 0; i < result.tags.length; i++) {
-          tags.push(result.tags[i].tagTitle)
-        }
-
-        $('#tag').completed({
-          height: 160,
-          buttonText: Label.selectLabel,
-          data: tags,
-        })
+        admin.tagPicker.setTags(result.tags)
 
         $('#loadMsg').text('')
       },

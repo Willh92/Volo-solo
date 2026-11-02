@@ -20,6 +20,7 @@
 <#macro comment_script oId commentable>
 <#if commentable>
     <link rel="preload" as="script" href="${servePath}/js/lib/vditor/dist/index.min.js"/>
+    <script src="${staticServePath}/js/captcha.js?${staticResourceVersion}"></script>
     <div id="soloEditor" class="comment-composer" role="dialog" aria-label="${(commentLabel!'评论')?html}" aria-hidden="true" inert>
         <div class="comment-composer__inner">
             <div id="soloEditorVisitorCard" class="comment-composer__visitor" hidden>
@@ -32,6 +33,7 @@
                 <label for="soloEditorEmail">通知邮箱（选填）<input id="soloEditorEmail" type="email" maxlength="254" autocomplete="email" placeholder="仅用于回复通知，不公开展示"/></label>
             </div>
             <div id="soloEditorComment"></div>
+            <div id="soloEditorCaptcha" class="comment-composer__captcha" hidden></div>
             <div class="comment-composer__actions">
                 <div id="soloEditorReplyTarget"></div>
                 <div id="soloEditorError" role="alert"></div>
@@ -51,6 +53,7 @@
     var page = new Page({
         "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel}",
         "oId": "${oId}",
+        "commentAdministrator": ${(isAdminLoggedIn!false)?c},
         "blogHost": "${blogHost}",
         "randomArticles1Label": "${randomArticles1Label}",
     });

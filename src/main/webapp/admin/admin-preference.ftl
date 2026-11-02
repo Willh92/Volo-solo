@@ -51,12 +51,7 @@
         </li>
         <li>
             <div id="tabPreference_interactive">
-                <a href="#tools/preference/interactive">${interactiveLabel}</a>
-            </div>
-        </li>
-        <li>
-            <div id="tabPreference_security">
-                <a href="#tools/preference/security">${securityLabel}</a>
+                <a href="#tools/preference/interactive">前端开放设置</a>
             </div>
         </li>
         <li>
@@ -118,37 +113,28 @@
         <select id="kanbanniangSelector">
             <option value="" selected>${randomLabel}</option>
         </select>
-        <label>
-            <div class="fn__flex-inline">
-                ${welfareLabel}
+        <div class="console-preference-options">
+            <label class="checkbox" for="welfareLuteService">
                 <input id="welfareLuteService" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <label>
-            <div class="fn__flex-inline">
-                ${enableArticleUpdateHint1Label}
+                <span>${welfareLabel}</span>
+            </label>
+            <label class="checkbox" for="enableArticleUpdateHint">
                 <input id="enableArticleUpdateHint" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <label>
-            <div class="fn__flex-inline">
-                ${allowVisitDraftViaPermalink1Label}
+                <span>${enableArticleUpdateHint1Label}</span>
+            </label>
+            <label class="checkbox" for="allowVisitDraftViaPermalink">
                 <input id="allowVisitDraftViaPermalink" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <label>
-            <div class="fn__flex-inline">
-                ${allowComment1Label}
+                <span>${allowVisitDraftViaPermalink1Label}</span>
+            </label>
+            <label class="checkbox" for="commentable">
                 <input id="commentable" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <label>
-            <div class="fn__flex-inline">
-                ${syncGitHubLabel}
+                <span>${allowComment1Label}</span>
+            </label>
+            <label class="checkbox" for="syncGitHub">
                 <input id="syncGitHub" type="checkbox" class="normalInput"/>
-            </div>
-        </label>
-        <br><br>
+                <span>${syncGitHubLabel}</span>
+            </label>
+        </div>
         <details>
             <summary style="cursor: default">${advancedSettingsLabel}</summary>
             <label for="timeZoneId">${timeZoneId1Label}</label>
@@ -480,20 +466,16 @@
         <br><br><br>
         <h3>${mailRemindLabel}</h3>
         <br>
-        <label for="mailBox">${mailBoxLabel}</label>
-        <select id="mailBox">
-            <option value="" selected>${unsetLabel}</option>
-            <option value="QQ">${qqMailboxLabel}</option>
-            <option value="QQ_ENT">${qqEntMailboxLabel}</option>
-            <option value="163">${neteaseMailboxLabel}</option>
-        </select>
-        <label for="mailUsername">${mailUsernameLabel}</label>
-        <input id="mailUsername" type="text"/>
-        <label for="mailPassword">${mailPasswordLabel}</label>
-        <input id="mailPassword" type="text"/>
-        <div>
-            ${mailboxDescriptionLabel}
+        <div class="console-smtp-grid">
+            <label>SMTP 服务器<input id="smtpHost" type="text" maxlength="253" placeholder="smtp.example.com" autocomplete="off"/></label>
+            <label>端口<input id="smtpPort" type="number" min="1" max="65535" placeholder="465"/></label>
+            <label>连接加密<select id="smtpSecurity"><option value="ssl">SSL / TLS</option><option value="starttls">STARTTLS</option><option value="none">不加密（仅用于可信内部邮件服务器）</option></select></label>
+            <label>SMTP 身份验证<select id="smtpAuth"><option value="on">启用</option><option value="off">不需要验证</option></select></label>
+            <label>用户名<input id="mailUsername" type="text" maxlength="254" autocomplete="off"/></label>
+            <label>密码或授权码<input id="mailPassword" type="password" maxlength="1024" autocomplete="new-password" placeholder="留空保留已有密码"/></label>
+            <label>发件人邮箱<input id="smtpFrom" type="email" maxlength="254" placeholder="留空使用用户名"/></label>
         </div>
+        <p class="console-form-help">支持通用 SMTP 服务；服务器留空时停用邮件通知。旧版 QQ／企业邮箱／163 设置会自动转换展示，保存后使用上述配置。端口未填时按加密方式选择 465、587 或 25。</p>
         <label for="replyRemind">${BloggerMailboxLabel}</label>
         <input id="replyRemind" type="text" />
         <div>
@@ -563,128 +545,43 @@
     </div>
     <div id="tabPreferencePanel_interactive" class="fn__none form">
         <div class="console-preference-field">
-            <label for="interactiveSwitch">${nonInteractiveLabel}</label>
+            <label for="showLoginEntry">前端显示登录入口</label>
+            <select id="showLoginEntry" aria-describedby="loginEntryDescription"><option value="off">隐藏（默认）</option><option value="on">显示管理员登录入口</option></select>
+            <p id="loginEntryDescription" class="console-form-help">控制未登录访客是否能在皮肤导航中看到管理员登录链接。已登录管理员始终保留后台管理和退出登录，不受此开关影响。</p>
+            <p class="console-form-help">${managementLoginPathLabel!'当前登录路径'}：<a href="${(adminLoginPath!'/start')?html}"><code>${(adminLoginPath!'/start')?html}</code></a></p>
+        </div>
+        <div class="console-preference-field">
+            <label for="interactiveSwitch">前端显示评论</label>
             <select id="interactiveSwitch" aria-describedby="interactiveDescription">
                 <option value="on" selected="">${enableLabel}</option>
                 <option value="off">${disableLabel}</option>
             </select>
-            <p id="interactiveDescription" class="console-form-help">${interactiveDescribeLabel}</p>
-            <p class="console-form-help">${managementLoginPathLabel!'当前登录路径'}：<a href="${(adminLoginPath!'/start')?html}"><code>${(adminLoginPath!'/start')?html}</code></a></p>
+            <p id="interactiveDescription" class="console-form-help">控制前端评论区及评论相关入口，与登录入口分别设置。关闭后管理员仍可在后台管理已有评论。</p>
         </div>
 
         <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>
     </div>
-    <div id="tabPreferencePanel_security" class="fn__none form">
-        <section class="console-entry-info">
-            <h3>管理入口</h3>
-            <p>前台不展示管理链接。请在服务器的 <code>WEB-INF/classes/local.properties</code> 设置 <code>adminPath</code> 并重启，具体示例见升级说明。</p>
-            <p>当前面板：<code>${(adminPanelPath!'/admin-index.do')?html}</code><br>当前登录页：<code>${(adminLoginPath!'/start')?html}</code></p>
-        </section>
-        <section class="console-ip-bans" aria-labelledby="ipBanTitle">
-            <h3 id="ipBanTitle">IP 封禁</h3>
-            <p class="console-form-help">支持 IPv4、IPv6 单个地址或 CIDR 网段，如 192.0.2.1、192.0.2.0/24、2001:db8::/48。封禁后返回 403。位置仅供参考，网段显示起始地址的位置。</p>
-            <form id="ipBanForm" class="console-ip-ban-add" onsubmit="admin.preference.addIpBan(); return false;">
-                <label for="ipBanRange">IP / CIDR 网段</label><input id="ipBanRange" type="text" maxlength="64" placeholder="192.0.2.1 或 2001:db8::/48" required/>
-                <label for="ipBanReason">备注（选填）</label><input id="ipBanReason" type="text" maxlength="200" placeholder="例如：持续发布广告"/>
-                <button type="submit">添加封禁</button>
-            </form>
-            <p id="ipBanMessage" role="status"></p>
-            <div class="console-ip-ban-toolbar">
-                <form class="console-ip-ban-search" onsubmit="admin.preference.loadIpBans(1); return false;">
-                    <input id="ipBanQuery" type="search" maxlength="100" aria-label="搜索封禁 IP、网段或备注" placeholder="搜索 IP、网段或备注"/>
-                    <button type="submit">搜索</button>
-                </form>
-                <span id="ipBanTotal" role="status"></span>
-            </div>
-            <div id="ipBanList" aria-live="polite"></div>
-            <nav id="ipBanPagination" class="console-ip-ban-pagination" aria-label="IP 封禁列表分页"></nav>
-        </section>
-        <section class="console-geo-access" aria-labelledby="geoAccessTitle">
-            <h3 id="geoAccessTitle">地区访问规则</h3>
-            <p class="console-form-help">使用本地 IP 库识别国家、省、市，命中限制时返回 403；与 IP 封禁、访问频率限制分别生效。</p>
-            <p id="geoAccessCurrent" class="console-form-help" role="status"></p>
-            <form onsubmit="admin.preference.saveGeoAccess(); return false;">
-                <div class="console-preference-field">
-                    <label for="geoAccessMode">访问策略</label>
-                    <select id="geoAccessMode" onchange="if (this.value === 'allow') document.getElementById('geoAccessUnknown').value = 'deny';">
-                        <option value="off">不限制地区</option><option value="deny">拒绝指定地区</option><option value="allow">仅允许指定地区</option>
-                    </select>
-                </div>
-                <div class="console-preference-field">
-                    <label for="geoAccessCountries">国家或地区代码</label>
-                    <input id="geoAccessCountries" type="text" maxlength="1000" placeholder="例如 CN 或 US,CA" aria-describedby="geoAccessExamples"/>
-                    <p id="geoAccessExamples" class="console-form-help">使用两位代码，逗号分隔。拒绝 US：选“拒绝指定地区”并填写 US；只允许 CN：选“仅允许指定地区”并填写 CN。</p>
-                </div>
-                <div class="console-preference-field">
-                    <label for="geoAccessRegions">省市规则（选填）</label>
-                    <textarea id="geoAccessRegions" rows="4" maxlength="10000" placeholder="CN/浙江省&#10;CN/广东省/深圳市" aria-describedby="geoAccessRegionHelp"></textarea>
-                    <p id="geoAccessRegionHelp" class="console-form-help">每行一条，格式为“国家代码/省”或“国家代码/省/市”。与国家列表合并匹配；只限制省市时，请留空上方国家列表。名称以本地定位库显示为准，支持 ip2region 和 MMDB。</p>
-                </div>
-                <div class="console-preference-field">
-                    <label for="geoAccessUnknown">位置无法识别时</label>
-                    <select id="geoAccessUnknown"><option value="allow">允许访问</option><option value="deny">拒绝访问</option></select>
-                    <p class="console-form-help">IP 库缺失、地址未收录、内网地址或缺少所需省市信息都可能无法识别。保存时会校验当前连接，避免封禁自己。</p>
-                </div>
-                <p id="geoAccessMessage" role="status"></p>
-                <div class="console-form-actions"><button id="geoAccessSave" type="submit">保存地区规则</button></div>
-            </form>
-        </section>
-        <div class="console-preference-field">
-            <label for="wafPower">${securityPowerLabel}</label>
-            <select id="wafPower" aria-describedby="securityDescription">
-                <option value="on" selected="">${enableLabel}</option>
-                <option value="off">${disableLabel}</option>
-            </select>
-            <p id="securityDescription" class="console-form-help">${securityDescribeLabel}</p>
-            <p class="console-form-help">${clientAddressLabel!'识别的访客 IP'}：<code>${(securityClientAddress!'—')?html}</code><br>${proxyPeerAddressLabel!'连接到 Java 的 IP'}：<code>${(securityPeerAddress!'—')?html}</code><br>${proxyAddressHelpLabel}</p>
-        </div>
-        <br><br>
-        <label>${frequencyLimitLabel}</label>
-        <br>
-        <input id="wafCurrentLimitTimes" type="text" style="width: 100px"> ${securitySetTimesLabel} <input id="wafCurrentLimitSecond" type="text" style="width: 100px"> ${securitySetSecondLabel}
-        <br><br>
-        <div class="console-preference-field">
-            <label for="commentFilterBuiltin">评论敏感词库</label>
-            <select id="commentFilterBuiltin" aria-describedby="commentFilterDescription">
-                <option value="on">启用内置第三方词库</option>
-                <option value="off">仅使用自定义过滤词</option>
-            </select>
-            <p id="commentFilterDescription" class="console-form-help">使用 sensitive-word 在服务器本地过滤，不会向外部服务发送评论。规则同时用于访客发表和编辑评论；管理员可保留原文进行管理。</p>
-        </div>
-        <div class="console-preference-field">
-            <label for="spam">自定义评论过滤词</label>
-            <textarea id="spam" rows="3" maxlength="20000" aria-describedby="commentFilterWordsHelp"></textarea>
-            <p id="commentFilterWordsHelp" class="console-form-help">每行一个词，也可使用逗号分隔；与内置词库合并匹配。最多 2000 个词，每词最多 200 个字符。</p>
-        </div>
-        <div class="console-preference-field">
-            <label for="commentFilterAllow">评论过滤白名单</label>
-            <textarea id="commentFilterAllow" rows="3" maxlength="20000" aria-describedby="commentFilterAllowHelp"></textarea>
-            <p id="commentFilterAllowHelp" class="console-form-help">用于允许被误判的词语或短语，填写方式同上；同一条评论中的其他过滤词仍会拦截。</p>
-        </div>
-        <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
-        <div class="fn__clear"></div>
-    </div>
     <div id="tabPreferencePanel_myGitHub" class="fn__none form">
-        <div class="fn__clear"></div>
-        ${myGitHub1Label}
-        <br>
-        <label class="checkbox">
-            <input id="enableAutoFlushGitHub" type="checkbox" class="normalInput"/>
-            <span>&nbsp;${autoFlushGitHubLabel}</span>
-        </label>
-        <div class="fn__clear"></div>
-        ${myGitHubProfileLabel}
-        <br>
-        <label class="checkbox">
-            <input id="enableAutoFlushGitHubProfile" type="checkbox" class="normalInput"/>
-            <span>&nbsp;${autoFlushGitHubProfileLabel}</span>
-        </label>
-        <br>
-        <label for="myGitHubID">${myGitHubIDLabel}</label>
-        <input id="myGitHubID" type="text"/>
-        <br><br>
-        <p>${myGitHub2Label}</p>
+        <div class="console-preference-field console-github-account">
+            <label for="myGitHubID">${myGitHubIDLabel}</label>
+            <input id="myGitHubID" type="text" maxlength="39" autocomplete="off" aria-describedby="githubAccountHelp" placeholder="例如 Willh92"/>
+            <p id="githubAccountHelp" class="console-form-help">填写 GitHub 用户名。开源项目页面、仓库列表和统计卡片均使用此账号；头像和统计标题链接到对应的 GitHub 用户主页。</p>
+        </div>
+        <div class="console-github-auto">
+            <div><label class="checkbox"><input id="enableAutoFlushGitHub" type="checkbox" class="normalInput"/> 自动更新开源项目页面</label><p class="console-form-help">约每 24 小时读取公开仓库，也可使用下方“立即同步仓库”。</p></div>
+            <div><label class="checkbox"><input id="enableAutoFlushGitHubProfile" type="checkbox" class="normalInput"/> 同步文章至 GitHub 个人资料</label><p class="console-form-help">将最近 5 篇公开文章同步至同名资料仓库，需要配置有仓库读写权限的 GitHub Token。</p></div>
+        </div>
+        <section class="console-github-card" aria-labelledby="githubRepositoryTitle">
+            <h3 id="githubRepositoryTitle">公开仓库展示</h3>
+            <label class="checkbox console-github-include"><input id="githubIncludeForks" type="checkbox" class="normalInput" disabled/> 包含 Fork 仓库</label>
+            <p class="console-form-help">默认仅展示原创仓库；下方可逐个选择是否显示。Stars 是当前展示仓库收到的 Star 总和，不是你收藏过的仓库数量。隐藏仓库不计入统计，选择会在下次同步时保留。</p>
+            <div class="console-github-toolbar"><input id="githubRepositoryQuery" type="search" placeholder="搜索仓库或简介" aria-label="搜索仓库"/><div><button id="githubRepoRefresh" type="button" onclick="admin.githubRepositories.refresh(this)">立即同步仓库</button><button type="button" onclick="admin.githubRepositories.load()">重新载入</button></div></div>
+            <p id="githubRepositoryMessage" class="console-form-help" role="status"></p>
+            <p id="githubRepositorySummary" class="console-github-summary" aria-live="polite"></p>
+            <div id="githubRepositoryList"></div>
+            <div id="githubRepositoryPagination" class="console-github-pagination"></div>
+        </section>
 
         <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>
         <div class="fn__clear"></div>

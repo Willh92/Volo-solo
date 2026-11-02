@@ -67,15 +67,6 @@ admin.articleList = {
     this.tablePagination.initCommentsDialog()
     this.getList(page)
 
-    var that = this
-    $('#articleListBtn').click(function () {
-      that.getList(page)
-    })
-    $('#articleListInput').keypress(function(event) {
-      if (event.keyCode === 13) {
-        that.getList(page)
-      }
-    })
   },
 
   /**
@@ -102,8 +93,7 @@ admin.articleList = {
     $('#loadMsg').text(Label.loadingLabel)
     $.ajax({
       url: Label.servePath + '/console/articles/status/published/' +
-        pageNum + '/' + Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE + '?k=' +
-        $('#articleListInput').val(),
+        pageNum + '/' + Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
       type: 'GET',
       cache: false,
       success: function (result, textStatus) {
@@ -127,6 +117,7 @@ admin.articleList = {
           articleData[i].articleViewCount = articles[i].articleViewCount
           articleData[i].author = articles[i].authorName
           articleData[i].category = articles[i].articleCategory
+          if (articles[i].articlePutTop) articleData[i].title = '<span class="console-post-status">' + Label.putTopLabel + '</span>' + articleData[i].title
 
           var topClass = articles[i].articlePutTop
             ? Label.cancelPutTopLabel
@@ -199,6 +190,7 @@ admin.articleList = {
         }
 
         $it.html(tip)
+        admin.articleList.getList(admin.articleList.tablePagination.currentPage)
         $('#loadMsg').text('')
       },
     })

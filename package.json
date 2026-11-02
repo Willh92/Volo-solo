@@ -23,7 +23,7 @@
     "dev": "gulp watch",
     "build": "gulp",
     "verify:appearance": "node scripts/verify-appearance.mjs",
-    "verify:admin": "node scripts/verify-admin.mjs",
+    "verify:admin": "node scripts/verify-admin.mjs && node scripts/verify-console-controls.mjs",
     "verify:navigation": "node scripts/verify-navigation.mjs",
     "verify:kanbanniang": "node scripts/verify-kanbanniang.mjs"
   },

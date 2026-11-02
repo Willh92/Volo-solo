@@ -248,7 +248,10 @@
       heldJQueries.forEach(function (jquery) { jquery.holdReady(false) })
       heldJQueries = []
       if (typeof window.onload === 'function') window.onload.call(window, new Event('load'))
-      window.scrollTo(0, options.pop && history.state ? history.state.scrollY || 0 : 0)
+      var fragment
+      try { fragment = finalURL.hash ? document.getElementById(decodeURIComponent(finalURL.hash.slice(1))) : null } catch (error) { fragment = null }
+      if (!options.pop && fragment) fragment.scrollIntoView({block: 'start'})
+      else window.scrollTo(0, options.pop && history.state ? history.state.scrollY || 0 : 0)
       window.dispatchEvent(new CustomEvent('bolo:after-navigate', {detail: {url: finalURL.href}}))
     } catch (error) {
       if (error.name !== 'AbortError' && id === generation) {

@@ -107,6 +107,7 @@ public class FollowService {
 
             final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Follow.FOLLOW_ORDER,
                     SortDirection.ASCENDING);
+            org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Follow.FOLLOW_TITLE, Follow.FOLLOW_ADDRESS, Follow.FOLLOW_DESCRIPTION);
             final JSONObject result = followRepository.get(query);
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);
 
@@ -196,8 +197,8 @@ public class FollowService {
         try {
             final JSONObject follow = followRepository.get(followId);
             followRepository.remove(followId);
-            eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_FOLLOW, follow));
             transaction.commit();
+            eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_FOLLOW, follow));
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -233,8 +234,11 @@ public class FollowService {
             follow.put(Follow.FOLLOW_ORDER, oldfollow.getInt(Follow.FOLLOW_ORDER));
 
             followRepository.update(followId, follow);
-            eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
             transaction.commit();
+            if (!oldfollow.optString(Follow.FOLLOW_TITLE).equals(follow.optString(Follow.FOLLOW_TITLE))) {
+                articleCache.removeFollowArticles(oldfollow.optString(Follow.FOLLOW_TITLE));
+            }
+            eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -337,15 +341,24 @@ public class FollowService {
 
     public void syncAllFollowArticles() {
         try {
-            LOGGER.log(Level.INFO, "Syncs all follow articles");
+            LOGGER.log(Level.DEBUG, "Syncs all follow articles");
             final List<JSONObject> res = followRepository.getList(new Query());
+            // Feed downloads must not retain this scheduler thread's database connection.
+            org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
             if (null == res || res.isEmpty()) {
-                LOGGER.log(Level.WARN, "No follows to sync articles");
+                LOGGER.log(Level.DEBUG, "No follows to sync articles");
                 return;
             }
-            res.forEach(follow -> syncFollowArticles(follow));
+            org.b3log.solo.event.BackgroundEvents.follow(() -> {
+                for (final JSONObject follow : res) {
+                    if (Thread.currentThread().isInterrupted()) return;
+                    syncFollowArticles(follow);
+                }
+            });
         } catch (final Throwable e) {
             LOGGER.log(Level.ERROR, "Syncs all follow articles failed", e);
+        } finally {
+            org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
         }
 
     }
@@ -357,13 +370,20 @@ public class FollowService {
             final String followIcon = follow.optString(Follow.FOLLOW_ICON);
             // Syncs articles for the follow
             final List<JSONObject> articles = new RssParser(followAddress, followIcon, followName).parse2Article();
-            LOGGER.log(Level.INFO, "Syncs follow articles, followName={0}, articleCount={1}",
+            // A queued download may finish after the follow was edited or deleted.
+            final JSONObject current = followRepository.get(follow.optString(Keys.OBJECT_ID));
+            if (current == null || !followName.equals(current.optString(Follow.FOLLOW_TITLE))
+                    || !followAddress.equals(current.optString(Follow.FOLLOW_ADDRESS))) return;
+            LOGGER.log(Level.DEBUG, "Syncs follow articles, followName={0}, articleCount={1}",
                     new Object[] { followName, articles.size() });
             articleCache.putArticles(followName, articles.stream()
                     .collect(Collectors.toMap(article -> article.optString(Article.ARTICLE_TITLE),
                             Function.identity(), (existing, replacement) -> existing)));
         } catch (final Throwable e) {
-            LOGGER.log(Level.ERROR, "Syncs follow articles failed", e);
+            LOGGER.log(Level.WARN, "Feed synchronization failed [id={0}]", follow.optString(Keys.OBJECT_ID));
+            LOGGER.log(Level.DEBUG, "Feed synchronization failure details", e);
+        } finally {
+            org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
         }
     }
 }

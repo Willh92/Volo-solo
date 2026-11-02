@@ -49,6 +49,8 @@ public class OptionRepository extends AbstractRepository {
     public OptionRepository() {
         super(Option.OPTION);
     }
+    /** Discard a potentially uncommitted cached option after a document transaction. */
+    public void evictOption(final String id) { if (optionCache != null) optionCache.removeOption(id); }
 
     @Override
     public void remove(final String id) throws RepositoryException {

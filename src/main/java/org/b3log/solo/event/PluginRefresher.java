@@ -50,8 +50,7 @@ public class PluginRefresher extends AbstractEventListener<List<AbstractPlugin>>
     public void action(final Event<List<AbstractPlugin>> event) {
         final List<AbstractPlugin> plugins = event.getData();
 
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), plugins, PluginRefresher.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), PluginRefresher.class.getName());
 
         final BeanManager beanManager = BeanManager.getInstance();
         final PluginRepository pluginRepository = beanManager.getReference(PluginRepository.class);

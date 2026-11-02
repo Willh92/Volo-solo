@@ -287,6 +287,25 @@ public class AdminConsole {
         fireFreeMarkerActionEvent(templateName, dataModel);
     }
 
+    public void showAdminAccess(final RequestContext context) { showAdminSecurityFunction(context, "access"); }
+    public void showAdminIpBans(final RequestContext context) { showAdminSecurityFunction(context, "ip"); }
+    public void showAdminGeoRules(final RequestContext context) { showAdminSecurityFunction(context, "geo"); }
+    public void showAdminCommentProtection(final RequestContext context) { showAdminSecurityFunction(context, "comments"); }
+
+    private void showAdminSecurityFunction(final RequestContext context, final String section) {
+        if (!Solos.isAdminLoggedIn(context)) { org.b3log.solo.util.AdminRequests.reject(context, 403, "仅管理员可以访问安全设置。"); return; }
+        final String templateName = "admin-security.ftl";
+        final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer(context, templateName);
+        final Map<String, Object> dataModel = renderer.getDataModel();
+        dataModel.put("securitySection", section);
+        dataModel.putAll(langPropsService.getAll(Latkes.getLocale()));
+        dataModel.put("adminPanelPath", AdminPaths.panel());
+        dataModel.put("adminLoginPath", AdminPaths.login());
+        dataModel.put("securityClientAddress", org.b3log.solo.util.LoginThrottle.clientAddress(context.getRequest()));
+        dataModel.put("securityPeerAddress", org.b3log.solo.util.LoginThrottle.peerAddress(context.getRequest()));
+        fireFreeMarkerActionEvent(templateName, dataModel);
+    }
+
     /**
      * Exports data as SQL zip file.
      *

@@ -43,7 +43,7 @@
                 <li class="menu-item menu-core"><a href="${servePath}/categories.html">${categoryLabel}</a></li>
                 <li class="menu-item menu-core"><a href="${servePath}/links.html">${linkLabel}</a></li>
                 <li class="menu-item menu-core"><a href="${servePath}/follows.html">${followLabel}</a></li>
-                <#if interactive == "on"><li class="menu-item menu-core"><a href="${servePath}/search">${searchLabel}</a></li></#if>
+                <li class="menu-item menu-core"><a href="${servePath}/search">${searchLabel}</a></li>
                 <#list pageNavigations as page>
                 <li class="menu-item">
                     <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
@@ -51,16 +51,17 @@
                     </a>
                 </li>
                 </#list>
+                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" itemClass="menu-item" panelIcon="icon-setting" exitIcon="icon-logout" loginIcon="icon-login"/>
             </ul>
 
-            <#if interactive == "on">
+
             <div class="site-search">
                 <form action="${servePath}/search">
                     <input placeholder="${searchLabel}" id="search" type="text" name="keyword"/>
                     <input type="submit" value="" class="fn-none" />
                 </form>
             </div>
-            </#if>
+
         </nav>
     </div>
 </header>

@@ -25,6 +25,25 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class AdminPathsTest {
+    @Test public void onlyAdministratorsReceiveManagementNavigationAndConfiguredPaths() throws Exception {
+        try {
+            configure("/private-panel"); Latkes.setContextPath("/blog");
+            final var original = new java.util.ArrayList<org.json.JSONObject>();
+            original.add(new org.json.JSONObject().put("pageTitle", "自定义链接"));
+            Assert.assertEquals(AdminPaths.navigation(original, false).size(), 1);
+            final var administrator = AdminPaths.navigation(original, true);
+            Assert.assertEquals(administrator.size(), 3); Assert.assertEquals(original.size(), 1, "Do not mutate shared/stored navigation");
+            Assert.assertEquals(administrator.get(1).getString("pagePermalink"), Latkes.getServePath() + "/private-panel");
+            Assert.assertEquals(administrator.get(2).getString("pagePermalink"), Latkes.getServePath() + "/logout");
+            Assert.assertEquals(administrator.get(1).getString("pageOpenTarget"), "_self");
+            Assert.assertEquals(administrator.get(1).getString("pageIcon"), "/blog/images/admin-panel.svg");
+            Assert.assertEquals(AdminPaths.navigation(original, false).size(), 1, "An admin request cannot affect later guest requests");
+            final var visibleLogin = AdminPaths.navigation(original, false, true);
+            Assert.assertEquals(visibleLogin.size(), 2);
+            Assert.assertEquals(visibleLogin.get(1).getString("pagePermalink"), Latkes.getServePath() + "/private-panel/login");
+            Assert.assertEquals(AdminPaths.navigation(original, true, true).size(), 3, "The visitor switch must not add a login link for an administrator");
+        } finally { LatkeTestSupport.configure(); }
+    }
     @Test public void missingSettingHasDefaultEntryPaths() throws Exception {
         LatkeTestSupport.configure();
         Assert.assertEquals(AdminPaths.panel(), "/admin-index.do");

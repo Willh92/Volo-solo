@@ -66,6 +66,8 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
                 </div>
+                <input type="hidden" name="captchaId" id="loginCaptchaId"/>
+                <div id="loginCaptcha" data-context="${contextPath!''}"></div>
                 <div id="status" class="auth-error" role="alert" aria-live="polite" hidden></div>
                 <button id="loginBtn" class="auth-submit" type="submit"><i aria-hidden="true"></i><span>登录管理后台</span><b aria-hidden="true">→</b></button>
             </form>
@@ -73,6 +75,7 @@
         </section>
     </main>
     <footer class="auth-footer"><span>© ${year} Volo</span><a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">开源，让表达更自由 <span aria-hidden="true">↗</span></a></footer>
+    <script src="${staticServePath}/js/captcha.js?${staticResourceVersion}"></script>
     <script src="${staticServePath}/js/account-login.js?${staticResourceVersion}"></script>
 </body>
 </html>

@@ -71,10 +71,6 @@
                 </a>
         </div>
 
-        <div class="links-of-author">
-
-        </div>
-
         <#if noticeBoard??>
         <div class="links-of-author">
             ${noticeBoard}

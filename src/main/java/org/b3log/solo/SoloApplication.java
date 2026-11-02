@@ -157,6 +157,8 @@ public final class SoloApplication {
             final Transaction transaction = optionRepository.beginTransaction();
             try {
                 loadPreference();
+                final JSONObject loginPath = beanManager.getReference(OptionQueryService.class).getOptionById("adminLoginPath");
+                org.b3log.solo.util.AdminPaths.configureLogin(loginPath == null ? null : loginPath.optString(Option.OPTION_VALUE));
 
                 if (transaction.isActive()) {
                     transaction.commit();
@@ -208,6 +210,7 @@ public final class SoloApplication {
     public void shutdown() {
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
         cronMgmtService.stop();
+        org.b3log.solo.event.BackgroundEvents.shutdown();
         org.b3log.solo.util.IpGeo.close();
         Latkes.shutdown();
 
@@ -390,6 +393,11 @@ public final class SoloApplication {
         final AdminConsole adminConsole = beanManager.getReference(AdminConsole.class);
         Routes.get("/admin-index.do", adminConsole::showAdminIndex);
         Routes.get("/admin-preference.do", adminConsole::showAdminPreferenceFunction);
+        Routes.get("/admin-security.do", adminConsole::showAdminAccess);
+        Routes.get("/admin-access.do", adminConsole::showAdminAccess);
+        Routes.get("/admin-ip.do", adminConsole::showAdminIpBans);
+        Routes.get("/admin-geo.do", adminConsole::showAdminGeoRules);
+        Routes.get("/admin-comments.do", adminConsole::showAdminCommentProtection);
         Routes.get(new String[] { "/admin-article.do",
                 "/admin-article-list.do",
                 "/admin-comment-list.do",

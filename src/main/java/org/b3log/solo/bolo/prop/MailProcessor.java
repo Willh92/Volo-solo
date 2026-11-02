@@ -60,7 +60,7 @@ public class MailProcessor {
             MAILS.execute(() -> {
                 if (!MailService.isConfigured()) return;
                 try {
-                    OhMyEmail.subject(subject).from(from).to(to).html(html).send();
+                    OhMyEmail.subject(subject).from(from, MailService.senderAddress()).to(to).html(html).send();
                     LOGGER.log(Level.DEBUG, "Comment notification sent.");
                 } catch (SendMailException failure) {
                     LOGGER.log(Level.WARN, "Comment notification failed. Check SMTP settings.");

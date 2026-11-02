@@ -106,7 +106,10 @@ public class CommentEditProcessor {
                 } else commentMgmtService.removeArticleComment(context.pathVar("id"));
                 context.renderJSON(new JSONObject().put("sc", true));
             } else {
-                final String content = context.requestJSON().optString("commentContent");
+                final JSONObject payload = context.requestJSON();
+                if (org.b3log.solo.service.RiskControlService.rejectCommentXss(context, payload)) return;
+                if (!CommentProcessor.checkCommentCaptcha(context, payload, Solos.isAdminLoggedIn(context))) return;
+                final String content = payload.optString("commentContent");
                 if (content.isBlank() || content.length() < 2 || content.length() > 500) { AdminRequests.reject(context, 400, "评论内容需要 2 到 500 个字符。"); return; }
                 if (!Solos.isAdminLoggedIn(context) && commentFilterService.blocked(content)) {
                     AdminRequests.reject(context, 400, org.b3log.solo.service.CommentFilterService.REJECTION);

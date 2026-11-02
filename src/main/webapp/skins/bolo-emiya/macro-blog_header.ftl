@@ -29,6 +29,7 @@
   <li><a href="${servePath}/follows.html">
       ${followLabel}
     </a></li>
+  <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li"/>
 
   <#nested>
 </#macro>

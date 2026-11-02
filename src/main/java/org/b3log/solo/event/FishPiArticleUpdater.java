@@ -111,7 +111,7 @@ public class FishPiArticleUpdater extends AbstractEventListener<JSONObject> {
                     connectionTimeout(3000).timeout(7000).followRedirects(true).
                     contentTypeJson().header("User-Agent", Solos.BOLO_USER_AGENT).send();
 
-            LOGGER.log(Level.INFO, "Put an article [title={0}] to FishPi, response [{1}]", title, response.toString());
+            LOGGER.log(Level.INFO, "Put an article [title={0}] to FishPi", title);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Put an article to FishPi failed: " + e.getMessage());
         }
@@ -120,10 +120,9 @@ public class FishPiArticleUpdater extends AbstractEventListener<JSONObject> {
     @Override
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, FishPiArticleUpdater.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), FishPiArticleUpdater.class.getName());
 
-        putArticleToFishPi(data);
+        BackgroundEvents.community(data, FishPiArticleUpdater::putArticleToFishPi);
     }
 
     /**

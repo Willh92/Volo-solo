@@ -17,10 +17,10 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div class="form fn__margin12 console-list-search console-list-filter">
-    <input type="text" id="articleListInput">
-    <button class="search-btn" id="articleListBtn">${searchLabel}</button>
-</div>
+<form class="form fn__margin12 console-list-search console-list-filter">
+    <input type="search" id="articleListInput" aria-label="${searchLabel}">
+    <button type="submit" class="search-btn" id="articleListBtn">${searchLabel}</button>
+</form>
 <div id="articleTable">
 </div>
 <div id="articlePagination" class="fn__right fn__margin12">

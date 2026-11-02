@@ -20,6 +20,8 @@
 <#include "../common-template/label.ftl"/>
 <script type="text/javascript">
     Label.uncategorizedLabel = "${(uncategorizedLabel!'未分类')?js_string}";
+    Label.operationsLabel = "${(operationsLabel!'操作')?js_string}";
+    Label.searchLabel = "${searchLabel?js_string}";
     Label.editorMode = "${editorMode}"
     Label.setMobileLabel = "${setMobileLabel}"
     Label.pushSuccLabel = "${pushSuccLabel}"

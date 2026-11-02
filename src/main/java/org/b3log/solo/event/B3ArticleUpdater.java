@@ -44,10 +44,9 @@ public class B3ArticleUpdater extends AbstractEventListener<JSONObject> {
 
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, B3ArticleUpdater.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), B3ArticleUpdater.class.getName());
 
-        B3ArticleSender.pushArticleToRhy(data);
+        BackgroundEvents.community(data, B3ArticleSender::pushArticleToRhy);
     }
 
     /**

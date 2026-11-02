@@ -82,6 +82,9 @@ public class BackupService {
     @Inject
     private ArticleMgmtService articleMgmtService;
 
+    @Inject
+    private org.b3log.solo.service.GitHubRepositoryService gitHubRepositoryService;
+
     /**
      * User repository.
      */
@@ -117,6 +120,17 @@ public class BackupService {
         }
     }
 
+    @RequestProcessing(value = "/console/github-repositories", method = HttpMethod.GET)
+    public void gitHubRepositories(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (!Solos.isAdminLoggedIn(context)) {
+            org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。");
+            return;
+        }
+        final JSONObject preference = optionQueryService.getPreference();
+        context.renderJSON(gitHubRepositoryService.consoleData(preference == null ? "" : preference.optString(Option.ID_C_MY_GITHUB_ID).strip()));
+    }
+
     @RequestProcessing(value = "/prop/backup/github/do/upload", method = HttpMethod.POST)
     public void uploadBackupToGithub(final RequestContext context) {
         if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
@@ -137,11 +151,11 @@ public class BackupService {
         }
     }
 
-    @RequestProcessing(value = "/prop/backup/hacpai/do/upload", method = { HttpMethod.GET })
+    @RequestProcessing(value = "/prop/backup/hacpai/do/upload", method = HttpMethod.POST)
     public void uploadBackupToHacpai(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(401);
-
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
+        if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) {
+            context.sendError(404);
             return;
         }
 

@@ -154,7 +154,7 @@ public class UserMgmtService {
         usiteOpt.put(Option.OPTION_VALUE, usite.toString());
         try {
             optionMgmtService.addOrUpdateOption(usiteOpt);
-            LOGGER.log(Level.INFO, "Usite refresh from HacPai successful: " + usite.toString());
+            LOGGER.log(Level.INFO, "Community contact settings refreshed");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates usite option failed", e);
 

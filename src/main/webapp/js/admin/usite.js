@@ -32,14 +32,15 @@ admin.usite = {
    * 初始化
    */
   init: function () {
-    $("#tabUsite").tabs();
     $('#loadMsg').text('');
-
+    this.loaded = false;
+    $('#tabsPanel_usite .console-form-actions button').prop('disabled', true);
     $.ajax({
       url: Label.servePath + '/admin/usite/get',
       type: 'GET',
-      async: false,
+      timeout: 30000,
       success: function (data) {
+        if (data.code !== 200) { admin.showNotice('无法读取联系方式，请重试。', 'error'); return; }
         if (data.msg === '') {
           usiteJSON = $.parseJSON('' +
             '\n' +
@@ -71,10 +72,13 @@ admin.usite = {
           usiteJSON = $.parseJSON(data.msg);
         }
 
+        admin.usite.loaded = true;
         for (var i in usiteJSON) {
           $('#' + i).val(usiteJSON[i]);
         }
-      }
+      },
+      error: function (xhr, status) { admin.handleRequestError(xhr, status); },
+      complete: function () { $('#tabsPanel_usite .console-form-actions button').prop('disabled', !admin.usite.loaded); }
     })
   },
   /*
@@ -87,7 +91,7 @@ admin.usite = {
    * @description 更新
    */
   update: function () {
-    noBtnSwal("请稍候", 0);
+    if (this.saving || this.loaded === false) return;
     for (var i in usiteJSON) {
       let value = $('#' + i).val();
       if (value === undefined) {
@@ -97,19 +101,24 @@ admin.usite = {
     }
     let newResult = JSON.stringify(usiteJSON);
 
+    const buttons = $('#tabsPanel_usite .console-form-actions button');
+    admin.usite.saving = true;
+    buttons.prop('disabled', true);
+    $('#loadMsg').text('正在保存…');
+    admin.showNotice('正在保存联系方式…');
     $.ajax({
       url: Label.servePath + '/admin/usite/set',
       type: 'POST',
-      async: false,
+      timeout: 30000,
+      global: false,
+      contentType: 'application/json',
       dataType: 'json',
       data: newResult,
       success: function (data) {
-        if (data.code === 200) {
-          noBtnSwal('联系方式元数据更新成功！', 1000);
-        } else {
-          noBtnSwal('联系方式元数据更新失败！请检查元数据内容后重试。', 1000);
-        }
-      }
+        admin.showNotice(data.msg || (data.code === 200 ? '联系方式已保存。' : '联系方式保存失败，请检查后重试。'), data.code === 200 ? 'info' : 'error');
+      },
+      error: function (xhr, reason) { admin.handleRequestError(xhr, reason); },
+      complete: function () { admin.usite.saving = false; buttons.prop('disabled', false); $('#loadMsg').text(''); }
     });
   }
 }

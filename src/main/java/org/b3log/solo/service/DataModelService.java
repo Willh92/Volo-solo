@@ -630,6 +630,7 @@ public class DataModelService {
                 commentContent = Markdowns.toHTML(commentContent);
                 commentContent = Markdowns.clean(commentContent);
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
+                comment.put("commentContentText", org.jsoup.Jsoup.parse(commentContent).text());
                 org.b3log.solo.util.CommentNames.apply(comment);
                 comment.put(Comment.COMMENT_URL, comment.getString(Comment.COMMENT_URL));
                 comment.put(Common.IS_REPLY, false);
@@ -995,6 +996,16 @@ public class DataModelService {
             dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
             dataModel.put(Common.IS_LOGGED_IN,
                     null != Solos.getCurrentUser(context.getRequest(), context.getResponse()));
+            dataModel.put("isAdminLoggedIn", Solos.isAdminLoggedIn(context));
+            dataModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, "on".equals(preference.optString(Option.ID_C_SHOW_LOGIN_ENTRY, "off")));
+            if (Boolean.TRUE.equals(dataModel.get(Option.ID_C_SHOW_LOGIN_ENTRY))) {
+                dataModel.put("adminLoginURL", Latkes.getServePath() + org.b3log.solo.util.AdminPaths.login());
+            }
+            if (Boolean.TRUE.equals(dataModel.get("isAdminLoggedIn"))) {
+                dataModel.put("adminPanelURL", Latkes.getServePath() + org.b3log.solo.util.AdminPaths.panel());
+                dataModel.put(Common.LOGOUT_URL, Latkes.getServePath() + "/logout");
+                context.setHeader("Cache-Control", "no-store");
+            }
             dataModel.put(Common.FAVICON_API, Solos.FAVICON_API);
             final String noticeBoard = preference.getString(Option.ID_C_NOTICE_BOARD);
             dataModel.put(Option.ID_C_NOTICE_BOARD, noticeBoard);
@@ -1198,7 +1209,11 @@ public class DataModelService {
             LOGGER.debug("Filling page navigations....");
             final List<JSONObject> pages = pageRepository.getPages();
             pages.forEach(org.b3log.solo.util.GitHubStats::normalizeNavigationIcon);
-            dataModel.put(Common.PAGE_NAVIGATIONS, pages);
+            final String skin = String.valueOf(dataModel.get("skinDirName"));
+            final boolean fallbackNavigation = skin.equals("volo-studio");
+            dataModel.put(Common.PAGE_NAVIGATIONS, org.b3log.solo.util.AdminPaths.navigation(pages,
+                    fallbackNavigation && Boolean.TRUE.equals(dataModel.get("isAdminLoggedIn")),
+                    fallbackNavigation && Boolean.TRUE.equals(dataModel.get(Option.ID_C_SHOW_LOGIN_ENTRY))));
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Fills page navigations failed", e);
             throw new ServiceException(e);

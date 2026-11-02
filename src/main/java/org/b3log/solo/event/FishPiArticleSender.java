@@ -107,7 +107,7 @@ public class FishPiArticleSender extends AbstractEventListener<JSONObject> {
                     .header("User-Agent", Solos.BOLO_USER_AGENT).send();
 
             if (response.statusCode() != HttpStatus.HTTP_OK) {
-                LOGGER.log(Level.ERROR, "Pushes an article to FishPi failed: " + response.bodyText());
+                LOGGER.log(Level.ERROR, "Pushes an article to FishPi failed (upstream rejected the request)");
                 return;
             }
             final JSONObject respJson = new JSONObject(response.bodyText());
@@ -120,8 +120,7 @@ public class FishPiArticleSender extends AbstractEventListener<JSONObject> {
                 option.put(Option.OPTION_VALUE, articleId);
                 optionMgmtService.addOrUpdateOption(option);
             }
-            LOGGER.log(Level.INFO, "Pushed an article [title={0}] to FishPi, response [{1}]", title,
-                    response.toString());
+            LOGGER.log(Level.INFO, "Pushed an article [title={0}] to FishPi", title);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Pushes an article to FishPi failed: " + e.getMessage());
         }
@@ -130,10 +129,9 @@ public class FishPiArticleSender extends AbstractEventListener<JSONObject> {
     @Override
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, FishPiArticleSender.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), FishPiArticleSender.class.getName());
 
-        pushArticleToFishPi(data);
+        BackgroundEvents.community(data, FishPiArticleSender::pushArticleToFishPi);
     }
 
     /**

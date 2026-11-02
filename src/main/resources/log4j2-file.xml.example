@@ -6,12 +6,12 @@
   </Properties>
   <Appenders>
     <Console name="stdout" target="SYSTEM_OUT">
-      <PatternLayout charset="UTF-8" pattern="[%p %d{MM-dd HH:mm:ss} %20.20c %3.4L] %m%n"/>
+      <PatternLayout charset="UTF-8" pattern="[%p %d{MM-dd HH:mm:ss} %20.20c %3.4L] %maxLen{%m}{4096}%n%ex{12}"/>
     </Console>
     <Ram name="ramAppender"/>
     <RollingFile name="file" fileName="${baseDir}/logs/solo.log"
                  filePattern="${baseDir}/logs/solo.log.%i" append="true">
-      <PatternLayout charset="UTF-8" pattern="[%-5p]-[%d{yyyy-MM-dd HH:mm:ss}]-[%c:%L]: %m%n"/>
+      <PatternLayout charset="UTF-8" pattern="[%-5p]-[%d{yyyy-MM-dd HH:mm:ss}]-[%c:%L]: %maxLen{%m}{4096}%n%ex{12}"/>
       <Policies><SizeBasedTriggeringPolicy size="50 MB"/></Policies>
       <DefaultRolloverStrategy min="1" max="5" fileIndex="min"/>
     </RollingFile>

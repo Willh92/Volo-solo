@@ -19,7 +19,7 @@
 -->
 <!-- 侧栏部分 -->
 <aside class="sidebar">
-    <#if interactive=="on">
+
         <section class="widget">
             <h3 class="widget-hd"><strong>文章搜索</strong></h3>
             <div class="search-form">
@@ -39,7 +39,7 @@
                 </form>
             </div>
         </section>
-    </#if>
+
     <section class="widget">
         <h3 class="widget-hd"><strong>文章分类</strong></h3>
         <!-- 文章分类 -->

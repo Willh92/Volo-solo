@@ -77,13 +77,14 @@
                             <span> 我的关注</span>
                         </a>
                     </div>
-                    <#if pageNavigations?has_content>
+                    <#if pageNavigations?has_content || (isAdminLoggedIn!false) || (showLoginEntry!false)>
                     <div class="menus_item">
                         <a class="site-page">
                             <span class="footer__heart">❤️更多</span>
                             <i class="fas fa-chevron-down menus-expand"></i>
                         </a>
                         <ul class="menus_item_child">
+                            <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" linkClass="site-page" panelIcon="fa-fw fas fa-user" exitIcon="fa-fw fas fa-sign-out-alt" loginIcon="fa-fw fas fa-user"/>
                             <#list pageNavigations as page>
                                 <li>
                                 <a class="site-page" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">

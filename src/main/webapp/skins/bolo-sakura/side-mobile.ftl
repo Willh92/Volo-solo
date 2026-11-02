@@ -28,13 +28,13 @@
         <#include "../../common-template/macro-user_site.ftl"/>
         <@userSite dir=""></@userSite>
     </div>
-    <#if interactive == "on">
+
     <div class="m-search">
         <form class="m-search-form" method="get" action="${servePath}/search" role="search">
             <input class="m-search-input" type="search" name="keyword" placeholder="搜索..." required>
         </form>
     </div>
-    </#if>
+
     <ul id="menu-new-1" class="menu">
 
         <li><a href="${servePath}/"><span class="faa-parent animated-hover"><i
@@ -47,6 +47,7 @@
                             class="fa fa-tag faa-horizontal" aria-hidden="true"></i> 标签</span></a>
         <li><a href="${servePath}/archives.html"><span class="faa-parent animated-hover"><i
                             class="fa fa-archive faa-horizontal" aria-hidden="true"></i> 归档</span></a>
+        <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" panelIcon="fa fa-cog" exitIcon="fa fa-sign-out" loginIcon="fa fa-sign-in"/>
         <#list pageNavigations as page>
             <li><a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><span
                             class="faa-parent animated-hover">

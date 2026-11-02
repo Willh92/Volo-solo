@@ -338,6 +338,7 @@ public class PageConsole {
             final String requestURI = context.requestURI();
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/pages/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
+            requestJSONObject.put(org.b3log.solo.model.Common.KEYWORD, context.param("k") == null ? "" : context.param("k"));
             final JSONObject result = pageQueryService.getPages(requestJSONObject);
             final JSONArray pages = result.optJSONArray(Page.PAGES);
 

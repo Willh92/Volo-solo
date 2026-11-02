@@ -188,7 +188,7 @@
                 border-color: #49b1f5;
             }
         </style>
-        <#if interactive == "on">
+
         <div class="card-widget card-webinfo">
             <div class="card-content">
                 <form class="bar5" action="${servePath}/search">
@@ -198,7 +198,7 @@
                 </form>
             </div>
         </div>
-        </#if>
+
         <div class="card-widget card-announcement">
             <div class="card-content">
                 <div class="item-headline"><i

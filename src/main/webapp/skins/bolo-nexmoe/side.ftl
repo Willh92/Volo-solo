@@ -100,16 +100,17 @@
         <div class="nexmoe-widget-wrap">
             <h3 class="nexmoe-widget-title">功能按钮</h3>
             <div class="nexmoe-widget nexmoe-social features">
-                <#if interactive=="on">
+
                     <a href="${servePath}/search" title="搜索">
                         <i class="mdui-list-item-icon iconfont solo-search"></i>
                         <div class="mdui-list-item-content">搜索</div>
                     </a>
-                </#if>
+
                 <a href="${servePath}/rss.xml" title="RSS">
                     <i class="mdui-list-item-icon iconfont solo-rss"></i>
                 </a>
                 <div class="skin-theme-slot" data-bolo-theme-slot data-bolo-theme-persistent></div>
+                <#include "../../common-template/macro-management.ftl"><@managementLinks panelIcon="mdui-list-item-icon iconfont solo-spin" exitIcon="mdui-list-item-icon iconfont solo-logout" loginIcon="mdui-list-item-icon iconfont solo-logout" iconsOnly=true/>
             </div>
         </div>
         <div class="nexmoe-widget-wrap">

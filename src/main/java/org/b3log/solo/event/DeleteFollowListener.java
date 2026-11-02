@@ -46,8 +46,7 @@ public class DeleteFollowListener extends AbstractEventListener<JSONObject> {
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
         final String followName = data.optString(Follow.FOLLOW_TITLE);
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, DeleteFollowListener.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), DeleteFollowListener.class.getName());
         final BeanManager beanManager = BeanManager.getInstance();
         final FollowArticleCache followArticleCache = beanManager.getReference(FollowArticleCache.class);
         final Map<String, JSONObject> ret = followArticleCache.removeFollowArticles(followName);

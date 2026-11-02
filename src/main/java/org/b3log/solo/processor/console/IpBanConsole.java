@@ -20,6 +20,30 @@ public class IpBanConsole {
     @Inject private IpBanService ipBanService;
     @Inject private CommentRepository commentRepository;
     @Inject private org.b3log.solo.service.GeoAccessService geoAccessService;
+    @Inject private org.b3log.solo.service.OptionQueryService optionQueryService;
+    @Inject private org.b3log.solo.service.PreferenceMgmtService preferenceMgmtService;
+
+    @RequestProcessing(value = "/console/security/settings", method = HttpMethod.GET)
+    public void securitySettings(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (!Solos.isAdminLoggedIn(context)) { AdminRequests.reject(context, 403, "仅管理员可以查看安全设置。"); return; }
+        try {
+            final JSONObject settings = new JSONObject(), preferences = optionQueryService.getPreference();
+            for (final String key : org.b3log.solo.service.PreferenceMgmtService.SECURITY_KEYS) settings.put(key, preferences.optString(key,
+                    key.equals("commentCaptchaEnabled") || key.equals("riskControlEnabled") || key.equals("commentFilterBuiltin") || key.equals("wafPower") ? "on" : key.startsWith("wafCurrent") ? "180" : ""));
+            context.renderJSON(new JSONObject().put("sc", true).put("settings", settings));
+        } catch (Exception failure) { AdminRequests.reject(context, 503, "安全设置暂时无法读取。"); }
+    }
+
+    @RequestProcessing(value = "/console/security/settings", method = HttpMethod.PUT)
+    public void saveSecuritySettings(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) return;
+        try {
+            preferenceMgmtService.updateSecurity(context.requestJSON());
+            context.renderJSON(new JSONObject().put("sc", true).put("msg", "安全设置已保存，立即生效。"));
+        } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "安全设置保存失败，请重试。"); }
+    }
 
     @RequestProcessing(value = "/console/geo-access", method = HttpMethod.GET)
     public void geoSettings(final RequestContext context) {
@@ -46,7 +70,9 @@ public class IpBanConsole {
         try {
             final String page = context.param("page"), size = context.param("pageSize"), keyword = context.param("keyword");
             context.renderJSON(ipBanService.page(page == null ? 1 : Integer.parseInt(page),
-                    size == null ? 10 : Integer.parseInt(size), keyword == null ? "" : keyword).put("sc", true));
+                    size == null ? 10 : Integer.parseInt(size), keyword == null ? "" : keyword,
+                    context.param("source") == null ? "all" : context.param("source"),
+                    context.param("status") == null ? "active" : context.param("status")).put("sc", true));
         }
         catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, "封禁列表查询参数不正确。"); }
         catch (Exception failure) { AdminRequests.reject(context, 503, "封禁列表暂时无法读取。"); }
@@ -65,17 +91,51 @@ public class IpBanConsole {
                 }
                 range = comment.optString(IpAddresses.COMMENT_IP);
             }
-            ipBanService.add(range, request.optString("reason"), LoginThrottle.clientAddress(context.getRequest()));
+            ipBanService.add(range, request.optString("reason"), LoginThrottle.clientAddress(context.getRequest()), duration(request));
             context.renderJSON(new JSONObject().put("sc", true).put("msg", "已封禁，规则立即生效。"));
         } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
         catch (Exception failure) { AdminRequests.reject(context, 503, "封禁规则保存失败，请重试。"); }
+    }
+
+    @RequestProcessing(value = "/console/ip-bans", method = HttpMethod.PUT)
+    public void update(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) return;
+        try {
+            final JSONObject request = context.requestJSON();
+            if (!(request.opt("range") instanceof String) || !(request.opt("note") instanceof String)) {
+                throw new IllegalArgumentException("封禁地址或备注格式不正确。");
+            }
+            ipBanService.update(request.getString("range"), request.getString("note"),
+                    LoginThrottle.clientAddress(context.getRequest()), request.has("durationSeconds") ? duration(request) : null,
+                    occurrences(request));
+            context.renderJSON(new JSONObject().put("sc", true).put("msg", "封禁规则已更新，立即生效。"));
+        } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
+        catch (Exception failure) { AdminRequests.reject(context, 503, "封禁规则保存失败，请重试。"); }
+    }
+
+    private static long duration(final JSONObject data) {
+        if (!data.has("durationSeconds")) return 0;
+        final Object value = data.get("durationSeconds");
+        if (!(value instanceof Number) || !value.toString().matches("[0-9]{1,10}")) throw new IllegalArgumentException("封禁时长格式不正确。");
+        return ((Number) value).longValue();
+    }
+
+    private static Integer occurrences(final JSONObject data) {
+        if (!data.has("occurrences")) return null;
+        final Object value = data.get("occurrences");
+        if (!(value instanceof Number) || !value.toString().matches("[0-9]{1,7}")) {
+            throw new IllegalArgumentException("自动风控次数应为 0 至 1000000 的整数。");
+        }
+        return ((Number) value).intValue();
     }
 
     @RequestProcessing(value = "/console/ip-bans/remove", method = HttpMethod.POST)
     public void remove(final RequestContext context) {
         if (!AdminRequests.allowWrite(context)) return;
         try {
-            ipBanService.remove(context.requestJSON().getString("range"));
+            final String range = context.requestJSON().getString("range");
+            ipBanService.remove(range);
+            org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.solo.service.RiskControlService.class).clear(range);
             context.renderJSON(new JSONObject().put("sc", true).put("msg", "已解除封禁。"));
         } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
         catch (Exception failure) { AdminRequests.reject(context, 503, "解除封禁失败，请重试。"); }

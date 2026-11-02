@@ -70,6 +70,12 @@ public class PreferenceConsole {
     @Inject
     private OptionQueryService optionQueryService;
 
+    @Inject
+    private org.b3log.solo.service.GitHubRepositoryService gitHubRepositoryService;
+
+    @Inject
+    private org.b3log.solo.service.ArticleMgmtService articleMgmtService;
+
     /**
      * Language service.
      */
@@ -176,12 +182,13 @@ public class PreferenceConsole {
         context.setRenderer(renderer);
 
         try {
-            final JSONObject preference = optionQueryService.getPreference();
-            if (null == preference) {
+            final JSONObject storedPreference = optionQueryService.getPreference();
+            if (null == storedPreference) {
                 renderer.setJSONObject(new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false));
 
                 return;
             }
+            final JSONObject preference = new JSONObject(storedPreference.toString());
 
             String footerContent = "";
             final JSONObject opt = optionQueryService.getOptionById(Option.ID_C_FOOTER_CONTENT);
@@ -192,6 +199,10 @@ public class PreferenceConsole {
 
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
+            try { org.b3log.solo.bolo.prop.SmtpSettings.read(preference).fill(preference); }
+            catch (IllegalArgumentException invalidStoredSetting) { /* Keep incomplete legacy settings editable. */ }
+            preference.put("smtpPasswordSet", !preference.optString(Option.ID_C_MAIL_PASSWORD).isEmpty());
+            preference.put(Option.ID_C_MAIL_PASSWORD, "");
             ret.put(Option.CATEGORY_C_PREFERENCE, preference);
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
@@ -270,7 +281,20 @@ public class PreferenceConsole {
             }
 
             org.b3log.solo.service.CommentFilterService.validate(preference);
+            JSONObject githubDisplay = null;
+            if (requestJSONObject.has("githubDisplay")) {
+                if (!(requestJSONObject.opt("githubDisplay") instanceof JSONObject)) throw new IllegalArgumentException("仓库显示设置不正确。");
+                githubDisplay = gitHubRepositoryService.prepareDisplay(preference.optString(Option.ID_C_MY_GITHUB_ID).strip(),
+                        requestJSONObject.getJSONObject("githubDisplay"));
+            }
             preferenceMgmtService.updatePreference(preference);
+            if (githubDisplay != null) {
+                gitHubRepositoryService.saveDisplay(githubDisplay);
+                if (!articleMgmtService.rebuildGitHub(preference.optString(Option.ID_C_MY_GITHUB_ID).strip())) {
+                    ret.put("sc", false).put(Keys.MSG, "设置已保存，但项目文章生成失败，请在我的 GitHub 中重新同步。");
+                    return;
+                }
+            }
 
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));

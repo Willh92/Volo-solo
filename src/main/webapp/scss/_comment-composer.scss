@@ -11,13 +11,13 @@ html[data-bolo-page='public'] {
   [data-comment-depth] .comment-management-actions--inline > .comment-reply { position:static; float:none; flex:none; margin:0; }
   .comment-edit-action { appearance: none; flex-shrink: 0; width: auto; height: auto; min-height: 28px; margin: 0 4px; padding: 3px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--bolo-muted); font: inherit; font-size: 12px; line-height: 1.5; white-space: nowrap; cursor: pointer; }
   .comment-edit-action:hover { color: var(--skin-control-accent,var(--bolo-accent)); background: var(--bolo-raised); }
-  .comment-edit-action:focus-visible { outline: 2px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 1px; }
+  .comment-edit-action:focus-visible { outline: 1px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 1px; }
   .comment-tombstone { color: var(--bolo-muted); font-size: 13px; font-style: italic; }
   [data-comment-deleted='true'] [data-comment-name] { display: none; }
   .comment-location { display: inline-block; margin-inline-start: 8px; color: var(--bolo-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; font-weight: 400; }
   .comment-location .comment-ban-action { appearance:none; display:inline-flex; align-items:center; vertical-align:middle; width:auto; height:auto; min-height:24px; margin:0 0 0 8px; padding:1px 6px; border:1px solid var(--bolo-line); border-radius:4px; background:transparent; color:var(--skin-control-accent,var(--bolo-accent)); font:inherit; line-height:1.5; white-space:nowrap; cursor:pointer; }
   .comment-location .comment-ban-action:hover { background:var(--bolo-raised); border-color:currentColor; }
-  .comment-location .comment-ban-action:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+  .comment-location .comment-ban-action:focus-visible { outline: 1px solid currentColor; outline-offset:2px; }
   #soloEditor {
     --composer-accent: var(--skin-control-accent, var(--bolo-accent));
     --composer-on-accent: #fff;
@@ -43,7 +43,7 @@ html[data-bolo-page='public'] {
   .comment-composer__identity > label:last-child { grid-column: 1 / -1; }
   .comment-composer__identity :is(span,input) { display: block; min-width: 0; }
   .comment-composer__identity :is(input,#boloUser,#boloSite) { box-sizing: border-box; display: block; width: 100%; height: 38px; min-height: 0; margin: 0; padding: 8px 10px; border: 1px solid var(--bolo-line); border-radius: 7px; background: var(--bolo-surface); color: var(--bolo-text); font: inherit; }
-  .comment-composer__identity input:focus { outline: 0; border-color: var(--composer-accent); box-shadow: inset 0 0 0 1px var(--composer-accent); }
+  .comment-composer__identity input:focus { outline: 0; border-color: var(--composer-accent); box-shadow: none; }
   @media (max-width: 480px) { .comment-composer__identity { gap: 7px 10px; } }
   #soloEditorComment { width: 100%; min-width: 0; }
   #soloEditorComment[aria-busy='true']:not(.vditor) { display: grid; place-items: center; min-height: 180px; border: 1px solid var(--bolo-line); border-radius: 6px; color: var(--bolo-muted); }
@@ -78,7 +78,7 @@ html[data-bolo-page='public'] {
   #soloEditorAdd { background: var(--composer-accent); color: var(--composer-on-accent); border-color: var(--composer-accent); }
   #soloEditorAdd:hover { background: color-mix(in srgb, var(--composer-accent) 88%, var(--bolo-text)); }
   #soloEditorAdd:disabled { opacity: .6; cursor: wait; }
-  :is(#soloEditorCancel,#soloEditorAdd,#soloEditorRetry):focus-visible { outline: 2px solid var(--composer-accent); outline-offset: 2px; }
+  :is(#soloEditorCancel,#soloEditorAdd,#soloEditorRetry):focus-visible { outline: 1px solid var(--composer-accent); outline-offset: 2px; }
   .swal-overlay { box-sizing: border-box; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; width: auto; height: auto; padding: 16px; overflow: hidden; white-space: normal; }
   .swal-overlay::before { display: none; }
   .swal-modal { box-sizing: border-box; flex: 0 1 440px; width: 100%; min-width: 0; max-width: 440px; max-height: 100%; overflow: auto; margin: 0; border: 1px solid var(--bolo-line); border-radius: 14px; background: var(--bolo-surface); color: var(--bolo-text); box-shadow: 0 18px 60px #10251b33; font: 14px/1.7 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif; white-space: normal; overflow-wrap: anywhere; }
@@ -90,13 +90,13 @@ html[data-bolo-page='public'] {
   .swal-text { display: block; max-width: none; margin: 0 24px 18px; padding: 0; color: var(--bolo-muted); font-size: 14px; line-height: 1.85; text-align: left; overflow-wrap: anywhere; }
   .swal-content { margin: 0 24px; padding: 0; }
   .swal-content__input { box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; border: 1px solid var(--bolo-line); border-radius: 8px; background: var(--bolo-bg); color: var(--bolo-text); font: inherit; font-size: 16px; }
-  .swal-content__input:focus { border-color: var(--skin-control-accent,var(--bolo-accent)); outline: 0; box-shadow: inset 0 0 0 1px var(--skin-control-accent,var(--bolo-accent)); }
+  .swal-content__input:focus { border-color: var(--skin-control-accent,var(--bolo-accent)); outline: 0; box-shadow: none; }
   .swal-content__input::placeholder { color: var(--bolo-muted); opacity: 1; }
   .swal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; padding: 16px 24px; border-top: 1px solid var(--bolo-line); background: var(--bolo-raised); }
   .swal-button-container { margin: 0; }
   .swal-button { min-height: 40px; padding: 9px 16px; border: 1px solid var(--skin-control-accent,var(--bolo-accent)); border-radius: 8px; background: var(--skin-control-accent,var(--bolo-accent)); color: #fff; font: inherit; font-weight: 500; box-shadow: none; }
   .swal-button:hover { background: color-mix(in srgb,var(--skin-control-accent,var(--bolo-accent)) 85%,var(--bolo-text)); }
-  .swal-button:focus-visible { outline: 2px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 2px; box-shadow: none; }
+  .swal-button:focus-visible { outline: 1px solid var(--skin-control-accent,var(--bolo-accent)); outline-offset: 2px; box-shadow: none; }
   .swal-button--cancel { border-color: var(--bolo-line); background: var(--bolo-surface); color: var(--bolo-text); }
   .swal-button--cancel:hover { background: var(--bolo-bg); }
   &[data-bolo-theme='dark'] .swal-button:not(.swal-button--cancel) { color: #1b2021; }

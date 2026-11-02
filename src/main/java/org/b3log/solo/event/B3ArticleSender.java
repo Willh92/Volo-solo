@@ -84,6 +84,8 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
                 return;
             }
 
+            if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) return;
+
             // 注释本地关闭推送功能
             /* if (isLocalServer()) {
                 LOGGER.log(Level.INFO, "Volo is running on a local server [servePath=" + Latkes.getServePath() +
@@ -128,7 +130,7 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
                     connectionTimeout(3000).timeout(7000).followRedirects(true).
                     contentTypeJson().header("User-Agent", Solos.USER_AGENT).send();
 
-            LOGGER.log(Level.INFO, "Pushed an article [title={0}] to Rhy, response [{1}]", title, response.toString());
+            LOGGER.log(Level.INFO, "Pushed an article [title={0}] to Rhy", title);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Pushes an article to Rhy failed: " + e.getMessage());
         }
@@ -142,10 +144,9 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
     @Override
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, B3ArticleSender.class.getName());
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), B3ArticleSender.class.getName());
 
-        pushArticleToRhy(data);
+        BackgroundEvents.community(data, B3ArticleSender::pushArticleToRhy);
     }
 
     /**

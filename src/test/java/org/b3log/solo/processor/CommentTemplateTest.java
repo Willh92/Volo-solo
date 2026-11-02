@@ -20,6 +20,53 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class CommentTemplateTest {
+    @Test public void nativeManagementSlotsHideGuestsByDefaultAndKeepAdministratorControlsIndependent() throws Exception {
+        final Configuration configuration = new Configuration(Configuration.VERSION_2_3_35);
+        configuration.setDirectoryForTemplateLoading(Path.of("src/main/webapp").toFile());
+        final Template template = new Template("management", new StringReader("<#include 'common-template/macro-management.ftl'><ul><@managementLinks itemTag='li' panelIcon='settings' exitIcon='logout' loginIcon='login'/></ul>"), configuration);
+        for (final boolean administrator : new boolean[]{false, true}) for (final boolean showLogin : new boolean[]{false, true}) {
+            final Map<String, Object> model = new java.util.HashMap<>();
+            model.put("isAdminLoggedIn", administrator); model.put("showLoginEntry", showLogin);
+            if (administrator) { model.put("adminPanelURL", "/custom-panel"); model.put("logoutURL", "/logout"); }
+            if (showLogin) model.put("adminLoginURL", "/custom-panel/login");
+            final StringWriter output = new StringWriter(); template.process(model, output);
+            final var html = Jsoup.parseBodyFragment(output.toString());
+            Assert.assertEquals(html.select("a[data-management-link=panel]").size(), administrator ? 1 : 0);
+            Assert.assertEquals(html.select("a[data-management-link=logout]").size(), administrator ? 1 : 0);
+            Assert.assertEquals(html.select("a[data-management-link=login]").size(), !administrator && showLogin ? 1 : 0);
+            Assert.assertEquals(html.select("li:empty").size(), 0, "Hidden controls must leave no empty menu entries");
+        }
+    }
+    @Test public void studioAdminControlsAndRecentCommentLinksAreNotRenderedForGuests() throws Exception {
+        final Configuration configuration = new Configuration(Configuration.VERSION_2_3_35);
+        configuration.setDirectoryForTemplateLoading(Path.of("src/main/webapp").toFile());
+        final Map<String, Object> model = new java.util.HashMap<>();
+        model.put("servePath", "http://localhost"); model.put("blogTitle", "博客"); model.put("pageNavigations", List.of());
+        model.put("interactive", "on"); model.put("mostUsedTags", List.of()); model.put("studioIndex", true);
+        model.put("recentComments", List.of(Map.of("commentName", "昵称<img>", "commentContentText", "正文<script>", "commentSharpURL", "/post.html#123")));
+        for (final boolean administrator : new boolean[]{false, true}) {
+            model.put("isAdminLoggedIn", administrator);
+            if (administrator) { model.put("adminPanelURL", "/private-panel"); model.put("logoutURL", "/logout"); }
+            model.put("pageNavigations", administrator ? List.of(
+                    Map.of("pageTitle", "自定义链接", "pagePermalink", "/custom", "pageOpenTarget", "_self", "pageIcon", ""),
+                    Map.of("pageTitle", "后台管理", "pagePermalink", "/private-panel", "pageOpenTarget", "_self", "pageIcon", ""),
+                    Map.of("pageTitle", "退出登录", "pagePermalink", "/logout", "pageOpenTarget", "_self", "pageIcon", "")) : List.of());
+            final StringWriter header = new StringWriter(), side = new StringWriter();
+            configuration.getTemplate("skins/volo-studio/header.ftl").process(model, header);
+            configuration.getTemplate("skins/volo-studio/side.ftl").process(model, side);
+            Assert.assertEquals(header.toString().contains("href=\"/logout\""), administrator);
+            Assert.assertEquals(header.toString().contains("href=\"/private-panel\""), administrator);
+            final var headerDocument = Jsoup.parse(header.toString());
+            Assert.assertEquals(headerDocument.select(".studio-management-mobile a").size(), administrator ? 2 : 0);
+            Assert.assertTrue(headerDocument.select(".studio-nav-panel a[href='/logout'],.studio-nav-panel a[href='/private-panel']").isEmpty(), "Mobile administrator actions must remain outside More");
+            Assert.assertEquals(side.toString().contains("studio-recent-comments"), administrator);
+            if (administrator) {
+                Assert.assertTrue(side.toString().contains("/post.html#123"));
+                Assert.assertTrue(side.toString().contains("昵称&lt;img&gt;"));
+                Assert.assertFalse(side.toString().contains("<script>"));
+            }
+        }
+    }
     @Test public void newCommentsAndRepliesRenderInEverySkinWithoutOptionalStoredFields() throws Exception {
         final Configuration configuration = new Configuration(Configuration.VERSION_2_3_35);
         configuration.setDirectoryForTemplateLoading(Path.of("src/main/webapp").toFile());

@@ -31,7 +31,7 @@
                 <button class="icon-list" type="button" aria-label="${(navigationLabel!'导航菜单')?html}" aria-controls="navigation9iphp" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
             </div>
             <div class="fn-right">
-
+                <#include "../../common-template/macro-management.ftl"><@managementLinks linkClass="fn__flex-inline" panelIcon="icon-setting" exitIcon="icon-logout" loginIcon="icon-login"/>
             </div>
         </div>
     </div>
@@ -70,12 +70,12 @@
                 </a>
             </nav>
             <div class="fn-right navigation-tools">
-                <#if interactive == "on">
+
                 <form class="form" action="${servePath}/search">
                     <input placeholder="${searchLabel}" id="search" type="text" name="keyword"/>
                     <button type="submit"><i class="icon-search"></i></button>
                 </form>
-                </#if>
+
                 <div class="skin-theme-slot theme9-desktop" data-bolo-theme-slot></div>
             </div>
         </div>
@@ -83,7 +83,6 @@
 </header>
 <div class="responsive fn-none">
     <ul class="list" id="navigation9iphp">
-
         <li>
             <a href="${servePath}">
                 <i class="icon-home"></i>
@@ -127,5 +126,6 @@
                 <i class="icon-rss"></i> RSS
             </a>
         </li>
+        <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" panelIcon="icon-setting" exitIcon="icon-logout" loginIcon="icon-login"/>
     </ul>
 </div>

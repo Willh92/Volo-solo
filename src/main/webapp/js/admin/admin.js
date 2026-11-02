@@ -31,14 +31,15 @@ Util.htmlDecode = function (code) {
 
 var Admin = function () {
     this.register = {}
+    this.panelRequests = {}
     // 工具栏下的工具
     this.tools = [
         '#page-list', '#theme-list', '#link-list', '#preference',
-        '#user-list', '#plugin-list', '#others', '#category-list', '#usite', '#tool-box']
+        '#user-list', '#plugin-list', '#others', '#category-list', '#follow-list', '#usite']
     // 多用户时，一般用户不能使用的功能
     this.adTools = [
         'link-list', 'preference', 'theme-list', 'page-list',
-        'user-list', 'plugin-list', 'others', 'category-list', 'usite', 'tool-box']
+        'access', 'ip', 'geo', 'comments', 'user-list', 'plugin-list', 'others', 'category-list', 'follow-list', 'usite']
 }
 
 $.extend(Admin.prototype, {
@@ -56,6 +57,74 @@ $.extend(Admin.prototype, {
         var next = typeof open === 'boolean' ? open : !document.body.classList.contains('console-nav-open')
         document.body.classList.toggle('console-nav-open', next)
         $('.console-menu').attr('aria-expanded', String(next)).attr('aria-label', next ? '收起侧栏' : '展开侧栏')
+    },
+    showNotice: function (message, tone) {
+        var text = String(message == null ? '' : message).trim()
+        this.noticePending = {message: text, tone: tone === 'error' ? 'error' : 'info'}
+        var output = document.getElementById('tipMsg')
+        if (output) output.textContent = text
+    },
+    initNotices: function () {
+        if (this.noticeCleanup) this.noticeCleanup()
+        var notice = document.getElementById('consoleNotice'), output = document.getElementById('tipMsg')
+        var title = document.getElementById('consoleNoticeTitle'), close = document.getElementById('consoleNoticeClose')
+        if (!notice || !output || !title || !close) return
+        var that = this, timer, deadline = 0, remaining = 0, hovering = false, focused = false
+        function stopTimer() { clearTimeout(timer); timer = undefined }
+        function dismiss() { stopTimer(); notice.hidden = true; output.textContent = '' }
+        function schedule() {
+            stopTimer()
+            if (notice.hidden || hovering || focused) return
+            deadline = Date.now() + remaining
+            var message = output.textContent
+            timer = setTimeout(function () { if (output.textContent === message) dismiss() }, remaining)
+        }
+        function pause() { if (timer !== undefined) remaining = Math.max(0, deadline - Date.now()); stopTimer() }
+        function enter() { hovering = true; pause() }
+        function leave() { hovering = false; schedule() }
+        function focus() { focused = true; pause() }
+        function blur(event) { if (!notice.contains(event.relatedTarget)) { focused = false; schedule() } }
+        function render() {
+            stopTimer()
+            var message = output.textContent.trim(), pending = that.noticePending
+            that.noticePending = null
+            notice.hidden = !message
+            if (!message) return
+            var tone = pending && pending.message === message ? pending.tone : 'info'
+            notice.dataset.tone = tone
+            title.textContent = tone === 'error' ? '操作未完成' : '提示'
+            remaining = tone === 'error' ? 8000 : 5000
+            schedule()
+        }
+        var observer = new MutationObserver(render)
+        observer.observe(output, {childList: true, characterData: true, subtree: true})
+        close.addEventListener('click', dismiss)
+        notice.addEventListener('mouseenter', enter)
+        notice.addEventListener('mouseleave', leave)
+        notice.addEventListener('focusin', focus)
+        notice.addEventListener('focusout', blur)
+        this.noticeCleanup = function () {
+            stopTimer(); observer.disconnect(); that.noticePending = null; notice.hidden = true
+            close.removeEventListener('click', dismiss)
+            notice.removeEventListener('mouseenter', enter)
+            notice.removeEventListener('mouseleave', leave)
+            notice.removeEventListener('focusin', focus)
+            notice.removeEventListener('focusout', blur)
+        }
+        if (window.BoloNavigation) window.BoloNavigation.onLeave(this.noticeCleanup)
+        render()
+    },
+    handleRequestError: function (xhr, reason) {
+        if (xhr.status === 0 && reason === 'abort') return
+        var messages = {400:'提交内容有误，请检查后重试。', 401:'登录状态已失效，请重新登录后再试。',
+            403:'访问被拒绝，请确认操作权限。', 404:'请求的资源不存在或已失效。',
+            413:'提交的数据过大，请减少内容后重试。', 429:'操作过于频繁，请稍后重试。'}
+        var detail = xhr.responseJSON && xhr.responseJSON.msg
+        var message = typeof detail === 'string' && detail.trim() ? detail.trim().slice(0, 2000)
+            : reason === 'timeout' ? '请求超时，请稍后重试。'
+                : xhr.status === 0 ? '连接失败，请检查网络后重试。'
+                    : messages[xhr.status] || '操作未完成，请稍后重试。'
+        this.showNotice((xhr.status ? xhr.status + ' · ' : '') + message, 'error')
     },
     /**
      * @description 清除提示
@@ -110,6 +179,8 @@ $.extend(Admin.prototype, {
     setCurByHash: function () {
         $(window).scrollTop(0)
         $('#tipMsg').text('')
+        if (window.location.hash === '#tools/preference/security') { window.location.replace('#security/access'); return }
+        if (window.location.hash === '#tools/tool-box') { window.location.replace('#tools/others/maintenance'); return }
         var tags = admin.analyseHash()
         var tab = tags.hashList[1],
             subTab = tags.hashList[2]
@@ -162,25 +233,54 @@ $.extend(Admin.prototype, {
 
         if ($('#tabsPanel_' + tab).length === 1) {
             if ($('#tabsPanel_' + tab).html().replace(/\s/g, '') === '') {
-                // 还未加载 HTML
-                $('#tabsPanel_' + tab).load(document.documentElement.dataset.boloAdminPages + 'admin-' + tab + '.do', function () {
-                    // 页面加载完后，回调初始函数
-                    if (tab === 'article' && admin.article.status.id) {
-                        // 当文章页面编辑器未初始化时，调用更新文章需先初始化编辑器
-                        admin.register[tab].init.call(admin.register[tab].obj,
-                            admin.article.getAndSet)
-                    } else {
-                        admin.register[tab].init.call(admin.register[tab].obj, tags.page)
-                    }
+                var panel = $('#tabsPanel_' + tab)
+                if (this.panelRequests[tab]) {
+                    this.panelRequests[tab].tags = tags
+                    return
+                }
+                var pending = {tags: tags}
+                this.panelRequests[tab] = pending
+                panel.addClass('console-page-loading').attr('aria-busy', 'true')
+                $.ajax({url: document.documentElement.dataset.boloAdminPages + 'admin-' + tab + '.do',
+                    dataType: 'html', timeout: 30000,
+                    success: function (html) {
+                        panel.html(html)
+                        panel.removeClass('console-page-loading').removeAttr('aria-busy')
+                        var currentTags = pending.tags
+                        // 页面加载完后，回调初始函数
+                        try {
+                            if (tab === 'article' && admin.article.status.id) {
+                                // 当文章页面编辑器未初始化时，调用更新文章需先初始化编辑器
+                                admin.register[tab].init.call(admin.register[tab].obj,
+                                    admin.article.getAndSet)
+                            } else {
+                                admin.register[tab].init.call(admin.register[tab].obj, currentTags.page)
+                            }
 
-                    // 页面包含子 tab，需根据 hash 定位到相应的 tab
-                    if (subTab) {
-                        $('#tab' + tab.substring(0, 1).toUpperCase() + tab.substring(1)).
-                            tabs('setCurrent', subTab)
-                    }
+                            // 页面包含子 tab，需根据 hash 定位到相应的 tab
+                            var childTabs = $('#tab' + tab.substring(0, 1).toUpperCase() + tab.substring(1))
+                            if (currentTags.hashList[2] && childTabs.length) {
+                                childTabs.tabs('setCurrent', currentTags.hashList[2])
+                            }
 
-                    // 根据 hash 调用现有的插件函数
-                    admin.plugin.setCurByHash(tags)
+                            // 根据 hash 调用现有的插件函数
+                            admin.plugin.setCurByHash(currentTags)
+                        } catch (error) {
+                            panel.empty()
+                            $('#tipMsg').text('页面初始化失败，请重新选择菜单重试。')
+                            $('#loadMsg').text('')
+                            console.error(error)
+                        }
+                    },
+                    error: function (xhr, status) {
+                        panel.empty()
+                        $('#loadMsg').text('')
+                        $('#tipMsg').text(status === 'timeout' ? '页面载入超时，请重新选择菜单重试。' : '页面载入失败，请重新选择菜单重试。')
+                    },
+                    complete: function () {
+                        panel.removeClass('console-page-loading').removeAttr('aria-busy')
+                        delete admin.panelRequests[tab]
+                    }
                 })
             } else {
                 if (tab === 'article' && admin.article.status.id) {
@@ -193,9 +293,9 @@ $.extend(Admin.prototype, {
                 }
 
                 // 页面包含子 tab，需根据 hash 定位到相应的 tab
-                if (subTab) {
-                    $('#tab' + tab.substring(0, 1).toUpperCase() + tab.substring(1)).
-                        tabs('setCurrent', subTab)
+                var childTabs = $('#tab' + tab.substring(0, 1).toUpperCase() + tab.substring(1))
+                if (subTab && childTabs.length) {
+                    childTabs.tabs('setCurrent', subTab)
                 }
 
                 // 根据 hash 调用现有的插件函数
@@ -217,15 +317,7 @@ $.extend(Admin.prototype, {
         // 构建 tabs
         $('#tabs').tabs()
 
-        // tipMsg
-        var tipTimer = setInterval(function () {
-            if ($('#tipMsg').text() !== '') {
-                setTimeout(function () {
-                    $('#tipMsg').text('')
-                }, 7000)
-            }
-        }, 6000)
-        if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(tipTimer) })
+        this.initNotices()
         $('#loadMsg').text('')
 
         window.onbeforeunload = function (event) {
@@ -240,15 +332,11 @@ $.extend(Admin.prototype, {
             }
         }
 
-        $(document).ajaxError(function (event, xhr, options, exc) {
-            if (xhr.status === 401 || xhr.status === 403) {
-                $('#tipMsg').text('访问被拒绝，请确认当前会话和操作权限。')
-                return
-            }
-            if (xhr.status !== 200) {
-                $('#tipMsg').text(xhr.status + ': ' + exc)
-            }
+        $(document).off('ajaxError.voloConsole').on('ajaxError.voloConsole', function (event, xhr, options, exc) {
+            $('#loadMsg').text('')
+            admin.handleRequestError(xhr, exc)
         })
+        if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole') })
     },
     /**
      * @description tools and article collapse
@@ -279,6 +367,7 @@ $.extend(Admin.prototype, {
             for (var i = 0; i < this.adTools.length; i++) {
                 $('#tabs').tabs('remove', this.adTools[i])
             }
+            $('#tabSecurityTitle').parent().remove()
         } else {
             // 当前 tab 属于 Tools 时，设其展开
             for (var j = 0; j < this.tools.length; j++) {
@@ -288,6 +377,7 @@ $.extend(Admin.prototype, {
                 }
             }
         }
+        if (window.location.hash.startsWith('#security/')) $('#tabSecurityTitle').click()
         this.setCurByHash()
     },
 })

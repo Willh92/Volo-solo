@@ -59,37 +59,6 @@ admin.categoryList = {
 
         this.tablePagination.initPagination();
         this.getList(page);
-
-        // For tag auto-completion
-        $.ajax({// Gets all tags
-            url: Label.servePath + "/console/tags",
-            type: "GET",
-            cache: false,
-            success: function (result, textStatus) {
-                $("#tipMsg").text(result.msg);
-                if (!result.sc) {
-                    $("#loadMsg").text("");
-                    return;
-                }
-
-                if (0 >= result.tags.length) {
-                    return;
-                }
-
-                var tags = [];
-                for (var i = 0; i < result.tags.length; i++) {
-                    tags.push(result.tags[i].tagTitle);
-                }
-
-                $("#categoryTags").completed({
-                    height: 160,
-                    buttonText: Label.selectLabel,
-                    data: tags
-                });
-
-                $("#loadMsg").text("");
-            }
-        });
     },
     /* 
      * 根据当前页码获取列表
@@ -102,7 +71,7 @@ admin.categoryList = {
         var that = this;
 
         $.ajax({
-            url: Label.servePath + "/console/categories/" + pageNum + "/" + Label.PAGE_SIZE + "/" + Label.WINDOW_SIZE,
+            url: Label.servePath + "/console/categories/" + pageNum + "/" + Label.PAGE_SIZE + "/" + Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
             type: "GET",
             cache: false,
             success: function(result, textStatus) {
@@ -231,11 +200,22 @@ admin.categoryList = {
                 $("#categoryName").val(result.categoryTitle).data("oId", id);
                 $("#categoryURI").val(result.categoryURI);
                 $("#categoryDesc").val(result.categoryDescription);
-                $("#categoryTags").val(result.categoryTags);
+                document.getElementById('categoryEditorTitle').textContent = Label.updateLabel + ' ' + Label.categoryLabel;
+                document.getElementById('categoryCancelEdit').hidden = false;
+                document.getElementById('categorySave').textContent = Label.updateLabel;
+                document.getElementById('categoryEditor').scrollIntoView({block: 'start', behavior: 'smooth'});
+                document.getElementById('categoryName').focus({preventScroll: true});
 
                 $("#loadMsg").text("");
             }
         });
+    },
+    cancelEdit: function () {
+        $("#categoryName").val('').data('oId', '');
+        $("#categoryURI,#categoryDesc").val('');
+        document.getElementById('categoryEditorTitle').textContent = '添加分类';
+        document.getElementById('categoryCancelEdit').hidden = true;
+        document.getElementById('categorySave').textContent = Label.saveLabel || '保存';
     },
     /*
      * 删除分类

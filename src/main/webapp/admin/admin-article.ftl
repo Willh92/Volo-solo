@@ -41,11 +41,21 @@
                   style="height: 500px;width:100%;"></div>
         </div>
     </div>
-    <div>
-        <label>${tags1WithTips1Label}</label>
+    <div class="console-tag-field">
+        <label for="articleTagInput">${tags1WithTips1Label}</label>
         <div class="tag__select">
-            <input id="tag" type="text"/>
+            <div class="console-tag-input">
+                <div id="articleTagSelection" class="console-tag-selection" aria-label="已选标签"></div>
+                <input id="articleTagInput" type="text" autocomplete="off" maxlength="200" placeholder="输入标签，按回车添加"/>
+            </div>
+            <input id="tag" type="hidden"/>
+            <button id="articleTagToggle" type="button" aria-expanded="false" aria-controls="articleTagPanel">选择标签</button>
         </div>
+        <section id="articleTagPanel" class="console-tag-panel" aria-label="已有标签" hidden>
+            <div class="console-tag-heading"><strong>已有标签</strong><span id="articleTagCount" role="status"></span></div>
+            <input id="articleTagSearch" type="search" placeholder="搜索已有标签" aria-label="搜索已有标签"/>
+            <div id="articleTagOptions" class="console-tag-options"></div>
+        </section>
     </div>
     <div>
         <label>${category1Label}</label>

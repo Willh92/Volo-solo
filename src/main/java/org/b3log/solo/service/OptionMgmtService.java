@@ -104,4 +104,37 @@ public class OptionMgmtService {
             throw new ServiceException(e);
         }
     }
+
+    /** Write the new document, its manifest and old-chunk cleanup in one transaction. */
+    public synchronized void storeDocument(final String id, final String category, final String value) throws ServiceException {
+        if (value.length() > 1_000_000) throw new IllegalArgumentException("配置内容过多。");
+        final Transaction transaction = optionRepository.beginTransaction();
+        try {
+            final JSONObject previous = optionRepository.get(id);
+            final String generation = java.util.UUID.randomUUID().toString().replace("-", "");
+            String rootValue = value;
+            if (value.length() > 9000) {
+                int offset = 0, count = 0;
+                while (offset < value.length()) {
+                    int end = Math.min(offset + 9000, value.length());
+                    if (end < value.length() && Character.isHighSurrogate(value.charAt(end - 1))) end--;
+                    optionRepository.add(new JSONObject().put(Keys.OBJECT_ID, id + "." + generation + "." + count++)
+                            .put(Option.OPTION_CATEGORY, category).put(Option.OPTION_VALUE, value.substring(offset, end)));
+                    offset = end;
+                }
+                // Stable prefix distinguishes the manifest from ordinary JSON objects.
+                rootValue = "{\"storage\":\"chunks\",\"generation\":\"" + generation + "\",\"count\":" + count + "}";
+            }
+            final JSONObject root = new JSONObject().put(Keys.OBJECT_ID, id).put(Option.OPTION_CATEGORY, category).put(Option.OPTION_VALUE, rootValue);
+            if (previous == null) optionRepository.add(root); else optionRepository.update(id, root);
+            if (previous != null && previous.optString(Option.OPTION_VALUE).startsWith("{\"storage\":\"chunks\"")) {
+                final JSONObject old = new JSONObject(previous.getString(Option.OPTION_VALUE));
+                for (int i = 0; i < old.getInt("count"); i++) optionRepository.remove(id + "." + old.getString("generation") + "." + i);
+            }
+            transaction.commit();
+        } catch (Exception failure) {
+            if (transaction.isActive()) transaction.rollback();
+            throw new ServiceException(failure);
+        } finally { optionRepository.evictOption(id); }
+    }
 }

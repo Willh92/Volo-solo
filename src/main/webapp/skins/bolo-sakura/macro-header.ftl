@@ -113,16 +113,16 @@
                     </nav>
                 </div>
             </div>
-            <div class="header-user-avatar">
-
-
-            </div>
             <div class="skin-theme-slot" data-bolo-theme-slot></div>
-            <#if interactive == "on">
+            <#if (isAdminLoggedIn!false) || (showLoginEntry!false)><div class="header-user-avatar">
+                <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" aria-label="后台管理"><img class="faa-shake animated-hover" src="${((adminUser.userAvatar)!'')?html}" width="30" height="30" alt=""/></a><#else><a href="${adminLoginURL?html}" aria-label="管理员登录"><i class="fa fa-user-circle-o" aria-hidden="true"></i></a></#if>
+                <div class="header-user-menu"><div class="herder-user-name logged-in-as"><#include "../../common-template/macro-management.ftl"><@managementLinks/></div></div>
+            </div></#if>
+
             <div class="searchbox">
                 <button class="js-toggle-search sakura-search-toggle" type="button" aria-label="${searchLabel}"><i class="fa fa-search" aria-hidden="true"></i></button>
             </div>
-            </#if>
+
         </div>
     </header>
     <div class="blank">

@@ -156,6 +156,7 @@ public class CommentConsole {
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/comments/").length());
 
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
+            requestJSONObject.put(org.b3log.solo.model.Common.KEYWORD, context.param("k") == null ? "" : context.param("k"));
             final JSONObject result = commentQueryService.getComments(requestJSONObject, Solos.isAdminLoggedIn(context));
             if (Solos.isAdminLoggedIn(context)) {
                 final java.util.Map<String, String> emails = new java.util.HashMap<>();

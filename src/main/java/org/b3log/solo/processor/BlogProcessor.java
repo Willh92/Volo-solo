@@ -84,12 +84,7 @@ public class BlogProcessor {
             context.sendError(404);
             return;
         }
-        JSONArray repositories = new JSONArray();
-        final JSONObject option = optionQueryService.getOptionById(Option.ID_C_GITHUB_REPOS);
-        if (option != null) {
-            try { repositories = new JSONArray(option.optString(Option.OPTION_VALUE, "[]")); }
-            catch (org.json.JSONException ignored) { }
-        }
+        final JSONArray repositories = gitHubRepositoryService.visibleFor(username);
         context.getResponse().setContentType("image/svg+xml; charset=UTF-8");
         context.setHeader("X-Content-Type-Options", "nosniff");
         context.setHeader("Cache-Control", "public, max-age=300");
@@ -101,6 +96,9 @@ public class BlogProcessor {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(BlogProcessor.class);
+
+    @Inject
+    private org.b3log.solo.service.GitHubRepositoryService gitHubRepositoryService;
 
     /**
      * Article query service.

@@ -38,7 +38,6 @@ import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.SoloApplication;
-import org.b3log.solo.bolo.tool.FixSizeLinkedList;
 import org.b3log.solo.log4j.RamAppender;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -279,9 +278,26 @@ public class IndexProcessor {
             return;
         }
 
-        FixSizeLinkedList<Map<String, Object>> list = RamAppender.getList();
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("result", list);
+        context.getResponse().setHeader("Cache-Control", "no-store");
+        final JSONObject jsonObject;
+        try {
+            final String page = context.getRequest().getParameter("page");
+            if (page == null) {
+                jsonObject = new JSONObject().put("result", RamAppender.getList());
+            } else {
+                final int current = Integer.parseInt(page);
+                final String size = context.getRequest().getParameter("pageSize");
+                final int pageSize = size == null ? 30 : Integer.parseInt(size);
+                final String anchor = context.getRequest().getParameter("through");
+                final long through = anchor == null || anchor.isBlank() ? Long.MAX_VALUE : Long.parseLong(anchor);
+                if (current < 1 || pageSize < 1 || pageSize > 100 || through < 1) throw new IllegalArgumentException();
+                jsonObject = RamAppender.page(current, pageSize, through);
+            }
+        } catch (IllegalArgumentException invalid) {
+            context.getResponse().setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("msg", "日志页码或每页条数无效。"));
+            return;
+        }
         jsonObject.put("freeMemNow", Runtime.getRuntime().freeMemory());
         context.renderJSON(jsonObject);
     }

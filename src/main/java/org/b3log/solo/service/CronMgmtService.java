@@ -98,7 +98,7 @@ public class CronMgmtService {
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                Stopwatchs.release();
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay, 1000 * 60 * 10, TimeUnit.MILLISECONDS);
         delay += 2000;
@@ -109,13 +109,14 @@ public class CronMgmtService {
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                Stopwatchs.release();
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
             try {
+                if (!org.b3log.solo.util.PluginUtil.fishpiPluginEnabled()) return;
                 final String fishKey = userQueryService.getFishKey();
                 if (fishKey == null || "".equals(fishKey)) {
                     return;
@@ -124,7 +125,7 @@ public class CronMgmtService {
             } catch (final Throwable e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                Stopwatchs.release();
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
@@ -135,18 +136,19 @@ public class CronMgmtService {
             } catch (final Throwable e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                Stopwatchs.release();
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
             try {
+                if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) return;
                 exportService.exportHacPai(false);
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                Stopwatchs.release();
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay + 1000 * 60 * 10, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }

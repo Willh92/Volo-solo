@@ -40,7 +40,7 @@
                     <a class="navbar-item fantastic-menu-core" href="${servePath}/category.html">${categoryLabel}</a>
                     <a class="navbar-item fantastic-menu-core" href="${servePath}/links.html">${linkLabel}</a>
                     <a class="navbar-item fantastic-menu-core" href="${servePath}/follows.html">${followLabel}</a>
-                    <#if interactive == "on"><a class="navbar-item fantastic-menu-core" href="${servePath}/search">${searchLabel}</a></#if>
+                    <a class="navbar-item fantastic-menu-core" href="${servePath}/search">${searchLabel}</a>
                     <#list pageNavigations as page>
                         <a class="navbar-item" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"
                            rel="section">
@@ -51,6 +51,7 @@
                 </div>
             </div>
             <div class="navbar-end">
+                <#include "../../common-template/macro-management.ftl"><@managementLinks linkClass="navbar-item"/>
                 <div class="skin-theme-slot fantastic-theme-desktop" data-bolo-theme-slot></div>
             </div>
         </div>

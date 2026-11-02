@@ -156,10 +156,10 @@
     </div>
     <div class="module-panel">
         <div class="module-header">
-            <h2>近期日志</h2>
+            <h2><a href="#tools/others/log">近期日志 <span class="console-log-more">查看全部 →</span></a></h2>
         </div>
         <div class="module-body padding12">
-            <div id="recentLogs"></div>
+            <div class="console-log-output"><table id="recentLogs"></table></div>
         </div>
     </div>
 </div>

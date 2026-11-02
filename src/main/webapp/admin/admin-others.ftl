@@ -20,6 +20,11 @@
 <div id="tabOthers" class="sub-tabs">
     <ul>
         <li>
+            <div id="tabOthers_maintenance">
+                <a href="#tools/others/maintenance">维护工具</a>
+            </div>
+        </li>
+        <li>
             <div id="tabOthers_data">
                 <a href="#tools/others/data">${exportDataLabel}</a>
             </div>
@@ -67,6 +72,12 @@
         <button class="fn__margin12" onclick="admin.others.exportJSON();">${exportJSONLabel}</button>
         <button class="fn__margin12" onclick="admin.others.exportHexo();">${exportHexoLabel}</button>
     </div>
+    <div id="tabOthersPanel_maintenance" class="fn__none">
+        <section class="console-utility-section"><h3>远程备份</h3><div class="console-utility-action"><p>将公开文章备份至 GitHub。使用偏好设定中的 GitHub Token，与“我的 GitHub”公开仓库展示分别管理。</p><button type="button" onclick="admin.others.maintenance(this, '/prop/backup/github/do/upload')">备份至 GitHub</button></div>
+        <#if b3logEnabled><div class="console-utility-action"><p>将公开文章备份至链滴，需已配置链滴用户名和 B3log Key。</p><button type="button" onclick="admin.others.maintenance(this, '/prop/backup/hacpai/do/upload')">备份至链滴</button></div><div class="console-utility-action"><p>重新获取链滴社区的站点数据，使用当前的链滴账号配置。</p><button type="button" onclick="admin.others.maintenance(this, '/admin/usite/refresh')">获取站点数据</button></div></#if>
+        </section>
+        <section class="console-utility-section"><h3>邮件提醒数据</h3><div class="console-utility-action"><p>清除旧评论关联的邮箱记录后，这些评论将无法再收到邮件提醒。此操作不会删除评论，请确认不再需要旧通知记录后执行。</p><button type="button" onclick="admin.others.clearMailCache(this)">清除邮箱缓存</button></div></section>
+    </div>
     <div id="tabOthersPanel_move" class="fn__none">
         ${others1Label}
     </div>
@@ -95,9 +106,11 @@
     <div id="tabOthersPanel_log" class="fn__none form">
         <div class="console-log-summary">
             <span>${others2Label} <strong id="memFree"></strong></span>
-            <div class="console-log-actions"><span><span id="now"></span> ${others3Label}</span><button onclick="admin.others.getLog()">${RefreshLabel}</button></div>
+            <div class="console-log-actions"><span><span id="now"></span> ${others3Label}</span><button type="button" onclick="admin.others.getLog(true)">${RefreshLabel}</button></div>
         </div>
+        <p class="console-form-help" id="logRetention"></p>
         <div class="console-log-output"><table id="logList"></table></div>
+        <div id="logPagination"></div>
     </div>
     <div id="tabOthersPanel_import" class="fn__none">
         <h3>${others4Label}</h3>

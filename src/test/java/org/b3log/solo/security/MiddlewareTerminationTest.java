@@ -24,6 +24,18 @@ import org.testng.annotations.Test;
 import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
 
 public class MiddlewareTerminationTest {
+    @Test public void securitySubpagesBindAsOrdinaryConsoleRoutes() throws Exception {
+        LatkeTestSupport.configure();
+        org.b3log.latke.ioc.BeanManager.start(new java.util.ArrayList<>(java.util.List.of(ConsoleAuthAdvice.class)));
+        final var console = new org.b3log.solo.processor.console.AdminConsole();
+        try {
+            org.b3log.solo.web.Routes.get("/fixture/admin-access", console::showAdminAccess);
+            org.b3log.solo.web.Routes.get("/fixture/admin-ip", console::showAdminIpBans);
+            org.b3log.solo.web.Routes.get("/fixture/admin-geo", console::showAdminGeoRules);
+            org.b3log.solo.web.Routes.get("/fixture/admin-comments", console::showAdminCommentProtection);
+        } finally { org.b3log.latke.ioc.BeanManager.close(); }
+    }
+
     @Test public void expiredPanelSessionsReturnForbiddenWithoutRunningTheController() throws Exception {
         try {
             for (String prefix : new String[]{"", "/private-panel"}) {
@@ -66,7 +78,7 @@ public class MiddlewareTerminationTest {
             Assert.assertTrue(WAF.in("198.51.100.88", "/first.html"));
             try (Exchange exchange = new Exchange("/blocked.html")) {
                 exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
-                exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { return false; } });
+                exchange.run(new InitCheckHandler() { @Override protected boolean inspectRisk(final RequestContext context) { return false; } @Override protected boolean blockedAddress(final String address) { return false; } });
                 Assert.assertEquals(exchange.raw.status().code(), 429);
                 Assert.assertEquals(exchange.raw.headers().get("Cache-Control"), "no-store");
             }
@@ -80,13 +92,13 @@ public class MiddlewareTerminationTest {
         LatkeTestSupport.configure();
         try (Exchange exchange = new Exchange("/article/comments")) {
             exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
-            exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { return true; } });
+            exchange.run(new InitCheckHandler() { @Override protected boolean inspectRisk(final RequestContext context) { return false; } @Override protected boolean blockedAddress(final String address) { return true; } });
             Assert.assertEquals(exchange.raw.status().code(), 403);
             Assert.assertNull(exchange.raw.headers().get("Location"));
         }
         try (Exchange exchange = new Exchange("/article/comments")) {
             exchange.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, false);
-            exchange.run(new InitCheckHandler() { @Override protected boolean blockedAddress(final String address) { throw new IllegalStateException("Unavailable rule store"); } });
+            exchange.run(new InitCheckHandler() { @Override protected boolean inspectRisk(final RequestContext context) { return false; } @Override protected boolean blockedAddress(final String address) { throw new IllegalStateException("Unavailable rule store"); } });
             Assert.assertEquals(exchange.raw.status().code(), 503);
         }
     }

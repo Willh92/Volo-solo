@@ -50,11 +50,56 @@ public final class GitHubStats {
     }
 
     public static String rewriteImages(final String html) {
-        if (html == null || !html.contains("github-readme-stats.vercel.app")) return html;
+        if (html == null || (!html.contains("github-readme-stats.vercel.app") && !html.contains("/github-stats/"))) return html;
         final var document = Jsoup.parseBodyFragment(html);
         document.outputSettings().prettyPrint(false);
-        document.select("img[src]").forEach(image -> image.attr("src", localSource(image.attr("src"))));
+        final java.util.Set<String> profiles = new java.util.LinkedHashSet<>();
+        for (final var image : document.select("img[src]")) {
+            final String source = localSource(image.attr("src"));
+            image.attr("src", source);
+            try {
+                final URI uri = URI.create(source);
+                final String prefix = Latkes.getContextPath() + "/github-stats/";
+                final String path = uri.getPath();
+                if (path == null || !path.startsWith(prefix) || !path.endsWith(".svg")
+                        || (uri.getRawAuthority() != null && !java.util.Objects.equals(uri.getAuthority(), URI.create(Latkes.getServePath()).getAuthority()))) continue;
+                final String username = path.substring(prefix.length(), path.length() - 4);
+                if (!validUser(username)) continue;
+                final String profile = "https://github.com/" + username;
+                profileLink(image, profile);
+                profiles.add(profile);
+            } catch (IllegalArgumentException ignored) { }
+        }
+        if (profiles.size() == 1) {
+            final String profile = profiles.iterator().next();
+            for (final var image : document.select("img[src]")) {
+                try {
+                    final String path = URI.create(image.attr("src")).getPath();
+                    if (path != null && path.endsWith("/images/github_repo.jpg")) profileLink(image, profile);
+                } catch (IllegalArgumentException ignored) { }
+            }
+            for (final var heading : document.select("h2")) {
+                if ("github stats".equalsIgnoreCase(heading.text().trim())) {
+                    if (heading.childrenSize() == 1 && "a".equals(heading.child(0).tagName())) {
+                        heading.child(0).attr("href", profile).attr("target", "_blank").attr("rel", "noopener noreferrer");
+                    } else if (heading.childrenSize() == 0) {
+                        final String text = heading.text();
+                        heading.empty().appendElement("a").attr("href", profile).attr("target", "_blank")
+                                .attr("rel", "noopener noreferrer").text(text);
+                    }
+                }
+            }
+        }
         return document.body().html();
+    }
+
+    private static void profileLink(final org.jsoup.nodes.Element image, final String profile) {
+        org.jsoup.nodes.Element link = image.closest("a");
+        if (link == null) {
+            image.wrap("<a></a>");
+            link = image.parent();
+        }
+        link.attr("href", profile).attr("target", "_blank").attr("rel", "noopener noreferrer").attr("data-github-profile", "true");
     }
 
     public static void normalizeNavigationIcon(final JSONObject page) {
@@ -79,7 +124,7 @@ public final class GitHubStats {
             stars += Math.max(0, repo.optLong("githubrepoStargazersCount"));
             forks += Math.max(0, repo.optLong("githubrepoForksCount"));
         }
-        final String details = count == 0 ? "项目同步后，在这里展示仓库统计" : count + " 个公开项目     ·     " + stars + " Stars     ·     " + forks + " Forks";
+        final String details = count + " 个公开项目     ·     " + stars + " Stars     ·     " + forks + " Forks";
         final String background = dark ? "#242b2c" : "#f5f9f5";
         final String border = dark ? "#3c4945" : "#dce8df";
         final String heading = dark ? "#d6dfda" : "#244b3f";
@@ -88,6 +133,6 @@ public final class GitHubStats {
                 + "<rect x=\"1\" y=\"1\" width=\"638\" height=\"148\" rx=\"16\" fill=\"" + background + "\" stroke=\"" + border + "\"/>"
                 + "<text x=\"28\" y=\"48\" fill=\"" + heading + "\" font-family=\"sans-serif\" font-size=\"22\" font-weight=\"600\">GitHub · " + Encode.forXmlContent(username) + "</text>"
                 + "<text x=\"28\" y=\"86\" fill=\"" + body + "\" font-family=\"sans-serif\" font-size=\"18\">" + Encode.forXmlContent(details) + "</text>"
-                + "<text x=\"28\" y=\"122\" fill=\"" + body + "\" font-family=\"sans-serif\" font-size=\"11\">来自博客已同步的公开仓库数据</text></svg>";
+                + "<text x=\"28\" y=\"122\" fill=\"" + body + "\" font-family=\"sans-serif\" font-size=\"11\">按当前展示的公开仓库汇总 · Stars 为这些仓库收到的 Star 总数</text></svg>";
     }
 }

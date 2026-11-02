@@ -31,6 +31,7 @@ final class Controllers {
         org.b3log.solo.processor.BlogProcessor.class,
         org.b3log.solo.processor.CategoryProcessor.class,
         org.b3log.solo.processor.CommentProcessor.class,
+        org.b3log.solo.processor.CaptchaProcessor.class,
         org.b3log.solo.processor.CommentEditProcessor.class,
         org.b3log.solo.processor.console.CategoryConsole.class,
         org.b3log.solo.processor.console.CommentConsole.class,

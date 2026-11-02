@@ -491,7 +491,7 @@ html[data-bolo-page='public']:is([data-bolo-skin='bolo-sakura'],[data-bolo-skin=
       width: auto; height: auto; margin: -2px -6px 0 0; padding: 3px 6px; border: 0; border-radius: 4px;
       background: transparent; color: var(--thread-reply-ink); font-size: 12px; font-weight: 400; line-height: 1.7; white-space: nowrap; opacity: 1; cursor: pointer;
       &:hover { background: var(--bolo-raised); text-decoration: underline; text-underline-offset: 3px; }
-      &:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+      &:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
     }
   }
   > [data-comment-depth]:not(.comment-body-ref) [data-comment-content] { margin: 0; font-size: 14px; line-height: 1.85; }
@@ -683,7 +683,7 @@ html[data-bolo-skin='bolo-NeoEase'] {
   .header .sub-title { display: block; margin-top: 6px; color: var(--bolo-muted); font-size: 13px; line-height: 1.6; }
   .header form { position: relative; float: none; flex: 0 0 220px; margin: 0; }
   #search, #search:focus { float: none; box-sizing: border-box; background-image: none; width: 100%; height: 40px; padding: 8px 42px 8px 12px; border-radius: 7px; box-shadow: none; }
-  #search:focus { outline: 2px solid var(--bolo-accent); outline-offset: 2px; }
+  #search:focus { outline: 1px solid var(--bolo-accent); outline-offset: 2px; }
   .neoease-search-submit { position: absolute; inset: 0 0 0 auto; display: grid; place-items: center; width: 40px; border: 0; background: transparent; color: var(--bolo-muted); cursor: pointer; }
   .neoease-search-submit svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; }
   .nav .wrapper { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -729,7 +729,9 @@ html[data-bolo-skin='bolo-NeoEase'] {
     .header .wrapper { flex-direction: column; align-items: stretch; gap: 16px; }
     .header form { flex-basis: auto; margin: 0; }
     .nav .wrapper { gap: 0; }
-    .nav ul { width: 100%; overflow-x: auto; }
+    .nav ul { width: 100%; flex-wrap: wrap; overflow: visible; }
+    .nav li { flex: 0 0 auto; max-width: 100%; }
+    .nav a, .nav .current a { height: auto; min-height: 44px; padding: 6px 10px; overflow-wrap: anywhere; }
     .nav-stats { width: 100%; justify-content: space-between; padding: 10px 0; }
     .article { padding: 18px; }
     .article h2 > .left { float: none; display: block; padding-right: 24px; }
@@ -854,7 +856,7 @@ html[data-bolo-skin='bolo-next'] {
     .post-meta { font-size: 12px; line-height: 1.8; }
   }
   .sidebar { box-sizing: border-box; padding: 18px 14px 90px; background: var(--bolo-bg); color: var(--bolo-text); border-left: 1px solid var(--bolo-line); box-shadow: -4px 0 18px #10261b08; }
-  .next-toc-card { margin: 0; padding: 0; text-align: left; background: var(--bolo-surface); border: 1px solid var(--bolo-line); border-radius: 12px; }
+  .next-toc-card { margin: 0; padding: 0; opacity: 1 !important; text-align: left; background: var(--bolo-surface); border: 1px solid var(--bolo-line); border-radius: 12px; }
   .next-toc-heading { display: flex; align-items: center; gap: 12px; padding: 16px 16px 12px; color: var(--bolo-text); }
   .next-toc-heading strong { font-size: 14px; font-weight: 600; }
   .next-toc-heading button { display: grid; place-items: center; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--bolo-muted); cursor: pointer; }
@@ -897,7 +899,7 @@ html[data-bolo-skin='bolo-yilia'] {
   .side .toc .toc__h5 a { padding-left: 48px; color: var(--bolo-muted); }
   .side .toc .article__toc a:hover { background: var(--bolo-raised); }
   .side .toc .article__toc .current > a { background: var(--bolo-raised); color: var(--bolo-accent); box-shadow: inset 2px 0 var(--bolo-accent); font-weight: 600; }
-  .side .toc :is(a,button):focus-visible { outline: 2px solid var(--bolo-accent); outline-offset: -2px; }
+  .side .toc :is(a,button):focus-visible { outline: 1px solid var(--bolo-accent); outline-offset: -2px; }
   @media (max-width: 768px) {
     .side.yilia-toc-open { padding: 1px 0; min-height: 0; }
     .side.yilia-toc-open > :not(.toc) { display: none; }
@@ -988,7 +990,7 @@ html[data-bolo-skin='bolo-sakura'] {
   .search-form .search_close { width: 40px; height: 40px; padding: 0; border: 0; border-radius: 8px; color: var(--bolo-text); background: transparent; }
   .search_close::before, .search_close::after { width: 24px; height: 2px; top: 19px; left: 8px; background-color: currentColor; }
   .search_close:hover { background-color: var(--bolo-raised); }
-  .search_close:focus-visible { outline: 2px solid var(--skin-control-accent); outline-offset: 2px; }
+  .search_close:focus-visible { outline: 1px solid var(--skin-control-accent); outline-offset: 2px; }
   &:has(.search-form.is-visible) :is(.bolo-appearance--floating,.mobile-reading-toc,#moblieGoTop) { visibility: hidden; pointer-events: none; }
   #content .reading-toc-inline { max-width: 800px; margin: 0 auto 28px; }
   .site-top .searchbox { display: flex; align-items: center; height: 75px; }
@@ -1054,7 +1056,7 @@ html[data-bolo-skin='bolo-sakura'] {
     #mo-nav .m-search form { box-sizing: border-box; width: 100%; max-width: none; margin: 0 0 20px; padding: 0; background: transparent; }
     #mo-nav .m-search input { box-sizing: border-box; width: 100%; height: 42px; padding: 10px 14px; border: 1px solid var(--bolo-line); border-radius: 8px; background: var(--bolo-raised); color: var(--bolo-text); text-align: left; font: inherit; }
     #mo-nav .m-search input::placeholder { color: var(--bolo-muted); opacity: 1; }
-    #mo-nav .m-search input:focus-visible { outline: 2px solid var(--skin-control-accent); outline-offset: 2px; }
+    #mo-nav .m-search input:focus-visible { outline: 1px solid var(--skin-control-accent); outline-offset: 2px; }
     #mo-nav ul.menu { box-sizing: border-box; width: 100%; margin: 0; padding: 0; }
     #mo-nav ul.menu > li { margin: 4px 0; padding: 0; }
     #mo-nav ul.menu > li > a { display: block; min-height: 44px; padding: 10px 12px; border-radius: 8px; color: var(--bolo-text); }

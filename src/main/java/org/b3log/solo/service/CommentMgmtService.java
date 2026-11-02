@@ -574,11 +574,10 @@ public class CommentMgmtService {
                 String id = object.optString("oId");
                 if (commpentMaps.containsKey(id)) {
                     if (LOGGER.isDebugEnabled()) {
-                        LOGGER.log(Level.DEBUG, "Import content skip: " + commentContent);
+                        LOGGER.log(Level.DEBUG, "Comment import skipped [id={0}]", id);
                     }
                     continue;
                 }
-                LOGGER.log(Level.INFO, "Import content: " + commentContent);
                 String link = String.format("https://%s/member/%s", Global.FISH_PI_DOMAIN,
                         object.optString("commentAuthorName"));
                 String avatar = object.optString("commentAuthorThumbnailURL");

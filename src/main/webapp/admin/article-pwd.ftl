@@ -17,23 +17,19 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<#include "../common-template/macro-common_page.ftl">
-
-<@commonPage "${articleViewPwdLabel}">
-<h2>
-${(articleTitle)?html}
-</h2>
-<br><br><br>
-<form class="form" method="POST" action="${servePath}/console/article-pwd">
-    <label for="pwdTyped">访问密码</label>
-    <input type="password" id="pwdTyped" name="pwdTyped" />
-    <input type="hidden" name="articleId" value="${articleId}" />
-    <div style="text-align: fn__right">
-         <#if msg??>
-            <span class="error">${msg}</span>
-         </#if>
-        <button id="confirm" type="submit">${confirmLabel}</button>
-    </div>
-</form>
-<br><br><br>
-</@commonPage>
+<#include "../common-template/macro-utility_page.ftl">
+<@utilityPage title=articleViewPwdLabel type="password">
+<section class="utility-password-card" aria-labelledby="articlePasswordTitle">
+    <div class="utility-password-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></div>
+    <p class="utility-eyebrow">受保护的文章</p>
+    <h1 id="articlePasswordTitle">${articleTitle?html}</h1>
+    <p class="utility-error-hint">这篇文章设置了访问密码，输入后即可继续阅读。</p>
+    <form method="POST" action="${servePath}/console/article-pwd" class="utility-password-form">
+        <label for="pwdTyped">访问密码</label>
+        <input type="password" id="pwdTyped" name="pwdTyped" autocomplete="current-password" maxlength="1024" required aria-describedby="articlePasswordMessage"/>
+        <input type="hidden" name="articleId" value="${articleId?html}"/>
+        <p id="articlePasswordMessage" class="utility-password-error" role="alert"><#if msg??>${msg?html}</#if></p>
+        <button id="confirm" type="submit" class="utility-button">继续阅读 <span aria-hidden="true">→</span></button>
+    </form>
+</section>
+</@utilityPage>

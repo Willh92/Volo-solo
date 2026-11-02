@@ -26,6 +26,9 @@ import org.b3log.solo.logging.Logger;
 import org.b3log.solo.service.FollowService;
 import org.json.JSONObject;
 
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
+
 /**
  *
  * @author <a href="https://github.com/gakkiyomi">Gakkiyomi (Bolo Commiter)</a>
@@ -39,14 +42,25 @@ public class FollowArticleRefresher extends AbstractEventListener<JSONObject> {
      */
     private static final Logger LOGGER = Logger.getLogger(FollowArticleRefresher.class);
 
+    private final Executor worker;
+    private final Consumer<JSONObject> refresh;
+
+    public FollowArticleRefresher() {
+        this(BackgroundEvents::follow, data -> BeanManager.getInstance().getReference(FollowService.class).syncFollowArticles(data));
+    }
+
+    FollowArticleRefresher(final Executor worker, final Consumer<JSONObject> refresh) {
+        this.worker = worker;
+        this.refresh = refresh;
+    }
+
     @Override
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
-        LOGGER.log(Level.DEBUG, "Processing an event [type={0}, data={1}] in listener [className={2}]",
-                event.getType(), data, FollowArticleRefresher.class.getName());
-        final BeanManager beanManager = BeanManager.getInstance();
-        final FollowService followService = beanManager.getReference(FollowService.class);
-        followService.syncFollowArticles(data);
+        LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), FollowArticleRefresher.class.getName());
+        // Latke serializes event listeners with page-render events. Never fetch a feed while holding that lock.
+        final JSONObject snapshot = new JSONObject(data.toString());
+        worker.execute(() -> refresh.accept(snapshot));
     }
 
     /**

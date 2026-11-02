@@ -67,6 +67,7 @@ public class LoginResponseTest {
                             .put(UserExt.USER_B3_KEY, MD5Utils.stringToMD5Twice("Password42")) : null;
                 }
             });
+            CaptchaTestSupport.prepare(processor, request);
             processor.adminLogin(context);
             Assert.assertEquals(rawResponse.status().code(), expectedStatus);
             Assert.assertNull(rawResponse.headers().get("Location"), "AJAX responses must not redirect the document");

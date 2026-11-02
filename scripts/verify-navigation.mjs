@@ -37,6 +37,21 @@ function fixture(skin,initialURL='http://localhost:18085/') {
 }
 const skins=fs.readdirSync('src/main/webapp/skins').filter(name=>fs.existsSync('src/main/webapp/skins/'+name+'/skin.properties'));
 {
+  const f=fixture('volo-studio');let selected=0,reset=0;
+  f.document.getElementById=id=>id==='comment-123'?{scrollIntoView(options){assert.equal(options.block,'start');selected++;}}:null;
+  f.window.scrollTo=()=>reset++;
+  await f.window.BoloNavigation.navigate('/article.html#comment-123');
+  assert.equal(selected,1,'Cross-page comment links must scroll to their rendered anchor');
+  assert.equal(reset,0,'An anchor target must not be reset to the top');
+  await f.window.BoloNavigation.navigate('/article.html#missing');
+  assert.equal(reset,1,'Missing anchors fall back to the top');
+  await f.window.BoloNavigation.navigate('/article.html#comment-123',{pop:true});
+  assert.equal(selected,1,'History restores its saved position instead of forcing an anchor');
+  assert.equal(reset,2);
+  await f.window.BoloNavigation.navigate('/article.html#%broken');
+  assert.equal(f.fallbacks(),0,'Malformed fragments must not force a page reload');
+}
+{
   const f=fixture('bolo-pinghsu','http://localhost:18085/?skin=bolo-pinghsu');
   await f.window.BoloNavigation.navigate('/article.html');
   assert.equal(new URL(f.calls.at(-1).href).searchParams.get('skin'),'bolo-pinghsu','Public links retain an explicit skin preview');
@@ -154,4 +169,28 @@ for(const skin of skins){
   assert(animations[1].animation.cancelled,'Leaving during animation cancels pending work');assert.equal(panel.style.overflow,'auto');
   roots=[];window.BoloTOC.refresh();assert(!events.has('scroll'),'Articles without headings must not keep directory listeners');
 }
+
+{
+  let click;const opened=[];
+  const $=value=>typeof value==='string'?{on(event,selector,handler){click=handler;}}:{hasClass:()=>!!value.prevent};
+  const sandbox={window:{open:url=>opened.push(url)},document:{},$,console,setTimeout,clearTimeout};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/common.js','utf8'),sandbox);
+  sandbox.Util.previewImg();
+  click.call({src:'/github-stats/reader.svg',closest:()=>({href:'https://github.com/reader'})});
+  assert.equal(opened.length,0,'Linked GitHub images must use their profile link instead of opening a second image tab');
+  click.call({src:'/photo.jpg',closest:()=>null});assert.deepEqual(opened,['/photo.jpg']);
+  click.call({src:'/protected.jpg',prevent:true,closest:()=>null});assert.equal(opened.length,1);
+}
+
+{
+  const attrs={'aria-expanded':'false'},states=[];
+  const button={getAttribute:name=>attrs[name],setAttribute:(name,value)=>attrs[name]=value};
+  const menu={classList:{toggle:(name,open)=>states.push([name,open])}};
+  const sandbox={document:{querySelector:()=>button,getElementById:()=>menu}};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/skins/bolo-xups/js/common.js','utf8').replace(/Skin\.init\(\)\s*$/, ''),sandbox);
+  sandbox.Skin._initMenu();button.onclick();assert.equal(attrs['aria-expanded'],'true');
+  button.onclick();assert.equal(attrs['aria-expanded'],'false');assert.deepEqual(states,[['is-open',true],['is-open',false]]);
+  sandbox.document.querySelector=()=>null;sandbox.Skin._initMenu();
+}
+
 console.log('Navigation checks passed: '+skins.length+' skins, page cleanup, history, native-link exclusions and chapter tracking');

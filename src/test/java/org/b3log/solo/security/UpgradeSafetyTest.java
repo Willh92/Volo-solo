@@ -46,6 +46,7 @@ public class UpgradeSafetyTest {
             inject(processor, "userQueryService", new UserQueryService() {
                 @Override public JSONObject getUserByName(final String name) { return null; }
             });
+            CaptchaTestSupport.prepare(processor, request);
             processor.adminLogin(new RequestContext(request, new Response(null, raw)));
             Assert.assertEquals(raw.status().code(), 401, "A wrong password after restart must stay a login failure");
         } finally {
@@ -143,7 +144,8 @@ public class UpgradeSafetyTest {
                 };
                 request.setParameter("username", username);
                 request.setParameter("password", "SetupPassword42");
-                processor.adminLogin(new RequestContext(request, new Response(null, raw)));
+                CaptchaTestSupport.prepare(processor, request);
+            processor.adminLogin(new RequestContext(request, new Response(null, raw)));
                 status[index] = raw.status().code();
             } catch (Throwable error) { failure.compareAndSet(null, error); }
             finally { http.release(); raw.release(); }

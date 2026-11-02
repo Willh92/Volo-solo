@@ -63,6 +63,7 @@
             </a>
         </nav>
         <div class="header__login">
+            <#include "../../common-template/macro-management.ftl"><@managementLinks panelIcon="icon__setting" exitIcon="icon__logout" loginIcon="icon__login"/>
             <div class="skin-theme-slot" data-bolo-theme-slot></div>
         </div>
     </div>
@@ -74,7 +75,6 @@
     <button type="button" class="icon__more" onclick="$(this).next().slideToggle()" aria-label="${(navigationLabel!'导航菜单')?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>
     <main class="module__list">
         <ul>
-
             <#list pageNavigations as page>
                 <li>
                     <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">
@@ -114,6 +114,7 @@
                     <i class="icon__rss"></i> RSS
                 </a>
             </li>
+            <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" panelIcon="icon__setting" exitIcon="icon__logout" loginIcon="icon__login"/>
         </ul>
     </main>
 </div>

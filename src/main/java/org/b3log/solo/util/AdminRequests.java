@@ -41,6 +41,7 @@ public final class AdminRequests {
     }
 
     public static void reject(final RequestContext context, final int status, final String message) {
+        org.b3log.solo.service.RiskControlService.recordFailure(context, status);
         context.setStatus(status);
         context.renderJSON(new JSONObject().put("sc", false).put("msg", message));
     }

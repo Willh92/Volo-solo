@@ -70,7 +70,7 @@ admin.pageList = {
         var that = this;
 
         $.ajax({
-            url: Label.servePath + "/console/pages/" + pageNum + "/" + Label.PAGE_SIZE + "/" + Label.WINDOW_SIZE,
+            url: Label.servePath + "/console/pages/" + pageNum + "/" + Label.PAGE_SIZE + "/" + Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
             type: "GET",
             cache: false,
             success: function (result, textStatus) {
@@ -152,6 +152,11 @@ admin.pageList = {
                 $("#pagePermalink").val(result.page.pagePermalink);
                 $("#pageTarget").val(result.page.pageOpenTarget);
                 $("#pageIcon").val(result.page.pageIcon);
+                document.getElementById('pageEditorTitle').textContent = Label.updateLabel + ' ' + Label.navLabel;
+                document.getElementById('pageCancelEdit').hidden = false;
+                document.getElementById('pageSave').textContent = Label.updateLabel;
+                document.getElementById('pageEditor').scrollIntoView({block: 'start', behavior: 'smooth'});
+                document.getElementById('pageTitle').focus({preventScroll: true});
                 $("#loadMsg").text("");
             }
         });
@@ -281,17 +286,21 @@ admin.pageList = {
                         $("#loadMsg").text("");
                         return;
                     }
-                    admin.pageList.id = "";
-
+                    admin.pageList.cancelEdit();
                     admin.pageList.getList(admin.pageList.pageInfo.currentPage);
-                    $("#pageTitle").val("");
-                    $("#pageIcon").val("");
-                    $("#pagePermalink").val("");
-                    $("#pageTarget").val("_self");
                     $("#loadMsg").text("");
                 }
             });
         }
+    },
+    cancelEdit: function () {
+        this.id = '';
+        $("#pageTitle,#pageIcon,#pagePermalink").val('');
+        $("#pageTarget").val('_self');
+        var title = document.getElementById('pageEditorTitle');
+        title.textContent = title.dataset.createLabel;
+        document.getElementById('pageCancelEdit').hidden = true;
+        document.getElementById('pageSave').textContent = Label.saveLabel || '保存';
     },
     /*
      * 验证字段

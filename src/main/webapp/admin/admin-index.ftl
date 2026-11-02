@@ -30,7 +30,11 @@
         </@head>
     </head>
     <body class="bolo-console" onhashchange="admin.setCurByHash();">
-        <div class="tip"><span id="tipMsg" role="alert"></span></div>
+        <div class="tip" id="consoleNotice" hidden>
+            <svg class="console-notice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3v1"/></svg>
+            <div class="console-notice-body"><strong id="consoleNoticeTitle">提示</strong><span id="tipMsg" role="alert" aria-atomic="true"></span></div>
+            <button type="button" class="console-notice-close" id="consoleNoticeClose" aria-label="关闭提示" title="关闭提示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+        </div>
         <div id="allPanel">
             <div id="top">
                 <a href="${servePath}/" target="_blank" rel="noopener" class="console-brand">
@@ -146,14 +150,18 @@
                             </li>
                             <li>
                                 <div id="tabs_others">
-                                    <a href="#tools/others/data">${functionalLabel}</a>
+                                    <a href="#tools/others/maintenance">${functionalLabel}</a>
                                 </div>
                             </li>
-                            <li>
-                                <div id="tabs_tool-box">
-                                    <a href="#tools/tool-box">${toolBoxLabel}</a>
-                                </div>
-                            </li>
+                        </ul>
+                    </li>
+                    <li>
+                        <div id="tabSecurityTitle" onclick="admin.collapseNav(this)"><i class="fa fa-shield"></i> 安全<span class="icon-chevron-down fn__right"></span></div>
+                        <ul id="tabSecurityMenu" class="fn__none">
+                            <li><div id="tabs_access"><a href="#security/access">访问防护</a></div></li>
+                            <li><div id="tabs_comments"><a href="#security/comments">评论防护</a></div></li>
+                            <li><div id="tabs_geo"><a href="#security/geo">地区规则</a></div></li>
+                            <li><div id="tabs_ip"><a href="#security/ip">IP 限制</a></div></li>
                         </ul>
                     </li>
                     <li>
@@ -183,6 +191,10 @@
                 <div id="tabsPanel_draft-list" class="fn__none"></div>
                 <div id="tabsPanel_link-list" class="fn__none"></div>
                 <div id="tabsPanel_follow-list" class="fn__none"></div>
+                <div id="tabsPanel_access" class="fn__none"></div>
+                <div id="tabsPanel_ip" class="fn__none"></div>
+                <div id="tabsPanel_geo" class="fn__none"></div>
+                <div id="tabsPanel_comments" class="fn__none"></div>
                 <div id="tabsPanel_preference" class="fn__none"></div>
                 <div id="tabsPanel_theme-list" class="fn__none"></div>
                 <div id="tabsPanel_category-list" class="fn__none"></div>
@@ -192,7 +204,6 @@
                 <div id="tabsPanel_comment-list" class="fn__none"></div>
                 <div id="tabsPanel_plugin-list" class="fn__none"></div>
                 <div id="tabsPanel_about" class="fn__none"></div>
-                <div id="tabsPanel_tool-box" class="fn__none"></div>
                 <div id="tabsPanel_usite" class="fn__none"></div>
             </div>
             <div class="fn__clear"></div>
@@ -263,6 +274,8 @@
         <script src="${staticServePath}/js/common.js"></script>
         <#if "" == miniPostfix>
         <script src="${staticServePath}/js/admin/admin.js"></script>
+        <script src="${staticServePath}/js/admin/pagination.js"></script>
+        <script src="${staticServePath}/js/admin/logs.js"></script>
         <script src="${staticServePath}/js/admin/editor.js"></script>
         <script src="${staticServePath}/js/admin/tablePaginate.js"></script>
         <script src="${staticServePath}/js/admin/article.js"></script>
@@ -274,6 +287,8 @@
         <script src="${staticServePath}/js/admin/linkList.js"></script>
         <script src="${staticServePath}/js/admin/followList.js"></script>
         <script src="${staticServePath}/js/admin/preference.js"></script>
+        <script src="${staticServePath}/js/admin/githubRepositories.js"></script>
+        <script src="${staticServePath}/js/admin/security.js"></script>
         <script src="${staticServePath}/js/admin/pluginList.js"></script>
         <script src="${staticServePath}/js/admin/userList.js"></script>
         <script src="${staticServePath}/js/admin/categoryList.js"></script>
@@ -282,7 +297,6 @@
         <script src="${staticServePath}/js/admin/main.js"></script>
         <script src="${staticServePath}/js/admin/about.js"></script>
         <script src="${staticServePath}/js/admin/themeList.js"></script>
-        <script src="${staticServePath}/js/admin/toolBox.js"></script>
         <script src="${staticServePath}/js/admin/usite.js"></script>
         <#else>
         <script src="${staticServePath}/js/admin/admin.min.js?${staticResourceVersion}"></script>
@@ -310,6 +324,7 @@
             }
         </script>
         <#include "admin-label.ftl">
+        <script src="${staticServePath}/js/console-select.js?${staticResourceVersion}"></script>
         <script src="${staticServePath}/js/console-theme.js?${staticResourceVersion}"></script>
         <script>
             admin.inited();

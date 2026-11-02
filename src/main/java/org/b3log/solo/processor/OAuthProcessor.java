@@ -112,6 +112,7 @@ public class OAuthProcessor {
      */
     @Inject
     private InitService initService;
+    @Inject private org.b3log.solo.service.CaptchaService captchaService;
 
     /**
      * Language service.
@@ -138,6 +139,10 @@ public class OAuthProcessor {
             context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
                     .put("msg", "登录尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
             return;
+        }
+        if (!captchaService.consume(
+                "login", clientAddress, request.getParameter("captchaId"), request.getParameter("captchaAnswer"))) {
+            loginResult(context, false, null, "验证码错误或已过期，请刷新验证码后重试。", 400); return;
         }
         if ((username != null && username.length() > 128) || (srcPassword != null && srcPassword.length() > 1024)) {
             loginResult(context, false, null, "用户名或密码格式不正确。", 400);

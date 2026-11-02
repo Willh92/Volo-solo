@@ -82,6 +82,25 @@ public class ImageResourceTest {
         Assert.assertTrue(GitHubStats.svg("willh92", repos, true).contains("#242b2c"));
     }
 
+    @Test public void githubHeaderAndCardsLinkToTheUsersProfileWithoutNestedLinks() {
+        final String body = "<p><img src='/images/github_repo.jpg'></p><h2 id='stats'>Github Stats</h2>"
+                + "<p><img src='https://github-readme-stats.vercel.app/api?username=Willh92'></p>"
+                + "<p><img src='data:image/svg+xml,example'></p>";
+        final String linked = GitHubStats.rewriteImages(body);
+        final var document = org.jsoup.Jsoup.parseBodyFragment(linked);
+        Assert.assertEquals(document.select("a[data-github-profile]").size(), 2);
+        for (final var link : document.select("a")) {
+            Assert.assertEquals(link.attr("href"), "https://github.com/Willh92");
+            Assert.assertEquals(link.attr("target"), "_blank");
+            Assert.assertTrue(link.attr("rel").contains("noopener"));
+        }
+        Assert.assertEquals(document.select("h2#stats > a").size(), 1);
+        Assert.assertEquals(GitHubStats.rewriteImages(linked), linked, "Repeated rendering must not nest profile links");
+        final String external = "<img src='https://example.test/github-stats/another.svg'>";
+        Assert.assertFalse(GitHubStats.rewriteImages(external).contains("<a"), "External lookalike paths are not local cards");
+        Assert.assertFalse(GitHubStats.rewriteImages("<img src='//example.test/github-stats/another.svg'>").contains("<a"), "Protocol-relative external cards are not local cards");
+    }
+
     @Test public void oldGithubNavigationIconsNeverPointAtTheVisitorsLocalhost() {
         final JSONObject page = new JSONObject().put("pagePermalink", "/github")
                 .put("pageIcon", "https://localhost/images/github-icon.png");

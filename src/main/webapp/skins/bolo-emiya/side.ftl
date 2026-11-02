@@ -25,7 +25,7 @@
   </section>
   </#if>
 
-  <#if interactive == "on">
+
   <section class="sidebar__container">
     <div class="header">
       <span>${searchLabel}</span>
@@ -39,7 +39,7 @@
       </form>
     </div>
   </section>
-  </#if>
+
 
   <section class="sidebar__container">
     <div class="header">

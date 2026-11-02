@@ -47,7 +47,7 @@ public class WAFlogger {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append(prefix);
         stringBuilder.append(requestIP + " accessed " + requestURL);
-        LOGGER.log(Level.INFO, stringBuilder.toString());
+        LOGGER.log(Level.DEBUG, stringBuilder.toString());
     }
 
     public static void logError(String log) {

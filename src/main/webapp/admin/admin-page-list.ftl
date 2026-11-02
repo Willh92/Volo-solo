@@ -24,7 +24,8 @@
     </div>
     <div class="fn__clear"></div>
 </div>
-<div class="form">
+<div id="pageEditor" class="form">
+    <h3 id="pageEditorTitle" data-create-label="${addPageLabel!'添加导航'}">${addPageLabel!'添加导航'}</h3>
     <div>
         <label>${title1Label}</label>
         <input id="pageTitle" type="text"/>
@@ -46,8 +47,9 @@
             <option value="_top">${targetTopLabel}</option>
         </select>
     </div>
-    <div class="fn__right">
-        <button onclick="admin.pageList.submit();">${saveLabel}</button>
+    <div class="console-form-actions">
+        <button id="pageCancelEdit" type="button" onclick="admin.pageList.cancelEdit();" hidden>${cancelLabel}</button>
+        <button id="pageSave" type="button" onclick="admin.pageList.submit();">${saveLabel}</button>
     </div>
     <div class="fn__clear"></div>
 </div>

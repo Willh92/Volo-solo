@@ -17,6 +17,7 @@ RUN cd /tmp && mvn --batch-mode package -Pci -Dlicense.skip=true && cd /opt/bolo
     && cp -f /tmp/src/main/resources/docker/* /opt/bolo/WEB-INF/classes/
 
 FROM eclipse-temurin:17-jre-jammy
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 LABEL maintainer="Liang Ding<d@b3log.org>"
 
 WORKDIR /opt/bolo/
@@ -25,4 +26,4 @@ COPY --from=MVN_BUILD /opt/bolo/ /opt/bolo/
 ENV TZ=Asia/Shanghai
 EXPOSE 8080
 
-ENTRYPOINT [ "java", "-Dfile.encoding=UTF-8", "-cp", "WEB-INF/classes:WEB-INF/lib/*:.", "org.b3log.solo.Starter" ]
+ENTRYPOINT [ "java", "-Dfile.encoding=UTF-8", "-Djava.awt.headless=true", "-cp", "WEB-INF/classes:WEB-INF/lib/*:.", "org.b3log.solo.Starter" ]

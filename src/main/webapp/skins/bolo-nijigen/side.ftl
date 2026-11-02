@@ -28,7 +28,7 @@
     </#if>
 
 
-    <#if interactive == "on">
+
     <section class="module">
         <header class="module__header">
             <form class="form" action="${servePath}/search">
@@ -37,7 +37,7 @@
             </form>
         </header>
     </section>
-    </#if>
+
     <#if noticeBoard??>
     <section class="vditor-reset module">
         <main class="module__content">

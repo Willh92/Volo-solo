@@ -46,17 +46,18 @@
         <a rel="archive" href="${servePath}/follows.html" aria-label="${followLabel}" class="vditor-tooltipped vditor-tooltipped__w">
             <i class="icon__link"></i>
         </a>
-        <#if interactive=="on">
+
             <a href="${servePath}/search" class="vditor-tooltipped__w vditor-tooltipped" aria-label="${searchLabel}">
                 <i class="icon__search"></i>
             </a>
-        </#if>
+
         <a rel="alternate" href="${servePath}/rss.xml" rel="section" aria-label="RSS" class="vditor-tooltipped vditor-tooltipped__w">
             <i class="icon__rss"></i>
         </a>
         <div class="skin-theme-slot" data-bolo-theme-slot></div>
     </div>
     <div class="jane-header-tools">
+        <#include "../../common-template/macro-management.ftl"><@managementLinks linkClass="vditor-tooltipped vditor-tooltipped__w" panelIcon="icon__setting" exitIcon="icon__logout" loginIcon="icon__login" iconsOnly=true/>
         <span onclick="Util.goTop()" data-jane-back-top
             aria-label="${putTopLabel}" class="vditor-tooltipped vditor-tooltipped__w">
             <i class="icon__up"></i>

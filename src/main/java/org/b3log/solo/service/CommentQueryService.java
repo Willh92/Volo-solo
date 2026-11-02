@@ -161,6 +161,17 @@ public class CommentQueryService {
 
             final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Comment.COMMENT_CREATED,
                     SortDirection.DESCENDING);
+            if (administrator) org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Comment.COMMENT_CONTENT,
+                    Comment.COMMENT_NAME, "commentNotifyEmail", org.b3log.solo.util.IpAddresses.COMMENT_IP);
+            else org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Comment.COMMENT_CONTENT, Comment.COMMENT_NAME);
+            final String keyword = requestJSONObject.optString(Common.KEYWORD).strip().toLowerCase(java.util.Locale.ROOT);
+            if (administrator && !keyword.isEmpty()) {
+                final var legacyIds = org.b3log.solo.bolo.prop.MailService.getUserMailContext().stream()
+                        .filter(binding -> binding.getCommentEmail() != null && binding.getCommentEmail().toLowerCase(java.util.Locale.ROOT).contains(keyword))
+                        .map(binding -> binding.getCommentId()).distinct().toList();
+                if (!legacyIds.isEmpty()) query.setFilter(org.b3log.latke.repository.CompositeFilterOperator.or(query.getFilter(),
+                        new org.b3log.latke.repository.PropertyFilter(Keys.OBJECT_ID, org.b3log.latke.repository.FilterOperator.IN, legacyIds)));
+            }
             final JSONObject result = commentRepository.get(query);
             final JSONArray comments = org.b3log.solo.util.QueryResults.array(result);
 

@@ -117,7 +117,10 @@ function miniAdmin () {
   // concat js
   const jsJqueryUpload = [
     './src/main/webapp/js/admin/admin.js',
+    './src/main/webapp/js/admin/pagination.js',
+    './src/main/webapp/js/admin/logs.js',
     './src/main/webapp/js/admin/editor.js',
+    './src/main/webapp/js/admin/tagPicker.js',
     './src/main/webapp/js/admin/tablePaginate.js',
     './src/main/webapp/js/admin/article.js',
     './src/main/webapp/js/admin/comment.js',
@@ -128,6 +131,8 @@ function miniAdmin () {
     './src/main/webapp/js/admin/linkList.js',
     './src/main/webapp/js/admin/followList.js',
     './src/main/webapp/js/admin/preference.js',
+    './src/main/webapp/js/admin/githubRepositories.js',
+    './src/main/webapp/js/admin/security.js',
     './src/main/webapp/js/admin/themeList.js',
     './src/main/webapp/js/admin/pluginList.js',
     './src/main/webapp/js/admin/userList.js',
@@ -136,7 +141,6 @@ function miniAdmin () {
     './src/main/webapp/js/admin/plugin.js',
     './src/main/webapp/js/admin/main.js',
     './src/main/webapp/js/admin/about.js',
-    './src/main/webapp/js/admin/toolBox.js',
     './src/main/webapp/js/admin/usite.js']
   return gulp.src(jsJqueryUpload).
     pipe(terser({

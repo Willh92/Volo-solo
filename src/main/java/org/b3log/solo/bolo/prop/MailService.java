@@ -173,6 +173,9 @@ public class MailService {
     /**
      * 重载邮件设置至内存
      */
+    private static volatile String senderAddress = "";
+    public static String senderAddress() { return senderAddress; }
+
     public static void loadMailSettings() {
         configured = false;
         try {
@@ -191,30 +194,15 @@ public class MailService {
                 transaction.commit();
             }
 
-            String mailBox = optionRepository.get(Option.ID_C_MAIL_BOX).optString(Option.OPTION_VALUE);
-            String mailUsername = optionRepository.get(Option.ID_C_MAIL_USERNAME).optString(Option.OPTION_VALUE);
-            String mailPassword = optionRepository.get(Option.ID_C_MAIL_PASSWORD).optString(Option.OPTION_VALUE);
-            if (!mailBox.isEmpty()) {
-                if (!mailUsername.isEmpty() && !mailPassword.isEmpty()) {
-                    final java.util.Properties smtp = switch (mailBox) {
-                        case "QQ" -> OhMyEmail.SMTP_QQ(false);
-                        case "QQ_ENT" -> OhMyEmail.SMTP_ENT_QQ(false);
-                        case "163" -> OhMyEmail.SMTP_163(false);
-                        default -> null;
-                    };
-                    if (smtp != null) {
-                        smtp.setProperty("mail.smtp.connectiontimeout", "10000");
-                        smtp.setProperty("mail.smtp.timeout", "10000");
-                        smtp.setProperty("mail.smtp.writetimeout", "10000");
-                        OhMyEmail.config(smtp, mailUsername, mailPassword);
-                        configured = true;
-                    }
-                    return;
-                }
+            final var settings = SmtpSettings.read(beanManager.getReference(org.b3log.solo.service.OptionQueryService.class).getPreference());
+            if (settings.configured()) {
+                OhMyEmail.config(settings.properties(), settings.username(), settings.password());
+                senderAddress = settings.from();
+                configured = true;
             }
         } catch (RepositoryException RE) {
             LOGGER.log(Level.WARN, "Cannot load Mailbox Settings, please check the configuration.");
-        } catch (NullPointerException NPE) {
+        } catch (IllegalArgumentException | NullPointerException NPE) {
             LOGGER.log(Level.WARN, "Cannot load Mailbox Settings, please check.");
         }
     }

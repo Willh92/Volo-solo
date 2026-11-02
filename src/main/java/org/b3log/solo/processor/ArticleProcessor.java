@@ -81,6 +81,7 @@ import org.b3log.solo.service.StatisticMgmtService;
 import org.b3log.solo.service.TagQueryService;
 import org.b3log.solo.service.UserQueryService;
 import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.LoginThrottle;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
 import org.json.JSONException;
@@ -102,6 +103,9 @@ public class ArticleProcessor {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(ArticleProcessor.class);
+
+    // Separate from administrator login: one reader cannot consume the login budget.
+    private final LoginThrottle articlePasswordThrottle = new LoginThrottle();
 
     /**
      * Article query service.
@@ -239,31 +243,32 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/console/article-pwd", method = HttpMethod.GET)
     public void showArticlePwdForm(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         final String articleId = context.param("articleId");
-        if (StringUtils.isBlank(articleId)) {
+        if (StringUtils.isBlank(articleId) || articleId.length() > 128) {
             context.sendError(404);
 
             return;
         }
 
         final JSONObject article = articleQueryService.getArticleById(articleId);
-        if (null == article) {
+        if (null == article || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED) {
             context.sendError(404);
 
             return;
         }
 
+        renderArticlePwdForm(context, article, StringUtils.isNotBlank(context.param(Keys.MSG))
+                ? langPropsService.get("passwordNotMatchLabel") : "");
+    }
+
+    protected void renderArticlePwdForm(final RequestContext context, final JSONObject article, final String message) {
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer(context, "article-pwd.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
-        dataModel.put("articleId", articleId);
+        dataModel.put("articleId", article.optString(Keys.OBJECT_ID));
         dataModel.put("articlePermalink", article.optString(Article.ARTICLE_PERMALINK));
         dataModel.put("articleTitle", article.optString(Article.ARTICLE_TITLE));
-        dataModel.put("articleAbstract", article.optString(Article.ARTICLE_ABSTRACT));
-        final String msg = context.param(Keys.MSG);
-
-        if (StringUtils.isNotBlank(msg)) {
-            dataModel.put(Keys.MSG, langPropsService.get("passwordNotMatchLabel"));
-        }
+        dataModel.put(Keys.MSG, message);
 
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         dataModel.putAll(langs);
@@ -288,14 +293,41 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/console/article-pwd", method = HttpMethod.POST)
     public void onArticlePwdForm(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        final java.net.URI publicUrl = java.net.URI.create(Latkes.getServePath());
+        final String origin = context.header("Origin");
+        if ("cross-site".equals(context.header("Sec-Fetch-Site")) || origin != null
+                && !origin.equals(publicUrl.getScheme() + "://" + publicUrl.getRawAuthority())) {
+            context.sendError(403);
+            return;
+        }
         try {
             final Request request = context.getRequest();
             final String articleId = context.param("articleId");
             final String pwdTyped = context.param("pwdTyped");
 
-            final JSONObject article = articleQueryService.getArticleById(articleId);
+            if (StringUtils.isBlank(articleId) || articleId.length() > 128 || pwdTyped == null || pwdTyped.length() > 1024) {
+                context.sendError(400);
+                return;
+            }
 
-            if (article.getString(Article.ARTICLE_VIEW_PWD).equals(pwdTyped)) {
+            final JSONObject article = articleQueryService.getArticleById(articleId);
+            if (article == null || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED) {
+                context.sendError(404);
+                return;
+            }
+
+            final LoginThrottle.Attempt attempt = articlePasswordThrottle.acquire(LoginThrottle.clientAddress(request), articleId);
+            if (attempt.retryAfter() > 0) {
+                context.setStatus(429);
+                context.setHeader("Retry-After", Integer.toString(attempt.retryAfter()));
+                renderArticlePwdForm(context, article, "访问密码尝试过于频繁，请等待 " + attempt.retryAfter() + " 秒后重试。");
+                return;
+            }
+
+            if (java.security.MessageDigest.isEqual(article.optString(Article.ARTICLE_VIEW_PWD).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    pwdTyped.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+                articlePasswordThrottle.succeeded(attempt);
                 final Session session = request.getSession();
                 if (null != session) {
                     Map<String, String> viewPwds = Solos.viewPasswords(session);
@@ -313,7 +345,7 @@ public class ArticleProcessor {
             }
 
             context.sendRedirect(Latkes.getServePath() + "/console/article-pwd?articleId="
-                    + article.optString(Keys.OBJECT_ID) + "&msg=1");
+                    + java.net.URLEncoder.encode(article.optString(Keys.OBJECT_ID), java.nio.charset.StandardCharsets.UTF_8) + "&msg=1");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Processes article view password form submits failed", e);
 
@@ -889,6 +921,8 @@ public class ArticleProcessor {
 
             return;
         }
+        // Keep the field present when the optional ToC listener is disabled.
+        article.put(Article.ARTICLE_T_TOC, (Object) Collections.emptyList());
 
         final String articleId = article.optString(Keys.OBJECT_ID);
         LOGGER.log(Level.DEBUG, "Article [id={0}]", articleId);

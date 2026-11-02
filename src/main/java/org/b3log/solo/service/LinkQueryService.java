@@ -90,6 +90,7 @@ public class LinkQueryService {
             final int windowSize = requestJSONObject.getInt(Pagination.PAGINATION_WINDOW_SIZE);
 
             final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Link.LINK_ORDER, SortDirection.ASCENDING);
+            org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Link.LINK_TITLE, Link.LINK_ADDRESS, Link.LINK_DESCRIPTION);
             final JSONObject result = linkRepository.get(query);
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);
 

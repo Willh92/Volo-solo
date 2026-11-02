@@ -27,6 +27,27 @@ import java.util.*;
 public final class RamAppender extends AbstractAppender {
     private static final FixSizeLinkedList<Map<String,Object>> list = new FixSizeLinkedList<>(100);
     private static long id;
+    private static final LogJournal journal = System.getProperty("base.dir", "").isBlank() ? null
+            : new LogJournal(java.nio.file.Path.of(System.getProperty("base.dir"), "logs"));
+    public static String bounded(final String value) {
+        if (value == null) return "";
+        return value.length() <= 4096 ? value : value.substring(0, 4096) + " …[truncated]";
+    }
+    public static synchronized org.json.JSONObject page(final int requestedPage, final int pageSize, final long through) {
+        final long snapshot = through == Long.MAX_VALUE ? Math.max(id, System.currentTimeMillis()) : through;
+        if (journal != null && journal.isAvailable()) {
+            try { return journal.page(requestedPage, pageSize, snapshot); }
+            catch (java.io.IOException | RuntimeException ignored) { /* Fall back to recent memory. */ }
+        }
+        final List<Map<String,Object>> rows = new ArrayList<>();
+        for (Map<String,Object> entry : list) if (((Number) entry.get("id")).longValue() <= snapshot) rows.add(entry);
+        Collections.reverse(rows);
+        final int pages = Math.max(1, (rows.size() + pageSize - 1) / pageSize);
+        final int page = Math.min(Math.max(1, requestedPage), pages), start = (page - 1) * pageSize;
+        return new org.json.JSONObject().put("result", rows.subList(start, Math.min(rows.size(), start + pageSize)))
+                .put("page", page).put("pageCount", pages).put("pageSize", pageSize).put("total", rows.size())
+                .put("through", snapshot).put("persistent", false);
+    }
     private RamAppender(final String name) { super(name, null, PatternLayout.createDefaultLayout(), true, org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY); }
     @PluginFactory public static RamAppender create(@PluginAttribute("name") final String name) { return new RamAppender(name); }
     public static synchronized FixSizeLinkedList<Map<String,Object>> getList() {
@@ -37,7 +58,7 @@ public final class RamAppender extends AbstractAppender {
         map.put("name", event.getLoggerName());
         map.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SS").format(new Date(event.getTimeMillis())));
         map.put("level", event.getLevel().toString());
-        map.put("message", event.getMessage().getFormattedMessage());
+        map.put("message", bounded(event.getMessage().getFormattedMessage()));
         final StackTraceElement source = event.getSource();
         map.put("methodName", source == null ? "" : source.getMethodName());
         map.put("lineNumber", source == null ? "" : String.valueOf(source.getLineNumber()));
@@ -45,9 +66,13 @@ public final class RamAppender extends AbstractAppender {
         if (event.getThrown() != null) {
             final Throwable error = event.getThrown();
             final Map<String,Object> detail = new HashMap<>();
-            detail.put("message", error.getMessage()); detail.put("class", error.getClass().getName()); detail.put("stackTrace", error.getStackTrace());
+            detail.put("message", bounded(error.getMessage())); detail.put("class", error.getClass().getName());
+            detail.put("stackTrace", Arrays.stream(error.getStackTrace()).limit(12).map(StackTraceElement::toString).map(frame -> frame.length() > 512 ? frame.substring(0, 512) : frame).toList());
             map.put("throwable", detail);
         }
-        synchronized (RamAppender.class) { map.put("id", id); id = id == Long.MAX_VALUE ? 0 : id + 1; list.add(map); }
+        synchronized (RamAppender.class) {
+            id = Math.max(id + 1, System.currentTimeMillis()); map.put("id", id); list.add(map);
+            if (journal != null) journal.append(map);
+        }
     }
 }

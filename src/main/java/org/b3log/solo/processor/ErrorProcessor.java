@@ -89,8 +89,10 @@ public class ErrorProcessor {
     @RequestProcessing(value = "/error/{statusCode}", method = {HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE})
     public void showErrorPage(final RequestContext context) {
         final String requestedStatus = context.pathVar("statusCode");
+        if (requestedStatus != null && requestedStatus.matches("[0-9]{3}")) org.b3log.solo.service.RiskControlService.recordFailure(context, Integer.parseInt(requestedStatus));
         final String statusCode = requestedStatus != null && java.util.Set.of("401", "403", "404", "410", "429", "500").contains(requestedStatus)
                 ? requestedStatus : "404";
+        org.b3log.solo.service.RiskControlService.recordFailure(context, Integer.parseInt(statusCode));
         context.setStatus(Integer.parseInt(statusCode));
         context.setHeader("Cache-Control", "no-store");
         if (StringUtils.equals("GET", context.method())) {
@@ -114,7 +116,8 @@ public class ErrorProcessor {
                 LOGGER.log(Level.ERROR, "Shows error page failed", e);
 
                 context.setRenderer(null);
-                context.setStatus(Integer.parseInt(statusCode));
+                org.b3log.solo.service.RiskControlService.recordFailure(context, Integer.parseInt(statusCode));
+        context.setStatus(Integer.parseInt(statusCode));
                 context.getResponse().setContentType("text/plain; charset=UTF-8");
                 context.sendBytes(("HTTP " + statusCode).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 context.abort();

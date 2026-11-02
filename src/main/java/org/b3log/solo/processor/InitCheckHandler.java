@@ -54,21 +54,34 @@ public class InitCheckHandler implements Handler {
 
     protected boolean blockedAddress(final String address) throws Exception {
         final BeanManager beans = BeanManager.getInstance();
-        return beans.getReference(org.b3log.solo.service.IpBanService.class).blocked(address)
-                || beans.getReference(org.b3log.solo.service.GeoAccessService.class).blocked(address);
+        return beans.getReference(org.b3log.solo.service.GeoAccessService.class).blocked(address);
+    }
+
+    protected boolean inspectRisk(final RequestContext context) throws Exception {
+        return BeanManager.getInstance().getReference(org.b3log.solo.service.RiskControlService.class).inspect(context);
     }
 
     @Override
     public void handle(final RequestContext context) {
         final String requestURI = context.requestURI();
         final String localURI = StringUtils.removeStart(requestURI, Latkes.getContextPath());
+        try {
+            if (inspectRisk(context)) {
+                context.setHeader("Cache-Control", "no-store");
+                context.sendError(403); context.abort(); return;
+            }
+        } catch (Exception unavailable) {
+            context.sendError(503); context.abort(); return;
+        }
         if (AdminPaths.legacyEntry(localURI)) {
+            org.b3log.solo.service.RiskControlService.recordFailure(context, 404);
             context.setHeader("Cache-Control", "no-store");
-            context.setStatus(404);
-            context.getResponse().setContentType("text/plain; charset=UTF-8");
-            context.sendBytes("Not Found".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            context.sendError(404);
             context.abort();
             return;
+        }
+        if (localURI.equals(AdminPaths.login())) {
+            context.attr(Keys.HttpRequest.REQUEST_URI, Latkes.getContextPath() + AdminPaths.loginRoute());
         }
         final boolean isSpiderBot = (boolean) context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT);
         LOGGER.log(Level.TRACE, "Request [URI={0}]", requestURI);

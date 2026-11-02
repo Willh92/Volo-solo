@@ -88,10 +88,34 @@ public class PreferenceMgmtService {
     public synchronized void updatePreference(final JSONObject preference) throws ServiceException {
         preference.put(Option.ID_C_HELP_IMPROVE_PLAN, "false");
         final JSONObject oldPreference = optionQueryService.getPreference();
+        if (preference.has(Option.ID_C_SHOW_LOGIN_ENTRY) && !(preference.opt(Option.ID_C_SHOW_LOGIN_ENTRY) instanceof String)) {
+            throw new ServiceException("前端登录入口开关不正确。");
+        }
+        final String loginEntry = preference.optString(Option.ID_C_SHOW_LOGIN_ENTRY,
+                "on".equals(oldPreference.optString(Option.ID_C_SHOW_LOGIN_ENTRY)) ? "on" : "off");
+        if (!java.util.Set.of("on", "off").contains(loginEntry)) throw new ServiceException("前端登录入口开关不正确。");
+        preference.put(Option.ID_C_SHOW_LOGIN_ENTRY, loginEntry);
+        if (preference.has(Option.ID_C_INTERACTIVE) && !(preference.opt(Option.ID_C_INTERACTIVE) instanceof String)) {
+            throw new ServiceException("前端评论开关不正确。");
+        }
+        final String comments = preference.optString(Option.ID_C_INTERACTIVE,
+                "off".equals(oldPreference.optString(Option.ID_C_INTERACTIVE)) ? "off" : "on");
+        if (!java.util.Set.of("on", "off").contains(comments)) throw new ServiceException("前端评论开关不正确。");
+        preference.put(Option.ID_C_INTERACTIVE, comments);
         for (final String filterKey : new String[]{Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW}) {
             if (!preference.has(filterKey)) preference.put(filterKey, oldPreference.optString(filterKey,
                     filterKey.equals(Option.ID_C_COMMENT_FILTER_BUILTIN) ? "on" : ""));
         }
+        // Settings moved out of the preference form must survive unrelated preference saves.
+        for (final String key : new String[]{Option.ID_C_WAF_POWER, Option.ID_C_WAF_CURRENT_LIMIT_SECOND,
+                Option.ID_C_WAF_CURRENT_LIMIT_TIMES, Option.ID_C_SPAM}) {
+            if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
+        }
+        if (preference.optString(Option.ID_C_MAIL_PASSWORD).isEmpty()) preference.put(Option.ID_C_MAIL_PASSWORD, oldPreference.optString(Option.ID_C_MAIL_PASSWORD));
+        for (final String key : org.b3log.solo.bolo.prop.SmtpSettings.KEYS) {
+            if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
+        }
+        org.b3log.solo.bolo.prop.SmtpSettings.read(preference).fill(preference);
         // Compile before opening a database transaction. Publish only after a successful commit.
         final CommentFilterService.Prepared filter = commentFilterService.prepare(preference);
         final Iterator<String> keys = preference.keys();
@@ -115,7 +139,7 @@ public class PreferenceMgmtService {
 
             List<String> optionList = Options.loadOptions();
             for (String i : optionList) {
-                emptyPreferenceOptSave(i, preference.optString(i));
+                if (preference.has(i)) emptyPreferenceOptSave(i, preference.optString(i));
             }
 
             transaction.commit();
@@ -155,5 +179,46 @@ public class PreferenceMgmtService {
             opt.put(Option.OPTION_VALUE, val);
             optionRepository.update(optID, opt);
         }
+    }
+
+    public static final java.util.Set<String> SECURITY_KEYS = java.util.Set.of("riskControlEnabled", "commentCaptchaEnabled", "adminLoginPath",
+            Option.ID_C_WAF_POWER, Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.ID_C_WAF_CURRENT_LIMIT_TIMES,
+            Option.ID_C_SPAM, Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW);
+
+    /** Independent updates cannot overwrite an unrelated, stale preferences form. */
+    public synchronized void updateSecurity(final JSONObject values) throws Exception {
+        for (final String key : values.keySet()) {
+            if (!SECURITY_KEYS.contains(key) || !(values.opt(key) instanceof String)) throw new IllegalArgumentException("安全配置字段不正确。");
+        }
+        for (final String key : new String[]{"riskControlEnabled", "commentCaptchaEnabled", Option.ID_C_WAF_POWER, Option.ID_C_COMMENT_FILTER_BUILTIN}) {
+            if (values.has(key) && !java.util.Set.of("on", "off").contains(values.getString(key))) throw new IllegalArgumentException("安全开关配置不正确。");
+        }
+        if (values.has("adminLoginPath")) {
+            final String path = org.b3log.solo.util.AdminPaths.validateLogin(values.getString("adminLoginPath"));
+            final String effective = path.isEmpty() ? "/start" : path;
+            final var beans = org.b3log.latke.ioc.BeanManager.getInstance();
+            if (beans.getReference(org.b3log.solo.repository.ArticleRepository.class).getByPermalink(effective) != null
+                    || beans.getReference(org.b3log.solo.repository.PageRepository.class).getByPermalink(effective) != null) {
+                throw new IllegalArgumentException("登录路径已被文章或导航页面使用。");
+            }
+            values.put("adminLoginPath", path);
+        }
+        for (final String key : new String[]{Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.ID_C_WAF_CURRENT_LIMIT_TIMES}) {
+            if (values.has(key) && (!values.getString(key).matches("[1-9][0-9]{0,5}"))) throw new IllegalArgumentException("访问次数和时间范围应为 1 至 999999 的整数。");
+        }
+        final JSONObject merged = new JSONObject(optionQueryService.getPreference().toString());
+        for (final String key : values.keySet()) merged.put(key, values.get(key));
+        CommentFilterService.validate(merged);
+        final var filter = commentFilterService.prepare(merged);
+        final var transaction = optionRepository.beginTransaction();
+        try {
+            for (final String key : values.keySet()) emptyPreferenceOptSave(key, values.getString(key));
+            transaction.commit();
+        } catch (Exception failure) { if (transaction.isActive()) transaction.rollback(); throw failure; }
+        commentFilterService.activate(filter);
+        if (values.has("riskControlEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(RiskControlService.class).configure("on".equals(values.getString("riskControlEnabled")));
+        if (values.has("commentCaptchaEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(CaptchaService.class).configureComments("on".equals(values.getString("commentCaptchaEnabled")));
+        if (values.has("adminLoginPath")) org.b3log.solo.util.AdminPaths.configureLogin(values.getString("adminLoginPath"));
+        WAF.set();
     }
 }

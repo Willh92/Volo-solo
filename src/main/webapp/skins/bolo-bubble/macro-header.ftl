@@ -54,7 +54,7 @@
                 <span>ღゝ◡╹)ノ❤️</span>
             </div>
             <div class="side__utilities">
-                <#if interactive == "on"><a href="${servePath}/search?keyword=">${searchLabel}</a></#if>
+                <a href="${servePath}/search?keyword=">${searchLabel}</a>
                 <a rel="alternate" href="${servePath}/rss.xml">RSS</a>
                 <div class="skin-theme-slot" data-bolo-theme-slot data-bolo-theme-persistent></div>
             </div>
@@ -89,6 +89,7 @@
                 <li>
                     <a href="${servePath}/follows.html">${followLabel}</a>
                 </li>
+                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li"/>
             </ul>
         </div>
     </div>

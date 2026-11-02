@@ -209,7 +209,7 @@ public class CommentIdentityTest {
             @Override public JSONObject getOptionById(final String id) { return stored[0]; }
         });
         inject(service, "optionMgmtService", new OptionMgmtService() {
-            @Override public String addOrUpdateOption(final JSONObject option) { stored[0] = new JSONObject(option.toString()); return option.getString(Keys.OBJECT_ID); }
+            @Override public void storeDocument(String id, String category, String value) { stored[0] = new JSONObject().put("oId", id).put(Option.OPTION_CATEGORY, category).put(Option.OPTION_VALUE, value); }
         });
         return service;
     }

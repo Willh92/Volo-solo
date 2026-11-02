@@ -229,6 +229,7 @@ public class CommentProcessor {
         final JSONObject requestJSONObject;
         try {
             requestJSONObject = context.requestJSON();
+            if (org.b3log.solo.service.RiskControlService.rejectCommentXss(context, requestJSONObject)) return;
             if (requestJSONObject == null || requestJSONObject.optString("oId").isBlank()
                     || requestJSONObject.optString("oId").length() > 64
                     || requestJSONObject.optString("commentContent").isBlank()
@@ -246,6 +247,11 @@ public class CommentProcessor {
 
         final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
         final boolean adminLoggedIn = Solos.isAdminLoggedIn(context);
+        if (!checkCommentCaptcha(context, requestJSONObject, adminLoggedIn)) return;
+        if (!adminLoggedIn && "off".equals(optionQueryService.getPreference().optString(Option.ID_C_INTERACTIVE, "on"))) {
+            AdminRequests.reject(context, 403, "本站暂未开放评论。");
+            return;
+        }
         String site = currentUser == null ? requestJSONObject.optString("boloSite") : currentUser.optString(User.USER_URL);
         // XSS 处理
         site = AntiXSS.getSafeStringXSS(site.trim());
@@ -429,6 +435,14 @@ public class CommentProcessor {
         } finally {
             if (!commentPersisted) commentThrottle.failed(admission);
         }
+    }
+
+    static boolean checkCommentCaptcha(final RequestContext context, final JSONObject payload, final boolean administrator) {
+        if (administrator) return true;
+        final var captcha = org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.solo.service.CaptchaService.class);
+        if (!captcha.commentsRequired()) return true;
+        if (captcha.consume("comment", LoginThrottle.clientAddress(context.getRequest()), payload.optString("captchaId"), payload.optString("captchaAnswer"))) return true;
+        AdminRequests.reject(context, 400, "验证码错误或已过期，请重新确认评论。"); return false;
     }
 
     static Map<String, Object> commentTemplateModel(final JSONObject comment) {

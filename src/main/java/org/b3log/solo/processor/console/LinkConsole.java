@@ -291,6 +291,7 @@ public class LinkConsole {
             final String requestURI = context.requestURI();
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/links/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
+            requestJSONObject.put(org.b3log.solo.model.Common.KEYWORD, context.param("k") == null ? "" : context.param("k"));
             final JSONObject result = linkQueryService.getLinks(requestJSONObject);
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);

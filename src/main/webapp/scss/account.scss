@@ -46,7 +46,7 @@ a:hover { text-decoration: underline; }
 .input-group-addon { width: 36px; flex: 0 0 36px; }
 .form-control { width: 100%; min-width: 0; padding: 13px 16px; color: $text; background: #ffffff12; border: 1px solid #ffffff65; border-radius: 8px; font: inherit; }
 .form-control::placeholder { color: #dce1e9; }
-.form-control:focus { outline: 2px solid #a8d9ff; outline-offset: 2px; }
+.form-control:focus { outline: 1px solid #a8d9ff; outline-offset: 2px; }
 .btn { padding: 13px 24px; cursor: pointer; border: 0; border-radius: 8px; background: #f5a173; color: #242638; font: inherit; font-weight: 600; line-height: 1.5; }
 .btn-block { width: 100%; }
 .footer { text-align: center; padding: 20px; }
@@ -118,7 +118,7 @@ form[aria-busy="true"] .auth-submit b { display: none; }
 .auth-card-foot svg { width: 12px; height: 12px; }
 .auth-footer { padding: 16px 0 20px; color: var(--bolo-muted); font-size: 10px; }
 .auth-footer a { color: var(--bolo-muted); }
-.auth-page :focus-visible { outline: 2px solid #438e73; outline-offset: 4px; }
+.auth-page :focus-visible { outline: 1px solid #438e73; outline-offset: 4px; }
 .auth-page input:focus-visible { outline: 0; }
 @keyframes auth-spin { to { transform: rotate(360deg); } }
 @media (max-width: 760px) {
@@ -170,3 +170,7 @@ html[data-bolo-theme='dark'] .auth-page {
 @media (prefers-reduced-motion: reduce) {
   .auth-page * { animation: none !important; transition: none !important; }
 }
+
+.auth-page .volo-captcha { margin:16px 0 0; }
+.auth-page .volo-captcha label { margin:0; }
+@media(max-width:760px) { .auth-card { padding:24px; } .auth-card-top { margin-bottom:18px; } .auth-description { margin-bottom:14px; } .auth-card label { margin-top:12px; } }

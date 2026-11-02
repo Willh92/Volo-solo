@@ -25,6 +25,8 @@
   var password = document.getElementById('password')
   var mode = form.dataset.mode
   var busy = false
+  document.getElementById('loginCaptcha').dataset.context = new URL(form.action, window.location.href).pathname.replace(/\/oauth\/bolo\/login$/, '')
+  var captcha = window.VoloCaptcha.mount(document.getElementById('loginCaptcha'), 'login', function (state) { button.disabled = busy || !state.ready || Date.now() < retryUntil })
   var retryUntil = 0
   var retryTimer
   var labels = {
@@ -62,13 +64,14 @@
     update()
     retryTimer = setInterval(update, 1000)
   }
-  if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(retryTimer) })
+  if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(retryTimer); captcha.destroy() })
   form.addEventListener('input', function () { if (!busy && Date.now() >= retryUntil) message('') })
   form.addEventListener('submit', async function (event) {
     event.preventDefault()
     if (busy || Date.now() < retryUntil) return
     message('')
-    if (!form.reportValidity()) return
+    if (!form.reportValidity() || !captcha.valid()) return
+    document.getElementById('loginCaptchaId').value = captcha.payload().captchaId
     if ((mode === '-1' || mode === '2') && !/^(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}$/.test(password.value)) {
       message('请使用 8–30 位、包含字母和数字的密码。')
       password.focus()
@@ -106,6 +109,7 @@
     } finally {
       busy = false
       button.disabled = Date.now() < retryUntil
+      if (form.isConnected) captcha.refresh()
       form.removeAttribute('aria-busy')
       if (!button.disabled) button.querySelector('span').textContent = copy[2]
     }

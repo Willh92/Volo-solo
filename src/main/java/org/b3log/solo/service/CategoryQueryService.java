@@ -214,6 +214,7 @@ public class CategoryQueryService {
 
         JSONObject result;
         try {
+            org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Category.CATEGORY_TITLE, Category.CATEGORY_URI, Category.CATEGORY_DESCRIPTION);
             result = categoryRepository.get(query);
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Gets categories failed", e);

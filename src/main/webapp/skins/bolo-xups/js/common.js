@@ -28,6 +28,7 @@
 var Skin = {
     init: function () {
         Skin._initToc()
+        Skin._initMenu()
         Util.initPjax()
         $(function () {
             var top = $('#JELON__backToTop');
@@ -36,6 +37,16 @@ var Skin = {
             $(window).on('scroll', updateTop);
             updateTop();
         });
+    },
+    _initMenu: function () {
+        var button = document.querySelector('.xups-menu-toggle');
+        var menu = document.getElementById('JELON__menu');
+        if (!button || !menu) return;
+        button.onclick = function () {
+            var open = button.getAttribute('aria-expanded') !== 'true';
+            button.setAttribute('aria-expanded', String(open));
+            menu.classList.toggle('is-open', open);
+        };
     },
     _initToc: function () {
         $('.entry-content p img:eq(0)').hide();

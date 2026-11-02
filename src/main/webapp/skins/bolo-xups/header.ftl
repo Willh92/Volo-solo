@@ -29,6 +29,7 @@
                 </div>
             </a>
             <div class="skin-theme-slot xups-theme-mobile" data-bolo-theme-slot></div>
+            <button type="button" class="xups-menu-toggle" aria-label="${(navigationLabel!'导航菜单')?html}" aria-controls="JELON__menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
         </div>
         <ul class="menu hidden" id="JELON__menu">
             <li class="item current">
@@ -44,12 +45,11 @@
                     </a>
                 </li>
             </#list>
+            <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" itemClass="item xups-management-mobile"/>
         </ul>
         <div class="profile clearfix">
             <div class="feeds fl">
-                <p class="links">
-
-                </p>
+                <#if (isAdminLoggedIn!false) || (showLoginEntry!false)><p class="links"><#include "../../common-template/macro-management.ftl"><@managementLinks/></p></#if>
                 <p class="sns">
                     <#include "../../common-template/macro-user_site.ftl"/>
                     <#if usite??>
