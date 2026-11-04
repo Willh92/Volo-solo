@@ -23,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -268,31 +270,28 @@ public class ExportService {
             return null;
         }
 
-        final String tmpDir = System.getProperty("java.io.tmpdir");
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-        String localFilePath = tmpDir + File.separator + "solo-" + date + ".sql";
-        final File localFile = new File(localFilePath);
-
+        Path tempDir = null;
         try {
-            final byte[] data = sql.getBytes("UTF-8");
+            tempDir = Files.createTempDirectory("volo-export-sql-");
+            final File localFile = tempDir.resolve("solo-" + date + ".sql").toFile();
+            final byte[] data = sql.getBytes(StandardCharsets.UTF_8);
             try (final OutputStream output = new FileOutputStream(localFile)) {
                 IOUtils.write(data, output);
             }
 
             final File zipFile = ZipUtil.zip(localFile);
-            byte[] ret;
             try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                ret = IOUtils.toByteArray(inputStream);
+                return IOUtils.toByteArray(inputStream);
             }
-
-            FileUtils.deleteQuietly(localFile);
-            FileUtils.deleteQuietly(zipFile);
-
-            return ret;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
 
             return null;
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
         }
     }
 
@@ -787,7 +786,14 @@ public class ExportService {
         final JSONArray links = getJSONs(linkRepository);
         ret.put(Link.LINKS, links);
 
-        final JSONArray options = getJSONs(optionRepository);
+        final JSONArray rawOptions = getJSONs(optionRepository);
+        final JSONArray options = new JSONArray();
+        for (int i = 0; i < rawOptions.length(); i++) {
+            final JSONObject option = rawOptions.optJSONObject(i);
+            if (option != null && !TotpService.isProtectedOptionId(option.optString(Keys.OBJECT_ID))) {
+                options.put(option);
+            }
+        }
         ret.put(Option.OPTIONS, options);
 
         final JSONArray pages = getJSONs(pageRepository);

@@ -39,7 +39,7 @@ var Admin = function () {
     // 多用户时，一般用户不能使用的功能
     this.adTools = [
         'link-list', 'preference', 'theme-list', 'page-list',
-        'access', 'ip', 'geo', 'comments', 'user-list', 'plugin-list', 'others', 'category-list', 'follow-list', 'usite']
+        'access', 'totp', 'ip', 'geo', 'comments', 'user-list', 'plugin-list', 'others', 'category-list', 'follow-list', 'usite']
 }
 
 $.extend(Admin.prototype, {

@@ -48,6 +48,9 @@ import org.json.JSONObject;
 
 import org.b3log.latke.http.Request;
 import org.b3log.latke.http.Response;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -113,6 +116,7 @@ public class OAuthProcessor {
     @Inject
     private InitService initService;
     @Inject private org.b3log.solo.service.CaptchaService captchaService;
+    @Inject private TotpService totpService;
 
     /**
      * Language service.
@@ -131,16 +135,26 @@ public class OAuthProcessor {
         final String username = request.getParameter("username");
         final String srcPassword = request.getParameter("password");
         context.getResponse().setHeader("Cache-Control", "no-store");
+        if (!sameOriginLoginRequest(context)) {
+            loginResult(context, false, null, "请求来源不正确，请从登录页重试。", 403);
+            return;
+        }
         final String clientAddress = LoginThrottle.clientAddress(request);
+        final String totpToken = request.getParameter("totpToken");
+        if (StringUtils.isNotBlank(totpToken)) {
+            verifyTotpLogin(context, request, clientAddress, totpToken);
+            return;
+        }
         final LoginThrottle.Attempt attempt = LOGIN_THROTTLE.acquire(clientAddress, username);
         if (attempt.retryAfter() > 0) {
             context.getResponse().setHeader("Retry-After", String.valueOf(attempt.retryAfter()));
+            RiskControlService.recordFailure(context, 429);
             context.setStatus(429);
             context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
                     .put("msg", "登录尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
             return;
         }
-        if (!captchaService.consume(
+        if (loginCaptchaRequired() && !captchaService.consume(
                 "login", clientAddress, request.getParameter("captchaId"), request.getParameter("captchaAnswer"))) {
             loginResult(context, false, null, "验证码错误或已过期，请刷新验证码后重试。", 400); return;
         }
@@ -188,8 +202,26 @@ public class OAuthProcessor {
                 if (user == null || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
                         && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))
                         || !username.equals(user.optString(User.USER_NAME))
-                        || !password.equals(user.optString(UserExt.USER_B3_KEY))) {
+                        || !hashesEqual(password, user.optString(UserExt.USER_B3_KEY))) {
                     loginResult(context, false, null, "用户名或密码错误。", 401);
+                    return;
+                }
+                if (totpService != null && totpService.requiresVerification(user, request)) {
+                    final String challengeToken = totpService.issueLoginChallenge(user, clientAddress);
+                    final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
+                            || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json");
+                    if (json) {
+                        context.setStatus(200);
+                        context.renderJSON(new JSONObject()
+                                .put("sc", false)
+                                .put("code", 2)
+                                .put("totpRequired", true)
+                                .put("totpToken", challengeToken)
+                                .put("rememberDays", totpService.rememberDays())
+                                .put("msg", "请输入 2FA 动态口令完成登录验证。"));
+                    } else {
+                        context.sendRedirect(Latkes.getServePath() + AdminPaths.login() + "?status=error");
+                    }
                     return;
                 }
                 Solos.login(user, context.getResponse());
@@ -203,8 +235,108 @@ public class OAuthProcessor {
         }
     }
 
+    private static boolean sameOriginLoginRequest(final RequestContext context) {
+        if ("cross-site".equalsIgnoreCase(context.header("Sec-Fetch-Site"))) {
+            return false;
+        }
+        final String origin = context.header("Origin");
+        if (StringUtils.isBlank(origin)) {
+            return true;
+        }
+        final URI publicUrl = URI.create(Latkes.getServePath());
+        final String expectedOrigin = publicUrl.getScheme() + "://" + publicUrl.getRawAuthority();
+        return expectedOrigin.equals(origin);
+    }
+
+    private static boolean hashesEqual(final String expected, final String actual) {
+        if (expected == null || actual == null || expected.isEmpty()) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                actual.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private boolean loginCaptchaRequired() {
+        if (UpgradeService.boloFastMigration) {
+            return true;
+        }
+        if (initService != null && !initService.isInited()) {
+            return true;
+        }
+        return totpService == null || !totpService.isActive();
+    }
+
+    private void verifyTotpLogin(final RequestContext context, final Request request,
+                                 final String clientAddress, final String totpToken) {
+        if (totpService == null) {
+            loginResult(context, false, null, "2FA 验证服务不可用，请刷新重试。", 503);
+            return;
+        }
+        final String targetUser = totpService.peekChallengeUsername(totpToken, clientAddress);
+        final LoginThrottle.Attempt attempt = LOGIN_THROTTLE.acquire(clientAddress, targetUser);
+        if (attempt.retryAfter() > 0) {
+            context.getResponse().setHeader("Retry-After", String.valueOf(attempt.retryAfter()));
+            RiskControlService.recordFailure(context, 429);
+            context.setStatus(429);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "验证尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
+            return;
+        }
+        final String totpCode = request.getParameter("totpCode");
+        if (StringUtils.isBlank(totpCode) || totpCode.length() > 32) {
+            RiskControlService.recordFailure(context, 400);
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("totpRequired", true).put("msg", "请输入 6 位动态口令或 8 位应急恢复码。"));
+            return;
+        }
+        try {
+            final TotpService.ChallengeResult outcome = totpService.verifyLoginChallenge(totpToken, clientAddress, totpCode);
+            if (outcome.status() == TotpService.ChallengeStatus.EXPIRED) {
+                RiskControlService.recordFailure(context, 401);
+                context.setStatus(401);
+                context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                        .put("totpExpired", true).put("msg", outcome.message()));
+                return;
+            }
+            if (outcome.status() == TotpService.ChallengeStatus.INVALID_CODE) {
+                RiskControlService.recordFailure(context, 401);
+                context.setStatus(401);
+                context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                        .put("totpRequired", true).put("msg", outcome.message()));
+                return;
+            }
+            final JSONObject user = userQueryService.getUserByName(outcome.username());
+            if (user == null || !outcome.userId().equals(user.optString(Keys.OBJECT_ID))
+                    || !hashesEqual(outcome.passwordHash(), user.optString(UserExt.USER_B3_KEY))
+                    || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
+                    && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))) {
+                RiskControlService.recordFailure(context, 401);
+                context.setStatus(401);
+                context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                        .put("totpExpired", true).put("msg", "账号状态已变更，请重新登录。"));
+                return;
+            }
+            Solos.login(user, context.getResponse());
+            if ("on".equals(request.getParameter("rememberDevice"))) {
+                totpService.writeTrustedDeviceCookie(user, context.getResponse());
+            }
+            LOGIN_THROTTLE.succeeded(attempt);
+            LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Volo auth + TOTP", outcome.username(), clientAddress);
+            loginResult(context, true, AdminPaths.panel() + "#main", "登录成功。", 200);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Bolo TOTP login failed", e);
+            loginResult(context, false, null, "暂时无法完成验证，请稍后重试。", 500);
+        }
+    }
+
     private void loginResult(final RequestContext context, final boolean success, final String target,
                              final String message, final int status) {
+        if (!success) {
+            RiskControlService.recordFailure(context, status);
+        }
         final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
                 || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json");
         if (json) {

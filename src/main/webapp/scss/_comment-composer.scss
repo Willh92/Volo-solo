@@ -43,7 +43,7 @@ html[data-bolo-page='public'] {
   .comment-composer__identity > label:last-child { grid-column: 1 / -1; }
   .comment-composer__identity :is(span,input) { display: block; min-width: 0; }
   .comment-composer__identity :is(input,#boloUser,#boloSite) { box-sizing: border-box; display: block; width: 100%; height: 38px; min-height: 0; margin: 0; padding: 8px 10px; border: 1px solid var(--bolo-line); border-radius: 7px; background: var(--bolo-surface); color: var(--bolo-text); font: inherit; }
-  .comment-composer__identity input:focus { outline: 0; border-color: var(--composer-accent); box-shadow: none; }
+  .comment-composer__identity input:is(:focus,:focus-visible) { outline: 0; outline-offset: 0; border-color: var(--composer-accent); box-shadow: none; }
   @media (max-width: 480px) { .comment-composer__identity { gap: 7px 10px; } }
   #soloEditorComment { width: 100%; min-width: 0; }
   #soloEditorComment[aria-busy='true']:not(.vditor) { display: grid; place-items: center; min-height: 180px; border: 1px solid var(--bolo-line); border-radius: 6px; color: var(--bolo-muted); }
@@ -90,7 +90,7 @@ html[data-bolo-page='public'] {
   .swal-text { display: block; max-width: none; margin: 0 24px 18px; padding: 0; color: var(--bolo-muted); font-size: 14px; line-height: 1.85; text-align: left; overflow-wrap: anywhere; }
   .swal-content { margin: 0 24px; padding: 0; }
   .swal-content__input { box-sizing: border-box; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px; border: 1px solid var(--bolo-line); border-radius: 8px; background: var(--bolo-bg); color: var(--bolo-text); font: inherit; font-size: 16px; }
-  .swal-content__input:focus { border-color: var(--skin-control-accent,var(--bolo-accent)); outline: 0; box-shadow: none; }
+  .swal-content__input:is(:focus,:focus-visible) { border-color: var(--skin-control-accent,var(--bolo-accent)); outline: 0; outline-offset: 0; box-shadow: none; }
   .swal-content__input::placeholder { color: var(--bolo-muted); opacity: 1; }
   .swal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; padding: 16px 24px; border-top: 1px solid var(--bolo-line); background: var(--bolo-raised); }
   .swal-button-container { margin: 0; }

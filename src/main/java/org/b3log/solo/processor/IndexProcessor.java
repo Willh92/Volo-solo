@@ -184,6 +184,12 @@ public class IndexProcessor {
         } else {
             dataModel.put(Common.DATA, 1);
         }
+        final TotpService totpService = beanManager.getReference(TotpService.class);
+        final boolean loginCaptchaRequired = UpgradeService.boloFastMigration
+                || !initService.isInited()
+                || totpService == null
+                || !totpService.isActive();
+        dataModel.put("loginCaptchaRequired", loginCaptchaRequired);
         dataModel.put(Common.VERSION, SoloApplication.VERSION);
         dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
         dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));

@@ -128,4 +128,67 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   security.ipBanEditing=null;values.set('#ipBanDuration','0');security.addIpBan();
   assert.equal(requests[2].type,'POST');assert.deepEqual(JSON.parse(requests[2].data),{range:'203.0.113.2',reason:'reviewed',durationSeconds:0});
 }
-console.log('Console controls: selects, tags and IP edits passed keyboard, events, safe labels, dynamic values, hidden controls, cleanup and submission checks.');
+{
+  const f=fixture(),values=new Map([['#totpEnabled','off'],['#totpScope','admin'],['#totpWindowSteps','1'],['#totpRememberDays','0'],['#totpSetupCode',''],['#totpCurrentCode',''],['#totpSettingsVerifyCode',''],['#totpActionCode','']]),requests=[];
+  const ids=['totpStatusBadge','totpSummary','totpStartSetup','totpRegenRecoveryBtn','totpUnbindBtn','totpRevokeDevicesBtn','totpIssuer','totpToggleVerifyWrap','totpSettingsVerifyCode','totpQrCode','totpRecoveryPanel','totpRecoveryList','totpSetupPanel','totpSecretText','totpSetupMeta','totpCurrentCodeWrap','totpCurrentCode','totpSetupCode','totpSetupMessage','totpSettingsMessage','totpActionPanel','totpActionTitle','totpActionDesc','totpActionSubmit','totpActionCode','totpActionMessage','totpSaveSettings','totpConfirmBtn'];
+  for(const id of ids){const el=f.document.createElement(id.endsWith('Code')||id==='totpIssuer'?'input':'div');el.id=id;f.document.body.append(el);}
+  let qrPayload=null;
+  const $=selector=>{
+    if(typeof selector==='object'&&selector&&selector.id==='totpQrCode')return{qrcode(opts){qrPayload=opts;}};
+    const id=typeof selector==='string'&&selector.startsWith('#')&&!selector.includes(',')?selector.slice(1):null;
+    const node=id?f.document.getElementById(id):null;
+    return{
+      val(v){if(v===undefined)return node&&node.tagName==='INPUT'&&!values.has(selector)?node.value:values.get(selector);values.set(selector,v);if(node)node.value=v;return this;},
+      prop(k,v){if(node&&k==='disabled')node.disabled=!!v;return this;},
+      text(v){if(node)node.textContent=v;values.set(selector,v);return this;}
+    };
+  };
+  $.fn={qrcode(){}};
+  $.ajax=req=>requests.push(req);
+  const notices=[];
+  const sandbox={$,Label:{servePath:'',staticServePath:''},admin:{register:{},showNotice:m=>notices.push(m)},document:f.document,window:{Label:{staticServePath:''}},navigator:{},confirm:()=>true};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/security.js','utf8'),sandbox);
+  assert.ok(sandbox.admin.register.totp,'TOTP security console module must register with admin router');
+  const sec=sandbox.admin.security;
+  sec.applyTotpState({enabled:false,bound:false,scope:'admin',issuer:'',defaultIssuer:'Volo',windowSteps:1,rememberDays:0,recoveryRemaining:0});
+  assert.equal(f.document.getElementById('totpStatusBadge').dataset.state,'unbound');
+  values.set('#totpEnabled','on');
+  sec.saveTotpSettings();
+  assert.equal(requests.length,0,'Cannot enable TOTP before binding a secret');
+  sec.startTotpSetup();
+  assert.equal(requests[0].url,'/console/security/totp/setup');
+  requests[0].complete();
+  requests[0].success({sc:true,setup:{setupId:'s1',secret:'JBSWY3DPEHPK3PXP',formattedSecret:'JBSW Y3DP EHPK 3PXP',otpauthUri:'otpauth://totp/Volo:admin?secret=JBSWY3DPEHPK3PXP&issuer=Volo',issuer:'Volo',account:'admin',requireCurrentCode:false}});
+  assert.equal(f.document.getElementById('totpSetupPanel').hidden,false);
+  assert.equal(qrPayload.text,'otpauth://totp/Volo:admin?secret=JBSWY3DPEHPK3PXP&issuer=Volo');
+  assert.equal(qrPayload.correctLevel,0,'Local QR renderer must use M error correction without external network requests');
+  values.set('#totpSetupCode','12345');
+  sec.confirmTotpSetup();
+  assert.equal(requests.length,1,'Non-6-digit setup code must be rejected client-side');
+  values.set('#totpSetupCode','123456');
+  sec.confirmTotpSetup();
+  assert.equal(requests[1].url,'/console/security/totp/confirm');
+  requests[1].complete();
+  requests[1].success({sc:true,msg:'ok',recoveryCodes:['ABCD-2345','<img onerror=alert(1)>'],totp:{enabled:true,bound:true,boundUser:'admin',boundAt:1700000000000,scope:'admin',issuer:'Volo',defaultIssuer:'Volo',windowSteps:1,rememberDays:14,recoveryRemaining:8}});
+  assert.equal(f.document.getElementById('totpStatusBadge').dataset.state,'enabled');
+  assert.equal(f.document.getElementById('totpRevokeDevicesBtn').hidden,false);
+  assert.equal(f.document.getElementById('totpRecoveryList').querySelectorAll('img').length,0,'Recovery codes must render via textContent only');
+  values.set('#totpEnabled','off');
+  sec.syncTotpToggleVerify();
+  assert.equal(f.document.getElementById('totpToggleVerifyWrap').hidden,false,'Toggling enabled state on a bound key must prompt for current OTP');
+  sec.saveTotpSettings();
+  assert.equal(requests.length,2,'Disabling active TOTP without verification code must not submit');
+  values.set('#totpSettingsVerifyCode','654321');
+  f.document.getElementById('totpIssuer').value='MyBlog';
+  values.set('#totpScope','all');
+  values.set('#totpWindowSteps','2');
+  values.set('#totpRememberDays','30');
+  sec.saveTotpSettings();
+  assert.deepEqual(JSON.parse(requests[2].data),{enabled:'off',scope:'all',issuer:'MyBlog',windowSteps:2,rememberDays:30,verifyCode:'654321'});
+  requests[2].complete();
+  requests[2].success({sc:true,msg:'saved',totp:{enabled:false,bound:true,boundUser:'admin',scope:'all',issuer:'MyBlog',defaultIssuer:'Volo',windowSteps:2,rememberDays:30,recoveryRemaining:8}});
+  assert.equal(f.document.getElementById('totpSettingsMessage').dataset.tone,'ok');
+  const consoleCss=fs.readFileSync('src/main/webapp/scss/console-theme.css','utf8');
+  assert(consoleCss.includes('.console-smtp-grid button.console-select-trigger'),'Grid select triggers must match adjacent input width and 44px height');
+}
+console.log('Console controls: selects, tags, IP edits and TOTP console controls passed keyboard, events, safe labels, dynamic values, hidden controls, cleanup and submission checks.');

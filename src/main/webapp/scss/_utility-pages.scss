@@ -93,7 +93,7 @@ body.utility-page {
 .utility-password-form { margin-top:28px; }
 .utility-password-form label { display:block; margin-bottom:10px; color:var(--bolo-text); font-size:13px; }
 .utility-password-form input[type=password] { box-sizing:border-box; width:100%; min-width:0; height:46px; padding:10px 12px; border:1px solid var(--bolo-line); border-radius:8px; background:var(--bolo-surface); color:var(--bolo-text); font:inherit; outline:0; box-shadow:none; }
-.utility-password-form input[type=password]:focus { border-color:var(--bolo-accent); }
+.utility-password-form input[type=password]:is(:focus,:focus-visible) { border-color:var(--bolo-accent); outline:0; outline-offset:0; box-shadow:none; }
 .utility-password-error { min-height:20px; margin:8px 0 14px; color:var(--bolo-danger,#b84454); font-size:13px; }
 .utility-password-form .utility-button { width:100%; }
 @media(max-width:620px) { .utility-password-card { padding:28px 24px; border-radius:16px; } .utility-password-card h1 { font-size:21px; } }

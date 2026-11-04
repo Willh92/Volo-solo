@@ -5,7 +5,7 @@
         <section class="console-entry-info">
             <h3>管理入口</h3>
             <p>访客登录入口由“前端开放设置”控制；已登录管理员保留后台和退出入口。在下方修改管理登录路径，保存后立即生效。后台面板路径保持不变。</p>
-            <p>当前面板：<code>${(adminPanelPath!'/admin-index.do')?html}</code><br>当前登录页：<code id="adminLoginPathCurrent">${(adminLoginPath!'/start')?html}</code></p>
+            <p>当前面板：<code>${(adminPanelPath!'/admin-index.do')?html}</code><br>当前登录页：<code id="adminLoginPathCurrent">${(adminLoginPath!'/start')?html}</code><br>2FA 验证：支持基于 TOTP 标准的动态口令保护，<a href="#security/totp">前往“2FA 验证”配置</a></p>
             <div class="console-entry-field">
                 <label for="adminLoginPathSetting">管理登录路径</label>
                 <input id="adminLoginPathSetting" type="text" maxlength="120" placeholder="/start" autocomplete="off" aria-describedby="adminLoginPathHelp"/>
@@ -33,6 +33,135 @@
         </div>
         <div class="console-form-actions"><button type="button" onclick="admin.security.saveSettings()">${updateLabel}</button></div>
 
+</div>
+</#if>
+<#if securitySection == 'totp'>
+<div data-security-page="totp" class="form">
+        <section class="console-totp" aria-labelledby="totpTitle">
+            <div class="console-totp-header">
+                <div>
+                    <h3 id="totpTitle">2FA 双重验证</h3>
+                    <p class="console-form-help">基于 RFC 6238 时间型动态口令（TOTP）标准，密钥与二维码完全在本地生成与校验，不会连接任何外部服务。兼容各类支持 TOTP 标准的 2FA 身份验证器应用与密码管理器。</p>
+                </div>
+                <span id="totpStatusBadge" class="console-totp-badge" data-state="unbound">读取中…</span>
+            </div>
+            <p id="totpSummary" class="console-totp-summary" role="status"></p>
+
+            <div class="console-totp-toolbar">
+                <button id="totpStartSetup" type="button" onclick="admin.security.startTotpSetup()" disabled>生成绑定密钥</button>
+                <button id="totpRegenRecoveryBtn" type="button" class="console-btn-secondary" onclick="admin.security.openTotpAction('recovery')" hidden>重新生成应急恢复码</button>
+                <button id="totpRevokeDevicesBtn" type="button" class="console-btn-secondary" onclick="admin.security.revokeTotpDevices()" hidden>撤销已信任浏览器</button>
+                <button id="totpUnbindBtn" type="button" class="console-btn-danger" onclick="admin.security.openTotpAction('unbind')" hidden>解绑并关闭验证</button>
+            </div>
+
+            <form id="totpSetupPanel" class="console-totp-card" onsubmit="admin.security.confirmTotpSetup(); return false;" hidden>
+                <h4 id="totpSetupHeading">扫码绑定 2FA 验证器</h4>
+                <div class="console-totp-setup-grid">
+                    <div class="console-totp-qr-wrap">
+                        <div id="totpQrCode" class="console-totp-qr" role="img" aria-label="2FA 扫码绑定二维码"></div>
+                        <small>使用身份验证器扫描上方二维码</small>
+                    </div>
+                    <div class="console-totp-setup-fields">
+                        <p class="console-form-help">无法扫码时，可在验证器中选择“输入设置密钥”（基于时间），填入以下 Base32 密钥：</p>
+                        <div class="console-totp-secret-box">
+                            <code id="totpSecretText"></code>
+                            <button type="button" class="console-btn-secondary" onclick="admin.security.copyTotpSecret()">复制密钥</button>
+                        </div>
+                        <p id="totpSetupMeta" class="console-form-help"></p>
+                        <div id="totpCurrentCodeWrap" class="console-preference-field" hidden>
+                            <label for="totpCurrentCode">原验证器动态口令或恢复码</label>
+                            <input id="totpCurrentCode" type="text" inputmode="numeric" maxlength="16" autocomplete="off" placeholder="更换密钥需验证原设备 6 位口令或 8 位恢复码"/>
+                        </div>
+                        <div class="console-preference-field">
+                            <label for="totpSetupCode">新验证器 6 位动态口令</label>
+                            <input id="totpSetupCode" type="text" inputmode="numeric" maxlength="10" autocomplete="one-time-code" placeholder="输入验证器显示的 6 位数字"/>
+                        </div>
+                        <p id="totpSetupMessage" class="console-totp-feedback" role="status"></p>
+                        <div class="console-totp-inline-actions">
+                            <button id="totpConfirmBtn" type="submit">验证并启用 2FA</button>
+                            <button type="button" class="console-btn-secondary" onclick="admin.security.cancelTotpSetup()">取消</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            <form id="totpActionPanel" class="console-totp-card" onsubmit="admin.security.submitTotpAction(); return false;" hidden>
+                <h4 id="totpActionTitle">验证身份</h4>
+                <p id="totpActionDesc" class="console-form-help"></p>
+                <div class="console-preference-field">
+                    <label for="totpActionCode">动态口令确认</label>
+                    <input id="totpActionCode" type="text" inputmode="numeric" maxlength="16" autocomplete="one-time-code" placeholder="输入 6 位动态口令"/>
+                </div>
+                <p id="totpActionMessage" class="console-totp-feedback" role="status"></p>
+                <div class="console-totp-inline-actions">
+                    <button id="totpActionSubmit" type="submit">确认执行</button>
+                    <button type="button" class="console-btn-secondary" onclick="admin.security.closeTotpAction()">取消</button>
+                </div>
+            </form>
+
+            <div id="totpRecoveryPanel" class="console-totp-card console-totp-recovery" hidden>
+                <h4>请妥善保存一次性应急恢复码</h4>
+                <p class="console-form-help">验证器设备遗失或更换时可使用应急恢复码完成登录或解绑。每组恢复码仅限使用一次，离开本页后不再展示明文：</p>
+                <div id="totpRecoveryList" class="console-totp-recovery-grid"></div>
+                <div class="console-totp-inline-actions">
+                    <button type="button" onclick="admin.security.copyRecoveryCodes()">复制全部恢复码</button>
+                    <button type="button" class="console-btn-secondary" onclick="document.getElementById('totpRecoveryPanel').hidden = true">我已妥善保存</button>
+                </div>
+            </div>
+
+            <form id="totpSettingsForm" class="console-totp-settings" onsubmit="admin.security.saveTotpSettings(); return false;">
+                <h4>2FA 配置项</h4>
+                <div class="console-smtp-grid">
+                    <div class="console-preference-field">
+                        <label for="totpEnabled">登录 2FA 状态</label>
+                        <select id="totpEnabled" onchange="admin.security.syncTotpToggleVerify()">
+                            <option value="off">停用</option>
+                            <option value="on">启用 2FA 验证</option>
+                        </select>
+                        <p class="console-form-help">绑定密钥后默认自动启用；启用期间后台登录图形验证码自动关闭，停用或解绑后自动恢复图形验证码保护。</p>
+                    </div>
+                    <div class="console-preference-field">
+                        <label for="totpScope">适用账号范围</label>
+                        <select id="totpScope">
+                            <option value="admin">仅管理员账号（推荐）</option>
+                            <option value="all">全部后台登录账号（含普通作者）</option>
+                        </select>
+                        <p class="console-form-help">仅管理员可进入安全后台管理验证器；多人独立写作时建议保持“仅管理员账号”。</p>
+                    </div>
+                    <div class="console-preference-field">
+                        <label for="totpIssuer">验证器显示名称（Issuer）</label>
+                        <input id="totpIssuer" type="text" maxlength="64" autocomplete="off" placeholder="留空默认使用博客标题或 Volo"/>
+                        <p id="totpIssuerHelp" class="console-form-help">在身份验证器列表中展示的站点标识（不含冒号），生成新绑定二维码时生效。</p>
+                    </div>
+                    <div class="console-preference-field">
+                        <label for="totpWindowSteps">时间偏移容差</label>
+                        <select id="totpWindowSteps">
+                            <option value="0">严格当前窗口（0 秒）</option>
+                            <option value="1">允许前后 1 个周期（±30 秒，推荐）</option>
+                            <option value="2">允许前后 2 个周期（±60 秒）</option>
+                        </select>
+                        <p class="console-form-help">口令每 30 秒轮换且不可重复使用；允许 ±30 秒可兼容服务器与客户端之间的轻微时钟偏差。</p>
+                    </div>
+                    <div class="console-preference-field">
+                        <label for="totpRememberDays">浏览器免二次验证时长</label>
+                        <select id="totpRememberDays">
+                            <option value="0">每次登录均需验证（最安全）</option>
+                            <option value="7">允许信任当前浏览器 7 天</option>
+                            <option value="14">允许信任当前浏览器 14 天</option>
+                            <option value="30">允许信任当前浏览器 30 天</option>
+                        </select>
+                        <p class="console-form-help">开启后登录页可勾选免二次验证，有效期内仅跳过动态口令，仍需校验用户名与密码。</p>
+                    </div>
+                    <div id="totpToggleVerifyWrap" class="console-preference-field" hidden>
+                        <label for="totpSettingsVerifyCode">切换状态口令确认</label>
+                        <input id="totpSettingsVerifyCode" type="text" inputmode="numeric" maxlength="16" autocomplete="one-time-code" placeholder="输入 6 位动态口令（停用时也可用恢复码）"/>
+                        <p class="console-form-help">启用或停用 2FA 前需校验动态口令，防止未授权修改与误锁账号。</p>
+                    </div>
+                </div>
+                <p id="totpSettingsMessage" class="console-totp-feedback" role="status"></p>
+                <div class="console-form-actions"><button id="totpSaveSettings" type="submit" disabled>保存 2FA 配置</button></div>
+            </form>
+        </section>
 </div>
 </#if>
 <#if securitySection == 'ip'>
@@ -123,7 +252,7 @@
             <textarea id="commentFilterAllow" rows="3" maxlength="20000" aria-describedby="commentFilterAllowHelp"></textarea>
             <p id="commentFilterAllowHelp" class="console-form-help">用于允许被误判的词语或短语，填写方式同上；同一条评论中的其他过滤词仍会拦截。</p>
         </div>
-        <div class="console-preference-field"><label for="commentCaptchaEnabled">游客评论验证码</label><select id="commentCaptchaEnabled"><option value="on">启用（默认）</option><option value="off">停用</option></select><p class="console-form-help">游客发表和编辑评论时验证本地图片验证码，已登录管理员免验证。管理员登录验证码始终启用。</p></div>
+        <div class="console-preference-field"><label for="commentCaptchaEnabled">游客评论验证码</label><select id="commentCaptchaEnabled"><option value="on">启用（默认）</option><option value="off">停用</option></select><p class="console-form-help">游客发表和编辑评论时验证本地图片验证码，已登录管理员免验证。后台登录在未启用 2FA 时开启图片验证码，启用 2FA 后自动关闭。</p></div>
         <div class="console-form-actions"><button type="button" onclick="admin.security.saveSettings()">${updateLabel}</button></div>
 </div>
 </#if>

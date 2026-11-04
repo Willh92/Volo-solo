@@ -22,6 +22,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.apache.commons.io.FileUtils;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -288,6 +292,7 @@ public class AdminConsole {
     }
 
     public void showAdminAccess(final RequestContext context) { showAdminSecurityFunction(context, "access"); }
+    public void showAdminTotp(final RequestContext context) { showAdminSecurityFunction(context, "totp"); }
     public void showAdminIpBans(final RequestContext context) { showAdminSecurityFunction(context, "ip"); }
     public void showAdminGeoRules(final RequestContext context) { showAdminSecurityFunction(context, "geo"); }
     public void showAdminCommentProtection(final RequestContext context) { showAdminSecurityFunction(context, "comments"); }
@@ -313,17 +318,12 @@ public class AdminConsole {
      */
     public void exportSQL(final RequestContext context) {
         final Response response = context.getResponse();
+        response.setHeader("Cache-Control", "no-store");
 
         if (!Solos.isAdminLoggedIn(context)) {
             context.sendError(401);
 
             return;
-        }
-
-        try {
-            Thread.sleep(550); // 前端会发两次请求，文件名又是按秒生成，所以两次请求需要错开至少 1 秒避免文件名冲突
-        } catch (final Exception e) {
-            // ignored
         }
 
         final byte[] zipData = exportService.exportSQL();
@@ -347,27 +347,20 @@ public class AdminConsole {
      */
     public void exportJSON(final RequestContext context) {
         final Response response = context.getResponse();
+        response.setHeader("Cache-Control", "no-store");
         if (!Solos.isAdminLoggedIn(context)) {
             context.sendError(401);
 
             return;
         }
 
-        try {
-            Thread.sleep(550);
-        } catch (final Exception e) {
-            // ignored
-        }
-
-        final String tmpDir = System.getProperty("java.io.tmpdir");
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-        String localFilePath = tmpDir + File.separator + "solo-" + date + ".json";
-        LOGGER.trace(localFilePath);
-        final File localFile = new File(localFilePath);
-
+        Path tempDir = null;
         try {
+            tempDir = Files.createTempDirectory("volo-export-json-");
+            final File localFile = tempDir.resolve("solo-" + date + ".json").toFile();
             final JSONObject json = exportService.getJSONs();
-            final byte[] data = json.toString(4).getBytes("UTF-8");
+            final byte[] data = json.toString(4).getBytes(StandardCharsets.UTF_8);
 
             try (final OutputStream output = new FileOutputStream(localFile)) {
                 IOUtils.write(data, output);
@@ -383,8 +376,10 @@ public class AdminConsole {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
-
-            return;
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
         }
     }
 
@@ -395,29 +390,23 @@ public class AdminConsole {
      */
     public void exportHexo(final RequestContext context) {
         final Response response = context.getResponse();
+        response.setHeader("Cache-Control", "no-store");
         if (!Solos.isAdminLoggedIn(context)) {
             context.sendError(401);
 
             return;
         }
 
-        try {
-            Thread.sleep(550);
-        } catch (final Exception e) {
-            // ignored
-        }
-
-        final String tmpDir = System.getProperty("java.io.tmpdir");
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-        String localFilePath = tmpDir + File.separator + "solo-hexo-" + date;
-        LOGGER.trace(localFilePath);
-        final File localFile = new File(localFilePath);
-
-        final File postDir = new File(localFilePath + File.separator + "posts");
-        final File passwordDir = new File(localFilePath + File.separator + "passwords");
-        final File draftDir = new File(localFilePath + File.separator + "drafts");
-
+        Path tempDir = null;
         try {
+            tempDir = Files.createTempDirectory("volo-export-hexo-");
+            final File localFile = tempDir.resolve("solo-hexo-" + date).toFile();
+            final String localFilePath = localFile.getPath();
+            final File postDir = new File(localFilePath + File.separator + "posts");
+            final File passwordDir = new File(localFilePath + File.separator + "passwords");
+            final File draftDir = new File(localFilePath + File.separator + "drafts");
+
             if (!postDir.mkdirs()) {
                 throw new Exception("Create dir [" + postDir.getPath() + "] failed");
             }
@@ -449,8 +438,10 @@ public class AdminConsole {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
-
-            return;
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
         }
     }
 

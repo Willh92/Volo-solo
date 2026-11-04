@@ -6,6 +6,9 @@ import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.service.CaptchaService;
+import org.b3log.solo.service.InitService;
+import org.b3log.solo.service.TotpService;
+import org.b3log.solo.service.UpgradeService;
 import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.LoginThrottle;
 import org.b3log.solo.util.Solos;
@@ -15,12 +18,22 @@ import org.json.JSONObject;
 @Singleton
 public class CaptchaProcessor {
     @Inject private CaptchaService captchaService;
+    @Inject private InitService initService;
+    @Inject private TotpService totpService;
+    private boolean loginRequired() {
+        if (UpgradeService.boloFastMigration) return true;
+        if (initService != null && !initService.isInited()) return true;
+        return totpService == null || !totpService.isActive();
+    }
     @RequestProcessing(value = "/captcha", method = HttpMethod.GET)
     public void challenge(final RequestContext context) {
         context.setHeader("Cache-Control", "no-store");
         try {
             final String purpose = context.param("purpose");
             if (!java.util.Set.of("login", "comment").contains(purpose == null ? "" : purpose)) throw new IllegalArgumentException("验证码用途不正确。");
+            if (purpose.equals("login") && !loginRequired()) {
+                context.renderJSON(new JSONObject().put("sc", true).put("required", false)); return;
+            }
             if (purpose.equals("comment") && (Solos.isAdminLoggedIn(context) || !captchaService.commentsRequired())) {
                 context.renderJSON(new JSONObject().put("sc", true).put("required", false)); return;
             }

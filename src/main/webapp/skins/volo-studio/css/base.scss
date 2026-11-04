@@ -26,7 +26,7 @@ a { color: var(--bolo-accent); text-decoration: none; }
 a:hover { text-decoration: none; }
 button, input, textarea { font: inherit; }
 img { max-width: 100%; }
-::selection { background: #94b8a75e; }
+::selection { background: color-mix(in srgb, var(--bolo-accent) 24%, transparent); }
 .studio-skip, .studio-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .studio-skip:focus { position: fixed; top: 10px; left: 10px; width: auto; height: auto; padding: 12px; clip-path: none; z-index: 1000; background: var(--bolo-surface); border: 1px solid var(--bolo-line); }
 .studio-header { position: sticky; top: 0; z-index: 80; border-bottom: 1px solid var(--bolo-line); background: var(--bolo-bg); }
@@ -217,7 +217,7 @@ body:has(#soloEditor.is-open) .studio-back-top, body:has(.vditor--fullscreen) .s
 .pagination__item--current { color: #f5f8f5; border-color: var(--bolo-button); background: var(--bolo-button); }
 .article__toc { background: var(--bolo-surface); border: 1px solid var(--bolo-line); border-radius: 10px; max-height: calc(100dvh - 120px); overflow: auto; }
 :is(a,button,input,textarea):focus-visible { outline: 1px solid var(--bolo-accent); outline-offset: 3px; }
-.form :is(input,textarea):focus { outline: 0; outline-offset: 0; border-color: var(--bolo-accent); box-shadow: none; }
+.form :is(input,textarea):is(:focus,:focus-visible) { outline: 0; outline-offset: 0; border-color: var(--bolo-accent); box-shadow: none; }
 .form .vditor { @include editor-frame(8px); }
 .comments__title + #comments { margin-bottom: 20px; }
 .comments__title + #comments:empty { margin-bottom: 0; }

@@ -63,18 +63,19 @@ for (const [stored,hour,dark,expected] of [['light',23,true,'light'],['dark',12,
 
 // Execute the real login handler with synthetic DOM elements and fetch responses.
 const account = fs.readFileSync('src/main/webapp/js/account-login.js','utf8');
-function loginEnvironment(response) {
+function loginEnvironment(response, captchaPayload={captchaId:"test-id"}) {
   const handlers={};const span={textContent:''};const attrs={};let now=0;let tick;let calls=0;
   const form={dataset:{mode:'1'},action:'https://example.test/oauth/bolo/login',classList:{toggle(){}},reportValidity:()=>true,
     addEventListener(type,listener){handlers[type]=listener;},setAttribute(name,value){attrs[name]=value;},removeAttribute(name){delete attrs[name];}};
   const status={textContent:'',hidden:true};const password={value:'wrong',type:'password',setAttribute(){},focus(){this.focused=true;}};
-  const button={disabled:false,querySelector:()=>span};const nodes={loginCaptcha:{dataset:{}},loginCaptchaId:{},loginForm:form,loginBtn:button,status,password,loginHeading:{},loginDescription:{},togglePassword:{addEventListener(){}}};
+  const totpToken={value:'',disabled:true},totpCode={value:'',disabled:true,setAttribute(){},focus(){},select(){}},totpFields={hidden:true},primaryFields={hidden:false},totpRememberRow={hidden:true},rememberDevice={checked:false,disabled:true},totpRememberLabel={textContent:''},totpBackBtn={hidden:true,addEventListener(){}};
+  const button={disabled:false,querySelector:()=>span};const nodes={loginCaptcha:{dataset:{}},loginCaptchaId:{},loginForm:form,loginBtn:button,status,password,loginHeading:{},loginDescription:{},togglePassword:{addEventListener(){}},loginPrimaryFields:primaryFields,loginTotpFields:totpFields,loginTotpToken:totpToken,totpCode,totpRememberRow,rememberDevice,totpRememberLabel,totpBackBtn};
   const navigations=[];
-  const sandbox={window:{VoloCaptcha:{mount:()=>({valid:()=>true,payload:()=>({captchaId:"test-id"}),refresh(){},destroy(){}})},location:{href:'https://example.test/start',origin:'https://example.test'},BoloNavigation:{onLeave(){},navigate:async (...args)=>navigations.push(args)}},document:{getElementById:id=>nodes[id]},URL,URLSearchParams,
-    FormData:class { *[Symbol.iterator](){yield ['username','test-user'];yield ['password',password.value];}},
+  const sandbox={window:{VoloCaptcha:{mount:()=>({valid:()=>true,payload:()=>captchaPayload,refresh(){},destroy(){}})},location:{href:'https://example.test/start',origin:'https://example.test'},BoloNavigation:{onLeave(){},navigate:async (...args)=>navigations.push(args)}},document:{getElementById:id=>nodes[id]},URL,URLSearchParams,
+    FormData:class { *[Symbol.iterator](){if(!password.disabled){yield ['username','test-user'];yield ['password',password.value];}if(!totpToken.disabled){yield ['totpToken',totpToken.value];yield ['totpCode',totpCode.value];}}},
     Date:{now:()=>now},setInterval(callback){tick=callback;return 1;},clearInterval(){},fetch:async()=>{calls++;return typeof response === 'function' ? response() : response;}};
   vm.runInNewContext(account,sandbox);
-  return {submit:()=>{const event={preventDefault(){event.prevented=true;}};return handlers.submit(event).then(()=>assert(event.prevented));},status,button,span,password,navigations,calls:()=>calls,advance(seconds){now+=seconds*1000;tick?.();}};
+  return {submit:()=>{const event={preventDefault(){event.prevented=true;}};return handlers.submit(event).then(()=>assert(event.prevented));},status,button,span,password,captchaId:nodes.loginCaptchaId,totpCode,totpFields,totpRememberRow,navigations,calls:()=>calls,advance(seconds){now+=seconds*1000;tick?.();}};
 }
 {
   const test=loginEnvironment({status:401,ok:false,json:async()=>({sc:false,msg:'用户名或密码错误。'})});await test.submit();
@@ -94,6 +95,16 @@ function loginEnvironment(response) {
 {
   let finish;const test=loginEnvironment(()=>new Promise(resolve=>{finish=resolve;}));const first=test.submit();const second=test.submit();assert.equal(test.calls(),1);
   finish({status:401,ok:false,json:async()=>({sc:false})});await Promise.all([first,second]);cases++;
+}
+{
+  const queue=[{status:200,ok:true,json:async()=>({sc:false,totpRequired:true,totpToken:'tok-1',rememberDays:14})},{status:200,ok:true,json:async()=>({sc:true,redirect:'/admin-index.do#main'})}];
+  const test=loginEnvironment(()=>queue.shift(), {});
+  await test.submit();
+  assert.equal(test.captchaId.value,'','Disabled login captcha when TOTP is enabled must not set undefined captchaId');
+  assert.equal(test.totpFields.hidden,false,'Password step with TOTP enabled enters second-step OTP challenge');
+  assert.equal(test.totpRememberRow.hidden,false);
+  test.totpCode.value='123';await test.submit();assert.equal(test.calls(),1,'Malformed OTP code must not post to server');
+  test.totpCode.value='123 456';await test.submit();assert.equal(test.calls(),2);assert.equal(test.navigations.length,1);cases++;
 }
 
 function luminance(hex){const rgb=hex.replace('#','').match(/../g).map(value=>parseInt(value,16)/255).map(value=>value<=.04045?value/12.92:((value+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;}
@@ -126,6 +137,10 @@ root.walkRules(rule=>{
 });
 assert.equal(palettes.length,12,'Six palettes in both light and dark modes');
 assert(contrast('#d6dfda','#242b2c')>=7);assert(contrast('#a1b1a8','#242b2c')>=4.5);assert(contrast('#60756a','#f6f7f3')>=4.5);
+assert(contrast('#b34656','#ffffff')>=4.5,'Light --bolo-danger must remain readable on light surfaces');
+assert(contrast('#e09aa4','#242b2c')>=4.5,'Dark --bolo-danger must remain readable on dark surfaces');
+assert(contrast('#dec48f','#242b2c')>=4.5,'Dark paused 2FA badge must remain readable on dark surfaces');
+assert(css.includes('--bolo-danger: #b34656')&&css.includes('--bolo-danger: #e09aa4'),'Shared CSS must define light and dark --bolo-danger tokens');
 const skins=fs.readdirSync('src/main/webapp/skins').filter(name=>fs.existsSync('src/main/webapp/skins/'+name+'/skin.properties'));
 for(const skin of skins)if(skin!=='volo-studio')assert(css.includes('[data-bolo-skin='+skin+']')||css.includes('[data-bolo-skin="'+skin+'"]'),skin+' requires a scoped adaptation');
 assert(!fs.readFileSync('src/main/webapp/skins/bolo-butterfly/footer.ftl','utf8').includes('setInterval'));

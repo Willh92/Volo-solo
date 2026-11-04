@@ -311,7 +311,344 @@ admin.security = {
       success:function (result) { $('#tipMsg').text(result.msg); if (result.sc && data.adminLoginPath != null) $('#adminLoginPathCurrent').text(data.adminLoginPath.trim() || '/start') },error:function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '安全配置保存失败。') }})
   }
 }
+Object.assign(admin.security, {
+  totpState: null,
+  totpSetup: null,
+  totpRecoveryPlain: [],
+  totpActionType: '',
+  totpRequest: 0,
+  totpBusy: false,
+  loadTotp: function () {
+    var root = document.querySelector('[data-security-page="totp"]'), that = this
+    if (!root) return
+    var revision = ++this.totpRequest
+    $('#totpSaveSettings,#totpStartSetup').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp', type: 'GET', cache: false,
+      complete: function () { $('#loadMsg').text('') },
+      success: function (result) {
+        if (!root.isConnected || revision !== that.totpRequest) return
+        if (!result.sc || !result.totp) { $('#totpSummary').text(result.msg || '无法读取 2FA 状态。'); return }
+        that.applyTotpState(result.totp)
+      },
+      error: function (xhr) {
+        if (root.isConnected && revision === that.totpRequest) {
+          $('#totpSummary').text(xhr.responseJSON?.msg || '无法读取 2FA 状态，请刷新重试。')
+        }
+      }
+    })
+  },
+  applyTotpState: function (totp) {
+    this.totpState = totp
+    var badge = document.getElementById('totpStatusBadge')
+    if (badge) {
+      var state = totp.enabled ? 'enabled' : totp.bound ? 'paused' : 'unbound'
+      badge.dataset.state = state
+      badge.textContent = totp.enabled ? '已启用' : totp.bound ? '已绑定（停用）' : '未配置'
+    }
+    var summary = document.getElementById('totpSummary')
+    if (summary) {
+      if (totp.bound) {
+        var boundTime = totp.boundAt ? new Date(totp.boundAt) : null
+        var timeText = boundTime && Number.isFinite(boundTime.getTime()) ? ' · 绑定于 ' + boundTime.toLocaleString() : ''
+        summary.textContent = '绑定账号：' + (totp.boundUser || '管理员') + timeText + ' · 剩余应急恢复码：' + (totp.recoveryRemaining || 0) + ' / 8 组'
+      } else {
+        summary.textContent = '当前尚未绑定 2FA 密钥。请点击下方“生成绑定密钥”使用身份验证器应用扫码绑定。'
+      }
+    }
+    var setupBtn = document.getElementById('totpStartSetup')
+    if (setupBtn) {
+      setupBtn.disabled = false
+      setupBtn.textContent = totp.bound ? '更换绑定密钥' : '生成绑定密钥'
+    }
+    var regenBtn = document.getElementById('totpRegenRecoveryBtn')
+    if (regenBtn) regenBtn.hidden = !totp.bound
+    var unbindBtn = document.getElementById('totpUnbindBtn')
+    if (unbindBtn) unbindBtn.hidden = !totp.bound
+    var revokeBtn = document.getElementById('totpRevokeDevicesBtn')
+    if (revokeBtn) revokeBtn.hidden = !(totp.bound && Number(totp.rememberDays) > 0)
+    $('#totpEnabled').val(totp.enabled ? 'on' : 'off')
+    $('#totpScope').val(totp.scope || 'admin')
+    var issuerInput = document.getElementById('totpIssuer')
+    if (issuerInput) {
+      issuerInput.value = totp.issuer || ''
+      issuerInput.placeholder = '留空默认使用 ' + (totp.defaultIssuer || 'Volo')
+    }
+    $('#totpWindowSteps').val(String(totp.windowSteps == null ? 1 : totp.windowSteps))
+    $('#totpRememberDays').val(String(totp.rememberDays || 0))
+    $('#totpSaveSettings').prop('disabled', false)
+    this.syncTotpToggleVerify()
+  },
+  syncTotpToggleVerify: function () {
+    var wrap = document.getElementById('totpToggleVerifyWrap')
+    var input = document.getElementById('totpSettingsVerifyCode')
+    if (!wrap || !this.totpState) return
+    var targetOn = $('#totpEnabled').val() === 'on'
+    var changed = this.totpState.bound && (targetOn !== !!this.totpState.enabled)
+    wrap.hidden = !changed
+    if (!changed && input) input.value = ''
+  },
+  renderTotpQr: function (uri) {
+    var host = document.getElementById('totpQrCode')
+    if (!host) return
+    host.replaceChildren()
+    function draw () {
+      if (!host.isConnected || typeof $.fn.qrcode !== 'function') return
+      host.replaceChildren()
+      $(host).qrcode({render: 'canvas', width: 176, height: 176, correctLevel: 0, background: '#ffffff', foreground: '#14201b', text: uri})
+    }
+    if (typeof $.fn.qrcode === 'function') {
+      draw()
+    } else {
+      $.ajax({method: 'GET', url: (window.Label && Label.staticServePath || '') + '/js/lib/jquery.qrcode.min.js', dataType: 'script', cache: true, success: draw})
+    }
+  },
+  startTotpSetup: function () {
+    if (this.totpBusy) return
+    var that = this
+    this.totpBusy = true
+    this.closeTotpAction()
+    $('#totpStartSetup').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/setup', type: 'POST', contentType: 'application/json', data: '{}',
+      complete: function () { that.totpBusy = false; $('#totpStartSetup').prop('disabled', false) },
+      success: function (result) {
+        if (!result.sc || !result.setup) { $('#totpSettingsMessage').text(result.msg || '生成绑定密钥失败。'); return }
+        that.totpSetup = result.setup
+        document.getElementById('totpRecoveryPanel').hidden = true
+        var panel = document.getElementById('totpSetupPanel')
+        panel.hidden = false
+        document.getElementById('totpSecretText').textContent = result.setup.formattedSecret || result.setup.secret
+        document.getElementById('totpSetupMeta').textContent = '验证器标识：' + result.setup.issuer + ' · 账号：' + result.setup.account + ' · 周期：30 秒（6 位）'
+        var currentWrap = document.getElementById('totpCurrentCodeWrap')
+        currentWrap.hidden = !result.setup.requireCurrentCode
+        document.getElementById('totpCurrentCode').value = ''
+        document.getElementById('totpSetupCode').value = ''
+        document.getElementById('totpSetupMessage').textContent = ''
+        that.renderTotpQr(result.setup.otpauthUri)
+        panel.scrollIntoView({behavior: 'smooth', block: 'nearest'})
+        ;(result.setup.requireCurrentCode ? document.getElementById('totpCurrentCode') : document.getElementById('totpSetupCode')).focus()
+      },
+      error: function (xhr) { $('#totpSettingsMessage').text(xhr.responseJSON?.msg || '生成绑定密钥失败，请重试。') }
+    })
+  },
+  cancelTotpSetup: function () {
+    this.totpSetup = null
+    var panel = document.getElementById('totpSetupPanel')
+    if (panel) panel.hidden = true
+    var qr = document.getElementById('totpQrCode')
+    if (qr) qr.replaceChildren()
+    var msg = document.getElementById('totpSetupMessage')
+    if (msg) msg.textContent = ''
+  },
+  confirmTotpSetup: function () {
+    if (this.totpBusy || !this.totpSetup) return
+    var code = ($('#totpSetupCode').val() || '').replace(/\s+/g, '')
+    if (!/^[0-9]{6}$/.test(code)) {
+      $('#totpSetupMessage').text('请输入验证器显示的 6 位数字口令。')
+      document.getElementById('totpSetupCode').focus()
+      return
+    }
+    var currentCode = ($('#totpCurrentCode').val() || '').trim()
+    if (this.totpSetup.requireCurrentCode && !currentCode) {
+      $('#totpSetupMessage').text('更换密钥需输入原验证器口令或应急恢复码。')
+      document.getElementById('totpCurrentCode').focus()
+      return
+    }
+    var that = this
+    this.totpBusy = true
+    $('#totpConfirmBtn').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/confirm', type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({setupId: this.totpSetup.setupId, code: code, currentCode: currentCode}),
+      complete: function () { that.totpBusy = false; $('#totpConfirmBtn').prop('disabled', false) },
+      success: function (result) {
+        if (!result.sc) { $('#totpSetupMessage').text(result.msg || '验证失败，请重试。'); return }
+        that.cancelTotpSetup()
+        that.applyTotpState(result.totp)
+        that.showRecoveryCodes(result.recoveryCodes || [])
+        $('#totpSettingsMessage').text('')
+        if (admin.showNotice) admin.showNotice(result.msg || '2FA 已绑定并启用。')
+        else $('#tipMsg').text(result.msg || '2FA 已绑定并启用。')
+      },
+      error: function (xhr) { $('#totpSetupMessage').text(xhr.responseJSON?.msg || '验证失败，请确认口令与系统时间后重试。') }
+    })
+  },
+  showRecoveryCodes: function (codes) {
+    this.totpRecoveryPlain = Array.isArray(codes) ? codes.slice() : []
+    var panel = document.getElementById('totpRecoveryPanel'), list = document.getElementById('totpRecoveryList')
+    if (!panel || !list || !this.totpRecoveryPlain.length) return
+    list.replaceChildren()
+    var that = this
+    this.totpRecoveryPlain.forEach(function (item) {
+      list.append(that.element('code', item, 'console-totp-recovery-item'))
+    })
+    panel.hidden = false
+    panel.scrollIntoView({behavior: 'smooth', block: 'nearest'})
+  },
+  saveTotpSettings: function () {
+    if (this.totpBusy || !this.totpState) return
+    var enabledVal = $('#totpEnabled').val(), msgNode = document.getElementById('totpSettingsMessage')
+    if (msgNode) delete msgNode.dataset.tone
+    if (enabledVal === 'on' && !this.totpState.bound) {
+      $('#totpSettingsMessage').text('请先点击上方“生成绑定密钥”完成扫码绑定后再启用 2FA。')
+      return
+    }
+    var verifyCode = ($('#totpSettingsVerifyCode').val() || '').trim()
+    if (this.totpState.bound && ((enabledVal === 'on') !== !!this.totpState.enabled) && !verifyCode) {
+      $('#totpSettingsMessage').text(enabledVal === 'on' ? '重新启用 2FA 需输入当前 6 位动态口令。' : '停用 2FA 需输入当前 6 位动态口令或应急恢复码。')
+      document.getElementById('totpSettingsVerifyCode').focus()
+      return
+    }
+    var payload = {
+      enabled: enabledVal,
+      scope: $('#totpScope').val(),
+      issuer: $('#totpIssuer').val(),
+      windowSteps: Number($('#totpWindowSteps').val()),
+      rememberDays: Number($('#totpRememberDays').val()),
+      verifyCode: verifyCode
+    }
+    var that = this
+    this.totpBusy = true
+    $('#totpSaveSettings').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/settings', type: 'PUT', contentType: 'application/json',
+      data: JSON.stringify(payload),
+      complete: function () { that.totpBusy = false; $('#totpSaveSettings').prop('disabled', false) },
+      success: function (result) {
+        var feedback = document.getElementById('totpSettingsMessage')
+        if (!result.sc) { if (feedback) { feedback.dataset.tone = 'error'; feedback.textContent = result.msg || '配置保存失败。' } return }
+        document.getElementById('totpSettingsVerifyCode').value = ''
+        if (feedback) { feedback.dataset.tone = 'ok'; feedback.textContent = result.msg || '配置已保存。' }
+        that.applyTotpState(result.totp)
+        if (admin.showNotice) admin.showNotice(result.msg || '2FA 配置已保存。')
+      },
+      error: function (xhr) { var feedback = document.getElementById('totpSettingsMessage'); if (feedback) { feedback.dataset.tone = 'error'; feedback.textContent = xhr.responseJSON?.msg || '2FA 配置保存失败，请重试。' } }
+    })
+  },
+  openTotpAction: function (type) {
+    if (this.totpBusy || !this.totpState || !this.totpState.bound) return
+    if (type === 'unbind' && !this.totpState.enabled) {
+      if (!confirm('确定解绑并清除已保存的 2FA 密钥与恢复码？')) return
+      this.executeTotpUnbind('')
+      return
+    }
+    this.cancelTotpSetup()
+    this.totpActionType = type
+    var panel = document.getElementById('totpActionPanel')
+    document.getElementById('totpActionTitle').textContent = type === 'recovery' ? '重新生成应急恢复码' : '解绑并关闭 2FA'
+    document.getElementById('totpActionDesc').textContent = type === 'recovery'
+      ? '生成新的 8 组应急恢复码后，原有未使用的恢复码将立即作废。请输入验证器当前显示的 6 位动态口令确认：'
+      : '解绑后后台登录将不再要求动态口令，原有密钥与应急恢复码会被清除。请输入 6 位动态口令或应急恢复码确认：'
+    document.getElementById('totpActionSubmit').textContent = type === 'recovery' ? '确认重新生成' : '确认解绑'
+    document.getElementById('totpActionCode').value = ''
+    document.getElementById('totpActionMessage').textContent = ''
+    panel.hidden = false
+    panel.scrollIntoView({behavior: 'smooth', block: 'nearest'})
+    document.getElementById('totpActionCode').focus()
+  },
+  closeTotpAction: function () {
+    this.totpActionType = ''
+    var panel = document.getElementById('totpActionPanel')
+    if (panel) panel.hidden = true
+    var code = document.getElementById('totpActionCode')
+    if (code) code.value = ''
+    var msg = document.getElementById('totpActionMessage')
+    if (msg) msg.textContent = ''
+  },
+  submitTotpAction: function () {
+    if (this.totpBusy || !this.totpActionType) return
+    var code = ($('#totpActionCode').val() || '').trim()
+    if (!code) {
+      $('#totpActionMessage').text('请输入动态口令确认操作。')
+      document.getElementById('totpActionCode').focus()
+      return
+    }
+    if (this.totpActionType === 'unbind') {
+      this.executeTotpUnbind(code)
+      return
+    }
+    var that = this
+    this.totpBusy = true
+    $('#totpActionSubmit').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/recovery', type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({verifyCode: code}),
+      complete: function () { that.totpBusy = false; $('#totpActionSubmit').prop('disabled', false) },
+      success: function (result) {
+        if (!result.sc) { $('#totpActionMessage').text(result.msg || '生成恢复码失败。'); return }
+        that.closeTotpAction()
+        that.applyTotpState(result.totp)
+        that.showRecoveryCodes(result.recoveryCodes || [])
+        if (admin.showNotice) admin.showNotice(result.msg || '应急恢复码已更新。')
+      },
+      error: function (xhr) { $('#totpActionMessage').text(xhr.responseJSON?.msg || '动态口令校验失败，请重试。') }
+    })
+  },
+  executeTotpUnbind: function (verifyCode) {
+    var that = this
+    this.totpBusy = true
+    $('#totpActionSubmit,#totpUnbindBtn').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/unbind', type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({verifyCode: verifyCode}),
+      complete: function () { that.totpBusy = false; $('#totpActionSubmit,#totpUnbindBtn').prop('disabled', false) },
+      success: function (result) {
+        if (!result.sc) { $('#totpActionMessage').text(result.msg || '解绑失败。'); return }
+        that.closeTotpAction()
+        document.getElementById('totpRecoveryPanel').hidden = true
+        that.applyTotpState(result.totp)
+        if (admin.showNotice) admin.showNotice(result.msg || '已解绑 2FA。')
+      },
+      error: function (xhr) {
+        if (!document.getElementById('totpActionPanel').hidden) {
+          $('#totpActionMessage').text(xhr.responseJSON?.msg || '解绑失败，请重试。')
+        } else {
+          $('#totpSettingsMessage').text(xhr.responseJSON?.msg || '解绑失败，请重试。')
+        }
+      }
+    })
+  },
+  revokeTotpDevices: function () {
+    if (this.totpBusy) return
+    var that = this
+    this.totpBusy = true
+    $('#totpRevokeDevicesBtn').prop('disabled', true)
+    $.ajax({url: Label.servePath + '/console/security/totp/revoke-devices', type: 'POST', contentType: 'application/json', data: '{}',
+      complete: function () { that.totpBusy = false; $('#totpRevokeDevicesBtn').prop('disabled', false) },
+      success: function (result) {
+        if (result.sc) {
+          that.applyTotpState(result.totp)
+          if (admin.showNotice) admin.showNotice(result.msg || '已撤销全部记住的浏览器。')
+        } else {
+          $('#totpSettingsMessage').text(result.msg || '操作未完成。')
+        }
+      },
+      error: function (xhr) { $('#totpSettingsMessage').text(xhr.responseJSON?.msg || '撤销失败，请重试。') }
+    })
+  },
+  copyText: function (value, label) {
+    if (!value) return
+    function done () {
+      if (admin.showNotice) admin.showNotice(label + '已复制到剪贴板。')
+      else $('#tipMsg').text(label + '已复制到剪贴板。')
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(done).catch(function () {})
+      return
+    }
+    var area = document.createElement('textarea')
+    area.value = value
+    area.style.position = 'fixed'
+    area.style.opacity = '0'
+    document.body.append(area)
+    area.select()
+    try { document.execCommand('copy'); done() } catch (ignored) {}
+    area.remove()
+  },
+  copyTotpSecret: function () {
+    if (this.totpSetup && this.totpSetup.secret) this.copyText(this.totpSetup.secret, '绑定密钥')
+  },
+  copyRecoveryCodes: function () {
+    if (this.totpRecoveryPlain && this.totpRecoveryPlain.length) this.copyText(this.totpRecoveryPlain.join('\n'), '应急恢复码')
+  }
+})
 admin.register.access = {obj:admin.security,init:function () { this.loadSettings('access') },refresh:function () { this.loadSettings('access') }}
+admin.register.totp = {obj:admin.security,init:function () { this.loadTotp() },refresh:function () { this.loadTotp() }}
 admin.register.ip = {obj:admin.security,init:admin.security.initIpBans,refresh:admin.security.loadIpBans}
 admin.register.geo = {obj:admin.security,init:admin.security.loadGeoAccess,refresh:admin.security.loadGeoAccess}
 admin.register.comments = {obj:admin.security,init:function () { this.loadSettings('comments') },refresh:function () { this.loadSettings('comments') }}

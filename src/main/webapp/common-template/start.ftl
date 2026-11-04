@@ -53,23 +53,39 @@
             <h2 id="loginHeading">欢迎回来</h2>
             <p class="auth-description" id="loginDescription">登录你的博客，继续上次的创作。</p>
             <form id="loginForm" action="${servePath}/oauth/bolo/login" method="POST" data-mode="${data?html}">
-                <label for="username">用户名</label>
-                <div class="auth-input">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
-                    <input id="username" name="username" type="text" autocomplete="username" placeholder="输入你的用户名" required autofocus/>
+                <div id="loginPrimaryFields">
+                    <label for="username">用户名</label>
+                    <div class="auth-input">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+                        <input id="username" name="username" type="text" autocomplete="username" placeholder="输入你的用户名" required autofocus/>
+                    </div>
+                    <label for="password">密码</label>
+                    <div class="auth-input">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入你的密码" aria-describedby="status" required/>
+                        <button class="auth-password-toggle" id="togglePassword" type="button" aria-label="显示密码" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                    <input type="hidden" name="captchaId" id="loginCaptchaId"/>
+                    <div id="loginCaptcha" data-context="${contextPath!''}"<#if !(loginCaptchaRequired!true)> hidden</#if>></div>
                 </div>
-                <label for="password">密码</label>
-                <div class="auth-input">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-                    <input id="password" name="password" type="password" autocomplete="current-password" placeholder="输入你的密码" aria-describedby="status" required/>
-                    <button class="auth-password-toggle" id="togglePassword" type="button" aria-label="显示密码" aria-pressed="false">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
+                <div id="loginTotpFields" class="auth-totp-fields" hidden>
+                    <input type="hidden" name="totpToken" id="loginTotpToken" disabled/>
+                    <label for="totpCode">2FA 动态口令</label>
+                    <div class="auth-input auth-totp-input">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="M12 8v4.5"/><circle cx="12" cy="15.8" r=".7" fill="currentColor"/></svg>
+                        <input id="totpCode" name="totpCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="16" placeholder="输入 6 位动态口令或 8 位恢复码" aria-describedby="totpHint status" disabled/>
+                    </div>
+                    <p id="totpHint" class="auth-totp-hint">请打开身份验证器应用输入当前 6 位 2FA 动态口令；不便使用验证器时也可输入一次性应急恢复码。</p>
+                    <label id="totpRememberRow" class="auth-totp-remember" hidden>
+                        <input id="rememberDevice" name="rememberDevice" type="checkbox" value="on" disabled/>
+                        <span id="totpRememberLabel">在此浏览器免 2FA 二次验证</span>
+                    </label>
                 </div>
-                <input type="hidden" name="captchaId" id="loginCaptchaId"/>
-                <div id="loginCaptcha" data-context="${contextPath!''}"></div>
                 <div id="status" class="auth-error" role="alert" aria-live="polite" hidden></div>
                 <button id="loginBtn" class="auth-submit" type="submit"><i aria-hidden="true"></i><span>登录管理后台</span><b aria-hidden="true">→</b></button>
+                <button id="totpBackBtn" class="auth-secondary" type="button" hidden>← 返回重新输入账号密码</button>
             </form>
             <div class="auth-card-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg> 仅限博客管理者访问</div>
         </section>

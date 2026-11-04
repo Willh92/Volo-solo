@@ -45,6 +45,7 @@ final class Controllers {
         org.b3log.solo.processor.console.RepairConsole.class,
         org.b3log.solo.processor.console.SkinConsole.class,
         org.b3log.solo.processor.console.TagConsole.class,
+        org.b3log.solo.processor.console.TotpConsole.class,
         org.b3log.solo.processor.console.UserConsole.class,
         org.b3log.solo.processor.ErrorProcessor.class,
         org.b3log.solo.processor.FeedProcessor.class,

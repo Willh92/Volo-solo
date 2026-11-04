@@ -159,7 +159,8 @@ function miniAdminLibs () {
     './src/main/webapp/js/lib/jquery/jquery.min.js',
     './src/main/webapp/js/lib/jquery/jquery.bowknot.min.js',
     './src/main/webapp/js/lib/jquery/jquery.showtips.js',
-    './src/main/webapp/js/lib/jquery/jquery.cookie.min.js']
+    './src/main/webapp/js/lib/jquery/jquery.cookie.min.js',
+    './src/main/webapp/js/lib/jquery.qrcode.min.js']
   return gulp.src(jsJqueryUpload).
     pipe(terser({
       output: {
@@ -203,6 +204,8 @@ function minSkinJS () {
 function cleanProcess () {
   return deleteAsync([
     './src/main/webapp/js/*.min.js',
+    './src/main/webapp/js/admin/admin.min.js',
+    './src/main/webapp/js/lib/compress/*.min.js',
     './src/main/webapp/skins/*/js/*.min.js'])
 }
 

@@ -1,10 +1,10 @@
-/* Paint focus above child surfaces; inset shadows are hidden by autofilled inputs. */
+/* Single-stroke border focus; inset shadows are hidden by autofilled inputs. */
 @mixin compound-focus($accent: var(--bolo-accent)) {
   box-shadow: none;
   &:focus-within {
     border-color: $accent;
-    outline: 1px solid $accent;
-    outline-offset: -1px;
+    outline: 0;
+
     box-shadow: none;
   }
 }

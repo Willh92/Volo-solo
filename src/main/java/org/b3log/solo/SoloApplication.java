@@ -395,6 +395,7 @@ public final class SoloApplication {
         Routes.get("/admin-preference.do", adminConsole::showAdminPreferenceFunction);
         Routes.get("/admin-security.do", adminConsole::showAdminAccess);
         Routes.get("/admin-access.do", adminConsole::showAdminAccess);
+        Routes.get("/admin-totp.do", adminConsole::showAdminTotp);
         Routes.get("/admin-ip.do", adminConsole::showAdminIpBans);
         Routes.get("/admin-geo.do", adminConsole::showAdminGeoRules);
         Routes.get("/admin-comments.do", adminConsole::showAdminCommentProtection);

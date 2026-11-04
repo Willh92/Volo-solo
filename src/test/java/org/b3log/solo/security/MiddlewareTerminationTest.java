@@ -30,6 +30,7 @@ public class MiddlewareTerminationTest {
         final var console = new org.b3log.solo.processor.console.AdminConsole();
         try {
             org.b3log.solo.web.Routes.get("/fixture/admin-access", console::showAdminAccess);
+            org.b3log.solo.web.Routes.get("/fixture/admin-totp", console::showAdminTotp);
             org.b3log.solo.web.Routes.get("/fixture/admin-ip", console::showAdminIpBans);
             org.b3log.solo.web.Routes.get("/fixture/admin-geo", console::showAdminGeoRules);
             org.b3log.solo.web.Routes.get("/fixture/admin-comments", console::showAdminCommentProtection);

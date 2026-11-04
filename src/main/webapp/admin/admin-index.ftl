@@ -159,6 +159,7 @@
                         <div id="tabSecurityTitle" onclick="admin.collapseNav(this)"><i class="fa fa-shield"></i> 安全<span class="icon-chevron-down fn__right"></span></div>
                         <ul id="tabSecurityMenu" class="fn__none">
                             <li><div id="tabs_access"><a href="#security/access">访问防护</a></div></li>
+                            <li><div id="tabs_totp"><a href="#security/totp">2FA 验证</a></div></li>
                             <li><div id="tabs_comments"><a href="#security/comments">评论防护</a></div></li>
                             <li><div id="tabs_geo"><a href="#security/geo">地区规则</a></div></li>
                             <li><div id="tabs_ip"><a href="#security/ip">IP 限制</a></div></li>
@@ -192,6 +193,7 @@
                 <div id="tabsPanel_link-list" class="fn__none"></div>
                 <div id="tabsPanel_follow-list" class="fn__none"></div>
                 <div id="tabsPanel_access" class="fn__none"></div>
+                <div id="tabsPanel_totp" class="fn__none"></div>
                 <div id="tabsPanel_ip" class="fn__none"></div>
                 <div id="tabsPanel_geo" class="fn__none"></div>
                 <div id="tabsPanel_comments" class="fn__none"></div>

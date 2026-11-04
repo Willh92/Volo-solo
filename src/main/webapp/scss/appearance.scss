@@ -18,11 +18,11 @@
 /* Shared controls and reading surfaces. Skin-specific surfaces live in _skin-appearance.scss. */
 :root {
   --bolo-bg: #f6f7f3; --bolo-surface: #fff; --bolo-raised: #f0f3ee; --bolo-text: #293d36;
-  --bolo-muted: #60756a; --bolo-line: #dfe6de; --bolo-accent: #246b51; --bolo-code: #eef2ed;
+  --bolo-muted: #60756a; --bolo-line: #dfe6de; --bolo-accent: #246b51; --bolo-code: #eef2ed; --bolo-danger: #b34656;
 }
 html[data-bolo-theme='dark'] {
   --bolo-bg: #1b2021; --bolo-surface: #242b2c; --bolo-raised: #2b3434; --bolo-text: #d6dfda;
-  --bolo-muted: #a1b1a8; --bolo-line: #3c4945; --bolo-accent: #9bcab1; --bolo-code: #202729;
+  --bolo-muted: #a1b1a8; --bolo-line: #3c4945; --bolo-accent: #9bcab1; --bolo-code: #202729; --bolo-danger: #e09aa4;
   :is(#randomArticles, #relevantArticles) :is(a,h3,h4) { color: var(--bolo-text); }
   :is(#randomArticles, #relevantArticles) :is(li,a) { border-color: var(--bolo-line); }
   :is(#randomArticles, #relevantArticles)::before { filter: brightness(.45) saturate(.7); opacity: .65; }
@@ -168,7 +168,7 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
   :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) :is(h1,h2,h3,h4,h5,h6,strong) { color: #e0e7e2; border-color: var(--bolo-line); }
   :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) a { color: #9cc8c7; }
   :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) :is(pre,code,kbd) { background-color: var(--bolo-code); color: #cddbd4; border-color: var(--bolo-line); }
-  :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) blockquote { background-color: var(--bolo-raised); color: var(--bolo-muted); border-color: #739a88; }
+  :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) blockquote { background-color: var(--bolo-raised); color: var(--bolo-muted); border-color: color-mix(in srgb, var(--bolo-accent) 72%, var(--bolo-line)); }
   :is(.vditor-reset, .entry-content, .post-body, .post__content, .article__content) :is(td,th,tr) { background-color: var(--bolo-surface); border-color: var(--bolo-line); color: var(--bolo-text); }
   :is(.vditor-reset, .entry-content, .post-body) tr:nth-child(2n) :is(td,th) { background-color: var(--bolo-raised); }
   :is(input:not([type='button']):not([type='submit']), textarea, select) { background-color: var(--bolo-code); color: var(--bolo-text); border-color: var(--bolo-line); caret-color: var(--bolo-accent); }
@@ -183,7 +183,7 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
   :is(.vditor-reset,.entry-content) .hljs-keyword { color: #c3b3d7; }
   :is(.vditor-reset,.entry-content) .hljs-string { color: #b0cca7; }
   :is(.vditor-reset,.entry-content) .hljs-number { color: #d6bb9d; }
-  ::selection { background: #426655; color: #f2f6f3; }
+  ::selection { background: color-mix(in srgb, var(--bolo-accent) 36%, #1b2021); color: #f2f6f3; }
 }
 @import 'skin-appearance';
 @import 'skin-theme-controls';
@@ -223,17 +223,22 @@ html[data-bolo-page='public'] :is(.form,.comment,.comment-form) :is(input,textar
 html[data-bolo-page='public'] :is(#boloUser,#boloSite):is(:focus,:focus-visible) { outline: 0; outline-offset: 0; border-color: var(--skin-control-accent,var(--bolo-accent)); box-shadow: none; }
 
 .volo-ban-duration { display:flex; flex-direction:column; gap:12px; text-align:left; color:var(--bolo-text); }
-.volo-ban-duration select { width:100%; min-height:44px; padding:8px 12px; background:var(--bolo-surface); color:var(--bolo-text); border:1px solid var(--bolo-line); border-radius:8px; font:inherit; }
+.volo-ban-duration select { width:100%; min-height:44px; padding:8px 12px; background:var(--bolo-surface); color:var(--bolo-text); border:1px solid var(--bolo-line); border-radius:8px; font:inherit; outline:0; box-shadow:none; }
+.volo-ban-duration select:is(:focus,:focus-visible) { border-color:var(--bolo-accent); outline:0; box-shadow:none; }
 
 .volo-captcha { margin:18px 0; color:var(--bolo-text); font-family:inherit; font-size:14px; line-height:1.6; }
 .volo-captcha[hidden] { display:none !important; }
 .volo-captcha label { display:block; margin:0; }
 .volo-captcha label > span { display:block; margin-bottom:9px; font-size:13px; }
-.volo-captcha .volo-captcha-row { display:grid; grid-template-columns:minmax(0,1fr) 150px; align-items:center; gap:12px; }
+.volo-captcha .volo-captcha-row { display:grid; grid-template-columns:minmax(0,1fr) 135px; align-items:center; gap:12px; }
 .volo-captcha .volo-captcha-row input { box-sizing:border-box; width:100%; min-width:0; height:48px; margin:0; padding:10px 12px; font-family:inherit; font-size:14px; line-height:1.5; color:var(--bolo-text); border:1px solid var(--bolo-line); border-radius:8px; background:var(--bolo-surface); outline:none; box-shadow:none; }
-.volo-captcha .volo-captcha-row input:focus { border-color:var(--bolo-accent); }
-.volo-captcha .volo-captcha-refresh { display:block; width:100%; height:auto; min-height:48px; padding:0; margin:0; border:1px solid var(--bolo-line); border-radius:8px; background:#edf3ef; overflow:hidden; cursor:pointer; }
-.volo-captcha .volo-captcha-refresh img { display:block; width:100%; height:auto; margin:0; border:0; box-shadow:none; }
+.volo-captcha .volo-captcha-row input:is(:focus,:focus-visible) { border-color:var(--bolo-accent); outline:0; box-shadow:none; }
+.volo-captcha .volo-captcha-refresh { display:block; box-sizing:border-box; width:100%; height:48px; min-height:48px; padding:0; margin:0; border:1px solid var(--bolo-line); border-radius:8px; background:#edf3ef; overflow:hidden; cursor:pointer; transition:border-color .15s; }
+.volo-captcha .volo-captcha-refresh:hover { border-color:var(--bolo-accent); }
+.volo-captcha .volo-captcha-refresh:focus-visible { outline:1px solid var(--bolo-accent); outline-offset:2px; border-color:var(--bolo-accent); }
+html[data-bolo-theme='dark'] .volo-captcha .volo-captcha-refresh { background:#d6e0da; }
+html[data-bolo-theme='dark'] .volo-captcha .volo-captcha-refresh img { filter:brightness(.9) contrast(1.04); }
+.volo-captcha .volo-captcha-refresh img { display:block; width:100%; height:100%; object-fit:cover; margin:0; border:0; box-shadow:none; }
 .volo-captcha p { margin:8px 0 0; color:var(--bolo-muted); font-size:12px; line-height:1.7; }
 html[data-bolo-page='public'] #soloEditorCaptcha { flex:none; margin:12px 0 0; padding:12px 0 0; border-top:1px solid var(--bolo-line); }
 html[data-bolo-page='public'] #soloEditorCaptcha .volo-captcha-row { grid-template-columns:minmax(0,1fr) 135px; }

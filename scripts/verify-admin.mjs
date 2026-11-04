@@ -476,7 +476,7 @@ for (const width of [390, 768, 1440]) {
   const legacy=fs.readFileSync('src/main/webapp/js/lib/jquery/jquery.bowknot.min.js','utf8').split('\n').find(line=>line.includes('tabs:{version:'));
   vm.runInNewContext(legacy,{jQuery:$,window:{}});
   $.tabs._attach(root);
-  for(const tab of ['access','ip','geo','comments','draft-list','preference','access','article-list']) {
+  for(const tab of ['access','totp','ip','geo','comments','draft-list','preference','access','article-list']) {
     assert(ids.includes(tab),'Every safety page must use a normal, distinct tabs ID');
     assert(template.includes('id="tabsPanel_'+tab+'"'));
     $.tabs._setCurrentTabs(root,tab);

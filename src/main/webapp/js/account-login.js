@@ -22,11 +22,23 @@
   form.dataset.bound = 'true'
   var button = document.getElementById('loginBtn')
   var status = document.getElementById('status')
+  var username = document.getElementById('username')
   var password = document.getElementById('password')
+  var captchaIdInput = document.getElementById('loginCaptchaId')
+  var primaryFields = document.getElementById('loginPrimaryFields')
+  var totpFields = document.getElementById('loginTotpFields')
+  var totpTokenInput = document.getElementById('loginTotpToken')
+  var totpCodeInput = document.getElementById('totpCode')
+  var totpRememberRow = document.getElementById('totpRememberRow')
+  var totpRememberInput = document.getElementById('rememberDevice')
+  var totpRememberLabel = document.getElementById('totpRememberLabel')
+  var totpBackBtn = document.getElementById('totpBackBtn')
+  var heading = document.getElementById('loginHeading')
+  var description = document.getElementById('loginDescription')
   var mode = form.dataset.mode
   var busy = false
-  document.getElementById('loginCaptcha').dataset.context = new URL(form.action, window.location.href).pathname.replace(/\/oauth\/bolo\/login$/, '')
-  var captcha = window.VoloCaptcha.mount(document.getElementById('loginCaptcha'), 'login', function (state) { button.disabled = busy || !state.ready || Date.now() < retryUntil })
+  var totpStep = false
+  var captchaReady = true
   var retryUntil = 0
   var retryTimer
   var labels = {
@@ -35,16 +47,106 @@
     'default': ['欢迎回来', '登录你的博客，继续上次的创作。', '登录管理后台'],
   }
   var copy = labels[mode] || labels.default
-  document.getElementById('loginHeading').textContent = copy[0]
-  document.getElementById('loginDescription').textContent = copy[1]
+  heading.textContent = copy[0]
+  description.textContent = copy[1]
   button.querySelector('span').textContent = copy[2]
   if (mode === '-1' || mode === '2') password.autocomplete = 'new-password'
+
+  function currentActionText () {
+    return totpStep ? '验证并进入后台' : copy[2]
+  }
+
+  function syncButtonState () {
+    var throttled = Date.now() < retryUntil
+    button.disabled = busy || throttled || (!totpStep && !captchaReady)
+    if (!busy && !throttled) {
+      button.querySelector('span').textContent = currentActionText()
+    }
+  }
+
+  document.getElementById('loginCaptcha').dataset.context = new URL(form.action, window.location.href).pathname.replace(/\/oauth\/bolo\/login$/, '')
+  var captcha = window.VoloCaptcha.mount(document.getElementById('loginCaptcha'), 'login', function (state) {
+    captchaReady = !!state.ready
+    syncButtonState()
+  })
+
   function message (text) {
     status.textContent = text
     status.hidden = !text
     form.classList.toggle('has-error', !!text)
-    password.setAttribute('aria-invalid', text ? 'true' : 'false')
+    if (totpStep && totpCodeInput) {
+      totpCodeInput.setAttribute('aria-invalid', text ? 'true' : 'false')
+    } else {
+      password.setAttribute('aria-invalid', text ? 'true' : 'false')
+    }
   }
+
+  function enterTotpStep (result) {
+    totpStep = true
+    if (primaryFields) primaryFields.hidden = true
+    if (username) username.disabled = true
+    if (password) password.disabled = true
+    if (captchaIdInput) captchaIdInput.disabled = true
+    if (totpFields) totpFields.hidden = false
+    if (totpTokenInput) {
+      totpTokenInput.disabled = false
+      totpTokenInput.value = result.totpToken
+    }
+    if (totpCodeInput) {
+      totpCodeInput.disabled = false
+      totpCodeInput.required = true
+      totpCodeInput.value = ''
+      totpCodeInput.setAttribute('aria-invalid', 'false')
+    }
+    var days = Number(result.rememberDays) || 0
+    if (days > 0 && totpRememberRow && totpRememberInput) {
+      totpRememberRow.hidden = false
+      totpRememberInput.disabled = false
+      totpRememberInput.checked = false
+      if (totpRememberLabel) totpRememberLabel.textContent = '在此浏览器 ' + days + ' 天内免 2FA 验证'
+    } else if (totpRememberRow && totpRememberInput) {
+      totpRememberRow.hidden = true
+      totpRememberInput.disabled = true
+      totpRememberInput.checked = false
+    }
+    if (totpBackBtn) totpBackBtn.hidden = false
+    heading.textContent = '2FA 双重验证'
+    description.textContent = '账号密码已验证通过，请输入 2FA 动态口令。'
+    message('')
+    syncButtonState()
+    if (totpCodeInput && totpCodeInput.focus) totpCodeInput.focus()
+  }
+
+  function exitTotpStep (errorText) {
+    totpStep = false
+    if (totpFields) totpFields.hidden = true
+    if (totpTokenInput) {
+      totpTokenInput.value = ''
+      totpTokenInput.disabled = true
+    }
+    if (totpCodeInput) {
+      totpCodeInput.value = ''
+      totpCodeInput.required = false
+      totpCodeInput.disabled = true
+    }
+    if (totpRememberRow && totpRememberInput) {
+      totpRememberRow.hidden = true
+      totpRememberInput.checked = false
+      totpRememberInput.disabled = true
+    }
+    if (totpBackBtn) totpBackBtn.hidden = true
+    if (primaryFields) primaryFields.hidden = false
+    if (username) username.disabled = false
+    if (password) password.disabled = false
+    if (captchaIdInput) captchaIdInput.disabled = false
+    heading.textContent = copy[0]
+    description.textContent = copy[1]
+    if (form.isConnected) captcha.refresh()
+    message(errorText || '')
+    syncButtonState()
+    if (password && password.focus) password.focus()
+  }
+
   if (mode === '0') message('用户名或密码错误，请重试。')
   document.getElementById('togglePassword').addEventListener('click', function () {
     var show = password.type === 'password'
@@ -52,42 +154,73 @@
     this.setAttribute('aria-pressed', String(show))
     this.setAttribute('aria-label', show ? '隐藏密码' : '显示密码')
   })
+  if (totpBackBtn) {
+    totpBackBtn.addEventListener('click', function () {
+      if (!busy) exitTotpStep('')
+    })
+  }
+
   function cooldown (seconds) {
     retryUntil = Date.now() + Math.max(1, Math.min(86400, Number(seconds) || 60)) * 1000
     clearInterval(retryTimer)
     function update () {
       var remaining = Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000))
-      button.disabled = remaining > 0 || busy
-      button.querySelector('span').textContent = remaining > 0 ? Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0') + ' 后可重试' : copy[2]
-      if (!remaining) { clearInterval(retryTimer); message('现在可以重新尝试登录。') }
+      if (remaining > 0) {
+        button.disabled = true
+        button.querySelector('span').textContent = Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0') + ' 后可重试'
+      } else {
+        clearInterval(retryTimer)
+        syncButtonState()
+        message('现在可以重新尝试登录。')
+      }
     }
     update()
     retryTimer = setInterval(update, 1000)
   }
+
   if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(retryTimer); captcha.destroy() })
   form.addEventListener('input', function () { if (!busy && Date.now() >= retryUntil) message('') })
   form.addEventListener('submit', async function (event) {
     event.preventDefault()
     if (busy || Date.now() < retryUntil) return
     message('')
-    if (!form.reportValidity() || !captcha.valid()) return
-    document.getElementById('loginCaptchaId').value = captcha.payload().captchaId
-    if ((mode === '-1' || mode === '2') && !/^(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}$/.test(password.value)) {
-      message('请使用 8–30 位、包含字母和数字的密码。')
-      password.focus()
-      return
+    if (totpStep) {
+      var rawCode = (totpCodeInput.value || '').replace(/[\s-]+/g, '')
+      if (!/^[0-9]{6}$/.test(rawCode) && !/^[A-Za-z2-9]{8}$/.test(rawCode)) {
+        message('请输入 6 位数字动态口令，或 8 位应急恢复码。')
+        totpCodeInput.focus()
+        return
+      }
+    } else {
+      if (!form.reportValidity() || !captcha.valid()) return
+      var payload = captcha.payload ? captcha.payload() : {}
+      if (captchaIdInput) {
+        captchaIdInput.disabled = !payload.captchaId
+        captchaIdInput.value = payload.captchaId || ''
+      }
+      if ((mode === '-1' || mode === '2') && !/^(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}$/.test(password.value)) {
+        message('请使用 8–30 位、包含字母和数字的密码。')
+        password.focus()
+        return
+      }
     }
+    var submittedTotpStep = totpStep
+    var shouldRefreshCaptcha = !submittedTotpStep
     busy = true
     button.disabled = true
     form.setAttribute('aria-busy', 'true')
-    button.querySelector('span').textContent = mode === '2' ? '正在迁移…' : mode === '-1' ? '正在初始化…' : '正在登录…'
+    button.querySelector('span').textContent = submittedTotpStep ? '正在校验口令…' : mode === '2' ? '正在迁移…' : mode === '-1' ? '正在初始化…' : '正在登录…'
     try {
+      var bodyParams = new URLSearchParams(new FormData(form))
+      if (submittedTotpStep) {
+        bodyParams.delete('captchaAnswer')
+      }
       var target = new URL(form.action, window.location.href)
       // Keep credentials on the current origin even when a public URL setting is misconfigured.
       var response = await fetch(target.pathname + target.search, {
         method: 'POST', credentials: 'same-origin', redirect: 'error',
         headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
-        body: new URLSearchParams(new FormData(form)),
+        body: bodyParams,
       })
       var result = await response.json()
       if (response.status === 429) {
@@ -95,11 +228,29 @@
         cooldown(result.retryAfter || response.headers.get('Retry-After'))
         return
       }
+      if (!submittedTotpStep && result.totpRequired && result.totpToken) {
+        shouldRefreshCaptcha = false
+        busy = false
+        enterTotpStep(result)
+        return
+      }
       if (!response.ok || !result.sc) {
+        if (submittedTotpStep) {
+          if (result.totpExpired) {
+            busy = false
+            exitTotpStep(result.msg || '2FA 验证会话已过期，请重新登录。')
+            return
+          }
+          message(result.msg || '动态口令或应急恢复码不正确，请重试。')
+          totpCodeInput.select()
+          totpCodeInput.focus()
+          return
+        }
         message(result.msg || '用户名或密码错误，请重试。')
         password.focus()
         return
       }
+      shouldRefreshCaptcha = false
       var next = new URL(result.redirect, window.location.origin)
       if (next.origin !== window.location.origin) throw new Error('Invalid login redirect')
       button.querySelector('span').textContent = '正在进入后台…'
@@ -108,10 +259,9 @@
       message('暂时无法连接登录服务，请稍后重试。')
     } finally {
       busy = false
-      button.disabled = Date.now() < retryUntil
-      if (form.isConnected) captcha.refresh()
+      if (shouldRefreshCaptcha && form.isConnected) captcha.refresh()
       form.removeAttribute('aria-busy')
-      if (!button.disabled) button.querySelector('span').textContent = copy[2]
+      syncButtonState()
     }
   })
 })()
