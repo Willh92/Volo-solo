@@ -93,6 +93,7 @@ $.extend(Page.prototype, {
             document.getElementById('boloUser')?.focus();
         });
         // comment
+        this.bindCommentTrigger();
         $('#comment').click(function () {
             that.toggleEditor()
         }).attr('readonly', 'readonly');
@@ -127,6 +128,29 @@ $.extend(Page.prototype, {
         $('#soloEditorAdd').click(function () {
             that.requestCommentSubmission(typeof loggedIn !== 'undefined' ? loggedIn : false);
         })
+    },
+    bindCommentTrigger: function () {
+        var that = this, frame = 0;
+        function reset () {
+            if (that.commentDisposed) return;
+            var trigger = document.getElementById('comment');
+            if (!trigger) return;
+            trigger.value = '';
+            trigger.defaultValue = '';
+            trigger.readOnly = true;
+            trigger.setAttribute('autocomplete', 'off');
+        }
+        function restored () {
+            reset();
+            if (frame) cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(function () { frame = 0; reset(); });
+        }
+        reset();
+        window.addEventListener('pageshow', restored);
+        if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+            window.removeEventListener('pageshow', restored);
+            if (frame) cancelAnimationFrame(frame);
+        });
     },
     isCommentEditorReady: function () {
         return !this.commentDisposed && this.commentEditorReady === true
@@ -554,6 +578,7 @@ $.extend(Page.prototype, {
                     hljs: {
                         enable: !Label.luteAvailable,
                         style: Label.hljsStyle,
+                        renderMenu: Util.prepareCodeCopyMenu,
                     },
                     parse: function (element) {
                         if (element.style.display === 'none') {

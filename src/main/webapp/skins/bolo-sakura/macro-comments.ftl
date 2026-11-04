@@ -26,7 +26,7 @@
             <input type="text" placeholder="你的昵称" id="boloUser" style="margin-bottom: 10px">
             <input type="text" placeholder="你的个人主页URL（选填）" id="boloSite" style="margin-bottom: 10px">
             <div class="comment-textarea">
-                <textarea placeholder="${postCommentsLabel} ..." aria-label="${postCommentsLabel}" class="commentbody" id="comment" rows="5" tabindex="4"></textarea>
+                <textarea placeholder="${postCommentsLabel} ..." aria-label="${postCommentsLabel}" class="commentbody" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
             </div>
         </div>
         <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>

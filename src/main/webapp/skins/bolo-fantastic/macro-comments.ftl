@@ -581,7 +581,7 @@
                                 </div>
                                 <div class="comment-textarea">
                                     <textarea rows="3" placeholder="评论内容只能为 2 到 500 个字符！" id="comment"
-                                              readonly="readonly"></textarea>
+                                              readonly="readonly" autocomplete="off" name="volo-comment-trigger"></textarea>
                                 </div>
                             </form>
                         </div>

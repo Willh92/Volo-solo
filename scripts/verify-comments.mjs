@@ -271,4 +271,27 @@ for(const skin of fs.readdirSync('src/main/webapp/skins')) {
   reply={sc:true,required:false};await widget.refresh();assert(host.hidden);assert(widget.valid(),'Turning CAPTCHA off must immediately allow ordinary submission');
   assert.equal(Object.keys(widget.payload()).length,0);widget.destroy();
 }
-console.log('Comment checks passed: viewport, drafts, contact limits, loading/retry, local identity, edit/delete permissions, inline CAPTCHA, safe reply templates, PJAX cancellation and contact disclosure rebinding.');
+{
+  const events=new Map(),frames=new Map(),cleanups=[];let serial=0;
+  const trigger={value:'server { listen 8080; }',defaultValue:'restored code',setAttribute(key,value){this[key]=value;}};
+  const draft='这是访客自己输入的草稿，必须保留';
+  const navigation={onLeave:callback=>cleanups.push(callback)};
+  const window={BoloNavigation:navigation,vditor:{getValue:()=>draft},addEventListener:(name,callback)=>events.set(name,callback),removeEventListener:name=>events.delete(name)};
+  const $={extend:Object.assign};
+  const sandbox={window,BoloNavigation:navigation,document:{getElementById:id=>id==='comment'?trigger:null},$,
+    requestAnimationFrame:callback=>{frames.set(++serial,callback);return serial;},cancelAnimationFrame:id=>frames.delete(id)};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/page.js','utf8'),sandbox);
+  const page=new sandbox.Page({oId:'restored-article'});page.bindCommentTrigger();
+  assert.equal(trigger.value,'');assert.equal(trigger.defaultValue,'');assert.equal(trigger.readOnly,true);assert.equal(trigger.autocomplete,'off');
+  for(const persisted of [false,true]){
+    trigger.value='restored hidden code';events.get('pageshow')({persisted});assert.equal(trigger.value,'');
+    trigger.value='late form restoration';for(const callback of [...frames.values()])callback();frames.clear();
+    assert.equal(trigger.value,'','Form restoration after pageshow must not leak code into the comment trigger');
+    assert.equal(window.vditor.getValue(),draft,'Session restoration must preserve the actual editor draft');
+  }
+  events.get('pageshow')({persisted:true});cleanups[0]();assert(!events.has('pageshow'));assert.equal(frames.size,0,'PJAX disposes restoration callbacks');
+  const templates=fs.readdirSync('src/main/webapp/skins').flatMap(skin=>fs.readdirSync('src/main/webapp/skins/'+skin).filter(file=>file.endsWith('.ftl')).map(file=>'src/main/webapp/skins/'+skin+'/'+file));
+  const triggers=templates.flatMap(file=>[...fs.readFileSync(file,'utf8').matchAll(/<textarea\b[^>]*\bid="comment"[^>]*>/g)].map(match=>({file,tag:match[0]})));
+  assert.equal(triggers.length,16);for(const {file,tag} of triggers){assert(/\breadonly(?:\s|=|>)/.test(tag),file);assert(tag.includes('autocomplete="off"'),file);assert(tag.includes('name="volo-comment-trigger"'),file);}
+}
+console.log('Comment checks passed: drafts, session/BFCache restoration, all-skin triggers, identity/permissions, inline CAPTCHA, safe templates and PJAX lifecycle.');

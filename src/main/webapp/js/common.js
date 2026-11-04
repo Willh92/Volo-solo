@@ -280,6 +280,53 @@ var Util = {
       enable: !Label.luteAvailable,
     }, document, Label.servePath + '/js/lib/vditor')
   },
+  copyCodeText: function (text) {
+    function fallback () {
+      var previous = document.activeElement, field = document.createElement('textarea')
+      field.value = text
+      field.readOnly = true
+      field.tabIndex = -1
+      field.setAttribute('autocomplete', 'off')
+      field.setAttribute('aria-hidden', 'true')
+      field.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px;'
+      try {
+        document.body.appendChild(field)
+        field.focus({preventScroll: true})
+        field.select()
+        field.setSelectionRange(0, text.length)
+        return document.execCommand('copy') === true
+      } catch (error) { return false }
+      finally {
+        field.remove()
+        previous?.focus?.({preventScroll: true})
+      }
+    }
+    if (window.navigator?.clipboard?.writeText) {
+      try { return Promise.resolve(window.navigator.clipboard.writeText(text)).then(() => true, fallback) }
+      catch (error) { return Promise.resolve(fallback()) }
+    }
+    return Promise.resolve(fallback())
+  },
+  prepareCodeCopyMenu: function (code, menu) {
+    var field = menu.querySelector('textarea'), button = menu.querySelector('span[aria-label]')
+    if (!field || !button) return
+    var text = field.value, label = window.VditorI18n?.copy || '复制'
+    // Persistent clipboard textareas can be mistaken for form controls during session restore.
+    field.remove()
+    button.removeAttribute('onclick')
+    button.removeAttribute('onmouseover')
+    button.setAttribute('role', 'button')
+    button.tabIndex = 0
+    button.onmouseover = function () { button.setAttribute('aria-label', label) }
+    button.onclick = function (event) {
+      event.preventDefault()
+      event.stopPropagation()
+      Util.copyCodeText(text).then(function (copied) {
+        button.setAttribute('aria-label', copied ? (window.VditorI18n?.copied || '已复制') : '复制失败，请手动选择')
+      })
+    }
+    button.onkeydown = function (event) { if (event.key === 'Enter' || event.key === ' ') button.onclick(event) }
+  },
   /**
    * 按需加载数学公式、流程图、代码复制、五线谱、多媒体、图表
    * @returns {undefined}
@@ -298,7 +345,7 @@ var Util = {
     }, document, Label.servePath + '/js/lib/vditor');
 
     const cdn = Label.servePath + '/js/lib/vditor';
-    Vditor.codeRender(document.body);
+    Vditor.codeRender(document.body, {renderMenu: Util.prepareCodeCopyMenu});
     Vditor.graphvizRender(document.body, cdn);
     Vditor.mathRender(document.body, { cdn: cdn });
     Vditor.abcRender(document.body, cdn);

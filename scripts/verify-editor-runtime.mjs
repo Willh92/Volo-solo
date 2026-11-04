@@ -50,4 +50,45 @@ function environment() {
   window.Lute={New(){}};scripts[3].onload();await retry;
   assert(parser.removed);
 }
-console.log('Editor runtime checks passed: parallel loading, shared requests, PJAX reuse, locale switching, marker recovery and failed-parser retry.');
+{
+  const copied=[],menus=[];
+  let selected,focuses=0,fail=false;
+  function element(tag) {
+    const node={tagName:tag.toUpperCase(),children:[],attributes:{},style:{maxHeight:''},classList:{contains:()=>false},value:'',
+      setAttribute(key,value){this.attributes[key]=value;},removeAttribute(key){delete this.attributes[key];},
+      appendChild(child){child.parentElement=this;this.children.push(child);},
+      insertAdjacentElement(position,child){child.parentElement=this;this.children.unshift(child);},
+      querySelector(selector){return this.children.find(child=>selector==='textarea'?child.tagName==='TEXTAREA':child.tagName==='SPAN');},
+      remove(){if(this.parentElement){const children=this.parentElement.children;children.splice(children.indexOf(this),1);this.parentElement=null;}},
+      focus(){focuses++;},select(){selected=this;},setSelectionRange(){},before(menu){menus.push(menu);},insertAdjacentHTML(){}};
+    Object.defineProperty(node,'innerHTML',{set(html){
+      this.textContent=html.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+      if(html.startsWith('<span aria-label=')){const button=element('span');button.setAttribute('aria-label','复制');this.appendChild(button);}
+    }});
+    return node;
+  }
+  const body=element('body'),previous={focus(){focuses++;}};
+  const document={body,activeElement:previous,createElement:element,getElementById:()=>null,
+    execCommand(command){assert.equal(command,'copy');if(fail)throw Error('Clipboard unavailable');copied.push(selected.value);return true;}};
+  const code=element('code'),text='server {\n    listen 8080;\n    absolute_redirect off;\n}';
+  code.innerText=text+'\n';code.parentElement=element('pre');body.querySelectorAll=selector=>{assert.equal(selector,'pre > code');return [code];};
+  const window={outerHeight:740,VditorI18n:{copy:'复制',copied:'已复制'},navigator:{clipboard:{writeText:async value=>copied.push(value)}}};
+  const context=vm.createContext({window,document,navigator:{userAgent:''},Promise});
+  vm.runInContext(source,context);
+  vm.runInContext(fs.readFileSync('node_modules/vditor/dist/method.min.js','utf8'),context);
+  context.Vditor.codeRender(body,{renderMenu:context.Util.prepareCodeCopyMenu});
+  assert.equal(menus.length,1,'Use the real bundled Vditor copy renderer');
+  assert(!menus[0].querySelector('textarea'),'Code copy controls must not leave form fields for Safari to restore');
+  const button=menus[0].querySelector('span[aria-label]'),event={key:'Enter',preventDefault(){},stopPropagation(){}};
+  button.onclick(event);await Promise.resolve();await Promise.resolve();
+  assert.equal(copied.at(-1),text);assert.equal(button.attributes['role'],'button');assert.equal(button.tabIndex,0);
+  assert.equal(button.attributes['aria-label'],'已复制');
+  delete window.navigator.clipboard;button.onkeydown(event);await Promise.resolve();
+  assert.equal(copied.at(-1),text,'Keyboard copy keeps the original code text');
+  assert.equal(body.children.length,0,'The synchronous clipboard fallback removes its temporary textarea');
+  fail=true;assert.equal(await context.Util.copyCodeText(text),false);assert.equal(body.children.length,0,'Failure also cleans the fallback');
+  window.navigator.clipboard={writeText:()=>Promise.reject(Error('Permission denied'))};
+  assert.equal(await context.Util.copyCodeText(text),false);assert.equal(body.children.length,0);
+  assert(focuses>0);
+}
+console.log('Editor runtime checks passed: shared loading/retry, real Vditor copy menus, keyboard/clipboard fallback and removal of restored form fields.');

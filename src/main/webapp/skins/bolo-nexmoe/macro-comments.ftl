@@ -23,7 +23,7 @@
             <#if article.commentable>
                 <input id="boloUser" placeholder="你的昵称" style="width: 50%; height: 50px; float: left; display: inline; border: 1px solid #eee; padding: 20px">
                 <input id="boloSite" placeholder="你的个人主页URL（选填）" style="width: 50%; height: 50px; float: right; display: inline; border: 1px solid #eee; padding: 20px">
-                <textarea rows="3" placeholder="评论内容只能为 2 到 500 个字符！" id="comment" readonly="readonly"></textarea>
+                <textarea rows="3" placeholder="评论内容只能为 2 到 500 个字符！" id="comment" readonly="readonly" autocomplete="off" name="volo-comment-trigger"></textarea>
                 <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
             </#if>
             <ul class="comments" id="comments">

@@ -67,6 +67,7 @@ $.extend(SoloEditor.prototype, {
         hljs: {
           enable: !Label.luteAvailable,
           style: Label.hljsStyle,
+          renderMenu: Util.prepareCodeCopyMenu,
         },
         parse: function (element) {
           if (element.style.display === 'none') {

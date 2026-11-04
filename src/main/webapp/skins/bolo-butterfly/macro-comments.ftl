@@ -731,7 +731,7 @@
                     <input placeholder="你的个人主页URL（选填）" id="boloSite" class="vmail vinput" type="text">
                 </div>
                 <div class="vedit">
-                    <textarea placeholder="${postCommentsLabel} ..." class="veditor vinput" id="comment" rows="5" tabindex="4"></textarea>
+                    <textarea placeholder="${postCommentsLabel} ..." class="veditor vinput" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
                 </div>
                 <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
                 <div class="vrow">
