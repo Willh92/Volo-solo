@@ -46,6 +46,23 @@ public class OptionCache {
      */
     private final Map<String, JSONObject> categoryCache = new ConcurrentHashMap<>();
 
+    private static final int MAX_MISSING_IDS = 512;
+    private final java.util.Set<String> missingIds = ConcurrentHashMap.newKeySet();
+
+    public boolean isMissing(final String id) {
+        return null != id && missingIds.contains(id);
+    }
+
+    public void markMissing(final String id) {
+        if (null == id || id.isEmpty() || id.length() > 128) {
+            return;
+        }
+        if (missingIds.size() >= MAX_MISSING_IDS) {
+            missingIds.clear();
+        }
+        missingIds.add(id);
+    }
+
     /**
      * Removes a category cache specified by the given category.
      *
@@ -77,7 +94,7 @@ public class OptionCache {
      * @param mergedOptions the specified merged options
      */
     public void putCategory(final String category, final JSONObject mergedOptions) {
-        categoryCache.put(category, mergedOptions);
+        categoryCache.put(category, Solos.clone(mergedOptions));
     }
 
     /**
@@ -101,7 +118,9 @@ public class OptionCache {
      * @param option the specified option
      */
     public void putOption(final JSONObject option) {
-        cache.put(option.optString(Keys.OBJECT_ID), Solos.clone(option));
+        final String id = option.optString(Keys.OBJECT_ID);
+        missingIds.remove(id);
+        cache.put(id, Solos.clone(option));
 
         final String category = option.optString(Option.OPTION_CATEGORY);
         removeCategory(category);
@@ -113,15 +132,14 @@ public class OptionCache {
      * @param id the specified option id
      */
     public void removeOption(final String id) {
-        final JSONObject option = getOption(id);
+        missingIds.remove(id);
+        final JSONObject option = cache.remove(id);
         if (null == option) {
             return;
         }
 
         final String category = option.optString(Option.OPTION_CATEGORY);
         removeCategory(category);
-
-        cache.remove(id);
     }
 
     /**
@@ -130,5 +148,6 @@ public class OptionCache {
     public void clear() {
         cache.clear();
         categoryCache.clear();
+        missingIds.clear();
     }
 }

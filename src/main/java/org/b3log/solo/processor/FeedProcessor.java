@@ -23,6 +23,7 @@ import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
+import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.service.ServiceException;
@@ -140,15 +141,20 @@ public class FeedProcessor {
         final Entry ret = new Entry();
         final String title = article.getString(Article.ARTICLE_TITLE);
         ret.setTitle(title);
-        final String summary = isFullContent ? article.getString(Article.ARTICLE_CONTENT)
+        final JSONObject author = articleQueryService.getAuthor(article);
+        String summary = isFullContent ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
+        summary = Markdowns.toHTML(EmojiParser.parseToAliases(summary));
+        if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
+            summary = Markdowns.clean(summary);
+        }
         ret.setSummary(summary);
         final long updated = article.getLong(Article.ARTICLE_UPDATED);
         ret.setUpdated(new Date(updated));
         final String link = Latkes.getServePath() + article.getString(Article.ARTICLE_PERMALINK);
         ret.setLink(link);
         ret.setId(link);
-        final String authorName = articleQueryService.getAuthor(article).getString(User.USER_NAME);
+        final String authorName = author.getString(User.USER_NAME);
         ret.setAuthor(authorName);
         final String tagsString = article.getString(Article.ARTICLE_TAGS_REF);
         final String[] tagStrings = tagsString.split(",");
@@ -228,15 +234,19 @@ public class FeedProcessor {
         String description = isFullContent
                 ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
+        final JSONObject author = articleQueryService.getAuthor(article);
         description = EmojiParser.parseToAliases(description);
         description = Markdowns.toHTML(description);
+        if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
+            description = Markdowns.clean(description);
+        }
         ret.setDescription(description);
         final long pubDate = article.getLong(Article.ARTICLE_UPDATED);
         ret.setPubDate(new Date(pubDate));
         final String link = Latkes.getServePath() + article.getString(Article.ARTICLE_PERMALINK);
         ret.setLink(link);
         ret.setGUID(link);
-        final String authorName = articleQueryService.getAuthor(article).getString(User.USER_NAME);
+        final String authorName = author.getString(User.USER_NAME);
         ret.setAuthor(authorName);
         final String tagsString = article.getString(Article.ARTICLE_TAGS_REF);
         final String[] tagStrings = tagsString.split(",");

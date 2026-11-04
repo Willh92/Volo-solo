@@ -106,6 +106,20 @@ public class TagArticleRepository extends AbstractRepository {
      * @param tagId the given tag id
      * @return published article count, returns {@code -1} if occurred an exception
      */
+    public java.util.Map<String, Integer> getPublishedArticleCountsByTag() throws RepositoryException {
+        final java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        final List<JSONObject> rows = select("SELECT r.tag_oId AS T, COUNT(DISTINCT a.oId) AS C FROM "
+                + getName() + " AS r JOIN " + articleRepository.getName()
+                + " AS a ON a.oId = r.article_oId WHERE a.articleStatus = ? GROUP BY r.tag_oId",
+                Article.ARTICLE_STATUS_C_PUBLISHED);
+        if (null != rows) {
+            for (final JSONObject row : rows) {
+                counts.put(row.optString("T"), row.optInt("C"));
+            }
+        }
+        return counts;
+    }
+
     public int getPublishedArticleCount(final String tagId) {
         try {
             final List<JSONObject> result = select("SELECT count(*) AS C FROM " + articleRepository.getName()

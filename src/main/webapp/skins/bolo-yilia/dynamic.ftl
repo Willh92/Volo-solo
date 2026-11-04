@@ -43,7 +43,7 @@
                                 </#if>
                                 <time>${comment.commentDate?string("yy-MM-dd HH")}</time> 
                             </span>
-                            <a class="fn-right" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
+                            <a class="fn-right" href="${servePath}${comment.commentSharpURL?html}">${viewLabel}»</a>
                         </div>
                         <div class="comment-content vditor-reset">
                             ${comment.commentContent}

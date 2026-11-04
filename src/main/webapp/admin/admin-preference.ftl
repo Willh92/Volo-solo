@@ -285,7 +285,8 @@
         <div id="td8" for="tc8" style="display:none"></div>
         <input id="tc8" type="text" autocomplete="off" style="display:none" />
         <div class="fn__clear" id="tuChuangCfg" style="display: none">
-            <button onclick="save()" class="fn__left">${saveConfigPicBedLabel}</button>
+            <button type="button" onclick="save()" class="fn__left">${saveConfigPicBedLabel}</button>
+            <button type="button" id="clearPicSecretBtn" onclick="clearPicBedSecret()" class="fn__left" style="display:none;margin-left:8px">清空已存密钥</button>
         </div>
         <script>
             function loadRemind() {
@@ -378,17 +379,35 @@
                         break;
                 }
                 var stc = $('#sourceTC').text().split('<<>>');
-                for (var i = 1; i < stc.length; i++) {
-                    $('#tc' + (i + 1)).val(stc[i]);
+                if (stc[0] === sel) {
+                    for (var i = 1; i < stc.length; i++) {
+                        $('#tc' + (i + 1)).val(stc[i]);
+                    }
                 }
+                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : (sel === 'upyun' ? '#tc4' : '');
+                var hasSavedSecret = !!(secretInput && admin.preference && admin.preference.tuChuangSecretSet && admin.preference.tuChuangType === sel);
+                if (secretInput) {
+                    $(secretInput).attr('type', 'password').attr('autocomplete', 'new-password')
+                        .attr('placeholder', hasSavedSecret ? '已设置，留空保留原密钥' : '');
+                }
+                if (hasSavedSecret) $('#clearPicSecretBtn').show(); else $('#clearPicSecretBtn').hide();
             }
             $('#tcS').change(loadRemind);
 
             function clear() {
-                for (i = 1; i <= 8; i++) {
-                    $('#tc' + i).hide();
+                $('#clearPicSecretBtn').hide();
+                for (var i = 1; i <= 8; i++) {
+                    $('#tc' + i).val('').attr('type', 'text').attr('placeholder', '').attr('autocomplete', 'off').hide();
                     $('#td' + i).hide();
                 }
+            }
+
+            function clearPicBedSecret() {
+                var sel = $('#tcS').val();
+                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : (sel === 'upyun' ? '#tc4' : '');
+                if (!secretInput) return;
+                $(secretInput).val('__VOLO_CLEAR_SECRET__');
+                save();
             }
 
             function lockPicBed() { clear(); for (var k = 1; k <= 8; k++) $('#tc' + k).val(''); $('#tuChuangCfg').hide(); $('#tcS').attr('disabled', 'disabled'); $('#changeCfgBtn').show(); }

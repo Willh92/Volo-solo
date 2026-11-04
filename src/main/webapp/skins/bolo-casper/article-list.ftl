@@ -22,7 +22,7 @@
         <#assign isRss=(article.isRss!false)?c=="true">
             <article class="item<#if article_index % 6 ==0> item--large</#if>">
                 <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" class="item__cover"
-                    style="background-image: url('${(article.articleImg1URL!'')?html}')">
+                    style="background-image: url('${(article.articleImg1URL!'')?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}')">
                 </a>
                 <div class="item__main">
                     <#if article.articleCategory?? && article.articleCategory !="">

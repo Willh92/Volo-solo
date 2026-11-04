@@ -32,9 +32,9 @@
                     <h3 class="link-title"><span class="fake-title">友情链接</span></h3>
                     <ul class="link-items fontSmooth">
                         <#list links as link>
-                            <li class="link-item"><a class="link-item-inner effect-apollo" href="${link.linkAddress}" title="${link.linkTitle}" target="_blank" rel="friend"><img class="lazyload" onerror="if(window.imgError) imgError(this)" data-src="${link.linkIcon}" src="${link.linkIcon}"><span class="sitename">${link.linkTitle}</span>
+                            <li class="link-item"><a class="link-item-inner effect-apollo" href="${link.linkAddress?html}" title="${link.linkTitle?html}" target="_blank" rel="friend noopener noreferrer"><img class="lazyload" onerror="if(window.imgError) imgError(this)" data-src="${(link.linkIcon!'')?html}" src="${(link.linkIcon!'')?html}"><span class="sitename">${link.linkTitle?html}</span>
                                     <div class="linkdes">
-                                        ${link.linkDescription}
+                                        ${(link.linkDescription!'')?html}
                                     </div>
                                 </a></li>
                         </#list>

@@ -36,13 +36,8 @@ public class MainControl extends MainCache {
         }
         final long currentTimeStamp = System.currentTimeMillis();
         if (!this.cachePairMap.containsKey(str) && this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
-            final long expire = this.expireTime;
-            if (expire != -1) {
-                this.cachePairMap.entrySet().removeIf(entry ->
-                        (currentTimeStamp - entry.getValue().getTimeStamp()) > expire);
-            }
-            if (this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
-                this.cachePairMap.clear();
+            if (!makeRoomForNewKey(currentTimeStamp)) {
+                return false;
             }
         }
         final CachePair updated = this.cachePairMap.compute(str, (key, verifyPair) -> {
@@ -64,7 +59,37 @@ public class MainControl extends MainCache {
             next.setTimeStamp(timeStamp);
             return next;
         });
+        if (this.cachePairMap.size() > MAX_CACHE_ENTRIES) {
+            makeRoomForNewKey(currentTimeStamp);
+        }
         return updated.getFrequency() <= this.frequencyTime;
+    }
+
+    private boolean makeRoomForNewKey(final long currentTimeStamp) {
+        synchronized (this.cachePairMap) {
+            if (this.cachePairMap.size() < MAX_CACHE_ENTRIES) {
+                return true;
+            }
+            final long expire = this.expireTime;
+            if (expire != -1) {
+                this.cachePairMap.entrySet().removeIf(entry ->
+                        (currentTimeStamp - entry.getValue().getTimeStamp()) > expire);
+            }
+            if (this.cachePairMap.size() < MAX_CACHE_ENTRIES) {
+                return true;
+            }
+            // Never reset actively rate-limited keys during a spoofed-IP flood.
+            int evicted = 0;
+            final var iterator = this.cachePairMap.entrySet().iterator();
+            while (iterator.hasNext() && (this.cachePairMap.size() >= MAX_CACHE_ENTRIES || evicted < 256)) {
+                final var entry = iterator.next();
+                if (this.frequencyTime < 0 || entry.getValue().getFrequency() <= this.frequencyTime) {
+                    iterator.remove();
+                    evicted++;
+                }
+            }
+            return this.cachePairMap.size() < MAX_CACHE_ENTRIES;
+        }
     }
 
     public void setFrequencyTime(long frequencyTime) {

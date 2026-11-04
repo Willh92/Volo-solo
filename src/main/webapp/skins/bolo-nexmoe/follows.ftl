@@ -52,12 +52,12 @@
                             <#if 'list' !=customVars.key1>
                                 <#list follows as follow>
                                     <div class="other__item">
-                                        <a href="${servePath}/follow/articles/${follow.followTitle}" target="_blank"
-                                            rel="noopener">
-                                            ${follow.followTitle}
+                                        <a href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" target="_blank"
+                                            rel="noopener noreferrer">
+                                            ${follow.followTitle?html}
                                         </a>
                                         <div>
-                                            ${follow.followDescription}
+                                            ${(follow.followDescription!'')?html}
                                         </div>
                                     </div>
                                 </#list>
@@ -65,10 +65,10 @@
                                     <ul>
                                         <#list follows as follow>
                                             <li>
-                                                <a href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followTitle}" target="_blank"
-                                                    rel="noopener">
-                                                    <img src="${follow.followIcon}"
-                                                        alt="${follow.followDescription}">
+                                                <a href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${follow.followTitle?html}" target="_blank"
+                                                    rel="noopener noreferrer">
+                                                    <img src="${(follow.followIcon!'')?html}"
+                                                        alt="${(follow.followDescription!'')?html}">
                                                 </a>
                                             </li>
                                         </#list>

@@ -25,22 +25,25 @@ import org.b3log.solo.repository.PluginRepository;
  */
 public class PluginUtil {
 
-    final static BeanManager beanManager = BeanManager.getInstance();
-    final static PluginRepository pluginRepository = beanManager.getReference(PluginRepository.class);
-
-    public static boolean b3logPluginEnabled() {
+    private static boolean isEnabled(final String pluginId) {
         try {
-            return pluginRepository.get("B3log支持插件_0.0.1").optString("status").equals("ENABLED");
-        } catch (Exception e) {
+            final BeanManager beanManager = BeanManager.getInstance();
+            if (null == beanManager) {
+                return false;
+            }
+            final PluginRepository pluginRepository = beanManager.getReference(PluginRepository.class);
+            final org.json.JSONObject plugin = null == pluginRepository ? null : pluginRepository.get(pluginId);
+            return null != plugin && "ENABLED".equals(plugin.optString("status"));
+        } catch (final Exception e) {
             return false;
         }
     }
 
+    public static boolean b3logPluginEnabled() {
+        return isEnabled("B3log支持插件_0.0.1");
+    }
+
     public static boolean fishpiPluginEnabled() {
-        try {
-            return pluginRepository.get("摸鱼派支持插件_0.0.1").optString("status").equals("ENABLED");
-        } catch (Exception e) {
-            return false;
-        }
+        return isEnabled("摸鱼派支持插件_0.0.1");
     }
 }

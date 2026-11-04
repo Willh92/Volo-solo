@@ -22,7 +22,7 @@
         <#assign isRss=(article.isRss!false)?c=="true">
             <article class="item">
                 <div class="item__container">
-                    <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
+                    <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}')"></div>
                     <div rel="bookmark" class="item__abstract">
                         <a pjax-title="${(article.articleTitle)?html}" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                             ${article.articleAbstractText}

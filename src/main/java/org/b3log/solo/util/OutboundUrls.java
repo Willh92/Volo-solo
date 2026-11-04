@@ -17,13 +17,24 @@
  */
 package org.b3log.solo.util;
 
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.DefaultRoutePlanner;
+import org.apache.http.impl.conn.DefaultSchemePortResolver;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Validates external HTTP(S) URLs and prevents Server-Side Request Forgery (SSRF)
@@ -34,7 +45,37 @@ public final class OutboundUrls {
     private static final int MAX_URL_LENGTH = 2048;
     private static final int MAX_REDIRECTS = 3;
 
+    private record ValidatedTarget(URI uri, String host, InetAddress[] addresses) { }
+    private static final ThreadLocal<ValidatedTarget> PINNED_TARGET = new ThreadLocal<>();
+    private static final CloseableHttpClient SAFE_HTTP_CLIENT = HttpClients.custom()
+            .setDnsResolver(host -> {
+                final ValidatedTarget pinned = PINNED_TARGET.get();
+                final String normalized = stripBrackets(host);
+                if (pinned != null && pinned.host().equalsIgnoreCase(normalized)) {
+                    return pinned.addresses();
+                }
+                throw new UnknownHostException("Unpinned outbound host: " + host);
+            })
+            .setRoutePlanner(new DefaultRoutePlanner(DefaultSchemePortResolver.INSTANCE))
+            .disableRedirectHandling()
+            .disableCookieManagement()
+            .disableAuthCaching()
+            .disableAutomaticRetries()
+            .setMaxConnTotal(32)
+            .setMaxConnPerRoute(8)
+            .evictIdleConnections(30L, TimeUnit.SECONDS)
+            .build();
+
     private OutboundUrls() {
+    }
+
+    private static String stripBrackets(final String rawHost) {
+        if (rawHost == null) {
+            return "";
+        }
+        return rawHost.startsWith("[") && rawHost.endsWith("]")
+                ? rawHost.substring(1, rawHost.length() - 1)
+                : rawHost;
     }
 
     /**
@@ -90,15 +131,12 @@ public final class OutboundUrls {
      * Parses and resolves an outbound HTTP(S) URI, rejecting private, loopback, link-local,
      * multicast, reserved, and cloud-metadata addresses.
      */
-    public static URI requirePublicHttpUri(final String raw, final boolean allowLoopback) throws IOException {
+    private static ValidatedTarget resolveValidated(final String raw, final boolean allowLoopback) throws IOException {
         if (!isHttpOrHttps(raw)) {
             throw new IOException("Only valid http:// or https:// URLs are allowed");
         }
         final URI uri = URI.create(raw.strip());
-        final String rawHost = uri.getHost();
-        final String host = rawHost.startsWith("[") && rawHost.endsWith("]")
-                ? rawHost.substring(1, rawHost.length() - 1)
-                : rawHost;
+        final String host = stripBrackets(uri.getHost());
         final InetAddress[] addresses = InetAddress.getAllByName(host);
         if (addresses.length == 0) {
             throw new IOException("Host did not resolve to any address");
@@ -108,7 +146,20 @@ public final class OutboundUrls {
                 throw new IOException("Target address is restricted");
             }
         }
-        return uri;
+        return new ValidatedTarget(uri, host, addresses);
+    }
+
+    public static URI requirePublicHttpUri(final String raw, final boolean allowLoopback) throws IOException {
+        return resolveValidated(raw, allowLoopback).uri();
+    }
+
+    private static boolean allZero(final byte[] bytes, final int fromInclusive, final int toExclusive) {
+        for (int i = fromInclusive; i < toExclusive; i++) {
+            if (bytes[i] != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static boolean isAllowedRemoteAddress(final InetAddress address, final boolean allowLoopback) {
@@ -127,21 +178,53 @@ public final class OutboundUrls {
             return isPublicIpv4(bytes, allowLoopback);
         }
         if (bytes.length == 16) {
+            final int b0 = bytes[0] & 0xff;
+            final int b1 = bytes[1] & 0xff;
+            final int b2 = bytes[2] & 0xff;
+            final int b3 = bytes[3] & 0xff;
             // IPv6 Unique Local Address fc00::/7
-            if ((bytes[0] & 0xfe) == 0xfc) {
+            if ((b0 & 0xfe) == 0xfc) {
                 return false;
             }
-            // IPv4-mapped IPv6 ::ffff:x.x.x.x
-            boolean v4Mapped = true;
-            for (int i = 0; i < 10; i++) {
-                if (bytes[i] != 0) {
-                    v4Mapped = false;
-                    break;
-                }
+            // Discard-Only 100::/64
+            if (b0 == 0x01 && b1 == 0x00 && allZero(bytes, 2, 8)) {
+                return false;
             }
-            if (v4Mapped && (bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff) {
-                final byte[] v4 = new byte[]{bytes[12], bytes[13], bytes[14], bytes[15]};
-                return isPublicIpv4(v4, allowLoopback);
+            // Documentation 2001:db8::/32
+            if (b0 == 0x20 && b1 == 0x01 && b2 == 0x0d && b3 == 0xb8) {
+                return false;
+            }
+            // Benchmarking 2001:2::/48
+            if (b0 == 0x20 && b1 == 0x01 && b2 == 0x00 && b3 == 0x02 && bytes[4] == 0 && bytes[5] == 0) {
+                return false;
+            }
+            // RFC 8215 local-use IPv4/IPv6 translation 64:ff9b:1::/48
+            if (b0 == 0x00 && b1 == 0x64 && b2 == 0xff && b3 == 0x9b && bytes[4] == 0x00 && (bytes[5] & 0xff) == 0x01) {
+                return false;
+            }
+            // IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96
+            if (allZero(bytes, 0, 10)
+                    && ((bytes[10] == 0 && bytes[11] == 0)
+                    || ((bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff))) {
+                return isPublicIpv4(new byte[]{bytes[12], bytes[13], bytes[14], bytes[15]}, allowLoopback);
+            }
+            // SIIT IPv4-translated ::ffff:0:0:0/96
+            if (allZero(bytes, 0, 8)
+                    && (bytes[8] & 0xff) == 0xff && (bytes[9] & 0xff) == 0xff
+                    && bytes[10] == 0 && bytes[11] == 0) {
+                return isPublicIpv4(new byte[]{bytes[12], bytes[13], bytes[14], bytes[15]}, allowLoopback);
+            }
+            // NAT64 well-known prefix 64:ff9b::/96
+            if (b0 == 0x00 && b1 == 0x64 && b2 == 0xff && b3 == 0x9b && allZero(bytes, 4, 12)) {
+                return isPublicIpv4(new byte[]{bytes[12], bytes[13], bytes[14], bytes[15]}, allowLoopback);
+            }
+            // 6to4 2002::/16 (embeds IPv4 in bytes[2..5])
+            if (b0 == 0x20 && b1 == 0x02) {
+                return isPublicIpv4(new byte[]{bytes[2], bytes[3], bytes[4], bytes[5]}, allowLoopback);
+            }
+            // Teredo tunneling 2001:0000::/32
+            if (b0 == 0x20 && b1 == 0x01 && b2 == 0x00 && b3 == 0x00) {
+                return false;
             }
         }
         return true;
@@ -150,6 +233,7 @@ public final class OutboundUrls {
     private static boolean isPublicIpv4(final byte[] b, final boolean allowLoopback) {
         final int b0 = b[0] & 0xff;
         final int b1 = b[1] & 0xff;
+        final int b2 = b[2] & 0xff;
         if (b0 == 0) {
             return false;
         }
@@ -158,6 +242,10 @@ public final class OutboundUrls {
         }
         // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
         if (b0 == 10 || (b0 == 172 && (b1 & 0xf0) == 16) || (b0 == 192 && b1 == 168) || (b0 == 169 && b1 == 254)) {
+            return false;
+        }
+        // 192.0.0.0/24 IETF protocol assignments & 192.0.2.0/24 TEST-NET-1
+        if (b0 == 192 && b1 == 0 && (b2 == 0 || b2 == 2)) {
             return false;
         }
         // 100.64.0.0/10 (Carrier-grade NAT & cloud metadata 100.100.100.200)
@@ -172,45 +260,57 @@ public final class OutboundUrls {
     }
 
     /**
-     * Downloads an external resource with strict public-address validation on every redirect hop and a hard byte cap.
+     * Downloads an external resource with pinned DNS resolution, system-proxy bypass,
+     * strict public-address validation on every redirect hop, and a hard byte cap.
      */
     public static byte[] fetchBytes(final String rawUrl, final int connectTimeoutMs, final int readTimeoutMs,
                                     final int maxBytes, final String acceptHeader, final String userAgent,
                                     final boolean allowLoopback) throws IOException {
-        URI current = requirePublicHttpUri(rawUrl, allowLoopback);
+        ValidatedTarget current = resolveValidated(rawUrl, allowLoopback);
+        final RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(connectTimeoutMs)
+                .setConnectionRequestTimeout(connectTimeoutMs)
+                .setSocketTimeout(readTimeoutMs)
+                .setRedirectsEnabled(false)
+                .build();
         for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
-            final HttpURLConnection connection = (HttpURLConnection) current.toURL().openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(connectTimeoutMs);
-            connection.setReadTimeout(readTimeoutMs);
+            final HttpGet request = new HttpGet(current.uri());
+            request.setConfig(requestConfig);
             if (acceptHeader != null && !acceptHeader.isBlank()) {
-                connection.setRequestProperty("Accept", acceptHeader);
+                request.setHeader("Accept", acceptHeader);
             }
             if (userAgent != null && !userAgent.isBlank()) {
-                connection.setRequestProperty("User-Agent", userAgent);
+                request.setHeader("User-Agent", userAgent);
             }
-            try {
-                final int status = connection.getResponseCode();
+            PINNED_TARGET.set(current);
+            try (CloseableHttpResponse response = SAFE_HTTP_CLIENT.execute(request)) {
+                final int status = response.getStatusLine().getStatusCode();
                 if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                     if (hop == MAX_REDIRECTS) {
                         throw new IOException("Too many redirects");
                     }
-                    final String location = connection.getHeaderField("Location");
+                    final Header locationHeader = response.getFirstHeader("Location");
+                    final String location = locationHeader == null ? null : locationHeader.getValue();
                     if (location == null || location.isBlank()) {
                         throw new IOException("Redirect missing Location header");
                     }
-                    final URI next = current.resolve(location.strip());
-                    current = requirePublicHttpUri(next.toString(), allowLoopback);
+                    final URI next = current.uri().resolve(location.strip());
+                    current = resolveValidated(next.toString(), allowLoopback);
                     continue;
                 }
                 if (status < 200 || status >= 300) {
                     throw new IOException("Unexpected HTTP status " + status);
                 }
-                final long declaredLength = connection.getContentLengthLong();
+                final HttpEntity entity = response.getEntity();
+                if (entity == null) {
+                    return new byte[0];
+                }
+                final long declaredLength = entity.getContentLength();
                 if (declaredLength > maxBytes) {
+                    request.abort();
                     throw new IOException("Remote response exceeds maximum allowed size");
                 }
-                try (InputStream in = connection.getInputStream();
+                try (InputStream in = entity.getContent();
                      ByteArrayOutputStream out = new ByteArrayOutputStream(
                              declaredLength > 0 ? (int) Math.min(declaredLength, 65536) : 8192)) {
                     final byte[] buffer = new byte[8192];
@@ -219,6 +319,7 @@ public final class OutboundUrls {
                     while ((read = in.read(buffer)) != -1) {
                         total += read;
                         if (total > maxBytes) {
+                            request.abort();
                             throw new IOException("Remote response exceeds maximum allowed size");
                         }
                         out.write(buffer, 0, read);
@@ -226,7 +327,7 @@ public final class OutboundUrls {
                     return out.toByteArray();
                 }
             } finally {
-                connection.disconnect();
+                PINNED_TARGET.remove();
             }
         }
         throw new IOException("Too many redirects");

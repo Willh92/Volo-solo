@@ -18,3 +18,4 @@
 /src/main/webapp/js/lib/fancybox/
 /src/main/webapp/js/lib/justifiedGallery/
 src/main/webapp/tmp_favicon
+src/main/webapp/**/*.gz

@@ -39,6 +39,8 @@ public class PageCache {
      * Page cache.
      */
     private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
+    private final Map<String, JSONObject> permalinkCache = new ConcurrentHashMap<>();
+    private volatile java.util.List<JSONObject> orderedPages;
 
     /**
      * Gets a page by the specified page id.
@@ -55,6 +57,48 @@ public class PageCache {
         return Solos.clone(page);
     }
 
+    public JSONObject getPageByPermalink(final String permalink) {
+        if (null == permalink) {
+            return null;
+        }
+        final JSONObject page = permalinkCache.get(permalink);
+        return null == page ? null : Solos.clone(page);
+    }
+
+    public java.util.List<JSONObject> getPages() {
+        final java.util.List<JSONObject> snapshot = orderedPages;
+        if (null == snapshot) {
+            return null;
+        }
+        final java.util.List<JSONObject> copy = new java.util.ArrayList<>(snapshot.size());
+        for (final JSONObject page : snapshot) {
+            copy.add(Solos.clone(page));
+        }
+        return copy;
+    }
+
+    public void putPages(final java.util.List<JSONObject> pages) {
+        if (null == pages) {
+            orderedPages = null;
+            return;
+        }
+        final java.util.List<JSONObject> stored = new java.util.ArrayList<>(pages.size());
+        permalinkCache.clear();
+        for (final JSONObject page : pages) {
+            final JSONObject copy = Solos.clone(page);
+            stored.add(copy);
+            final String id = copy.optString(Keys.OBJECT_ID);
+            if (!id.isEmpty()) {
+                cache.put(id, copy);
+            }
+            final String permalink = copy.optString(org.b3log.solo.model.Page.PAGE_PERMALINK);
+            if (!permalink.isEmpty()) {
+                permalinkCache.put(permalink, copy);
+            }
+        }
+        orderedPages = java.util.Collections.unmodifiableList(stored);
+    }
+
     /**
      * Adds or updates the specified page.
      *
@@ -62,8 +106,19 @@ public class PageCache {
      */
     public void putPage(final JSONObject page) {
         final String pageId = page.optString(Keys.OBJECT_ID);
-
-        cache.put(pageId, Solos.clone(page));
+        final JSONObject copy = Solos.clone(page);
+        final JSONObject previous = cache.put(pageId, copy);
+        if (null != previous) {
+            final String oldPermalink = previous.optString(org.b3log.solo.model.Page.PAGE_PERMALINK);
+            if (!oldPermalink.isEmpty()) {
+                permalinkCache.remove(oldPermalink);
+            }
+        }
+        final String permalink = copy.optString(org.b3log.solo.model.Page.PAGE_PERMALINK);
+        if (!permalink.isEmpty()) {
+            permalinkCache.put(permalink, copy);
+        }
+        orderedPages = null;
     }
 
     /**
@@ -72,7 +127,14 @@ public class PageCache {
      * @param id the specified page id
      */
     public void removePage(final String id) {
-        cache.remove(id);
+        final JSONObject removed = cache.remove(id);
+        if (null != removed) {
+            final String permalink = removed.optString(org.b3log.solo.model.Page.PAGE_PERMALINK);
+            if (!permalink.isEmpty()) {
+                permalinkCache.remove(permalink);
+            }
+        }
+        orderedPages = null;
     }
 
     /**
@@ -80,5 +142,7 @@ public class PageCache {
      */
     public void clear() {
         cache.clear();
+        permalinkCache.clear();
+        orderedPages = null;
     }
 }

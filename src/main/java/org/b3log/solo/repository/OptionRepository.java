@@ -53,6 +53,16 @@ public class OptionRepository extends AbstractRepository {
     public void evictOption(final String id) { if (optionCache != null) optionCache.removeOption(id); }
 
     @Override
+    public String add(final JSONObject option) throws RepositoryException {
+        final String id = super.add(option);
+        option.put(Keys.OBJECT_ID, id);
+        if (null != optionCache) {
+            optionCache.putOption(option);
+        }
+        return id;
+    }
+
+    @Override
     public void remove(final String id) throws RepositoryException {
         final JSONObject option = get(id);
         if (null == option) {
@@ -61,6 +71,7 @@ public class OptionRepository extends AbstractRepository {
 
         super.remove(id);
         optionCache.removeOption(id);
+        optionCache.markMissing(id);
 
         final String category = option.optString(Option.OPTION_CATEGORY);
         optionCache.removeCategory(category);
@@ -72,15 +83,19 @@ public class OptionRepository extends AbstractRepository {
         if (null != ret) {
             return ret;
         }
+        if (optionCache.isMissing(id)) {
+            return null;
+        }
 
         ret = super.get(id);
         if (null == ret) {
+            optionCache.markMissing(id);
             return null;
         }
 
         optionCache.putOption(ret);
 
-        return ret;
+        return org.b3log.solo.util.Solos.clone(ret);
     }
 
     @Override

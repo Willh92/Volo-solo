@@ -44,10 +44,10 @@ public class WAFlogger {
     }
 
     public static void logTrace(String requestIP, String requestURL) {
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append(prefix);
-        stringBuilder.append(requestIP + " accessed " + requestURL);
-        LOGGER.log(Level.DEBUG, stringBuilder.toString());
+        if (!LOGGER.isDebugEnabled()) {
+            return;
+        }
+        LOGGER.log(Level.DEBUG, prefix + requestIP + " accessed " + requestURL);
     }
 
     public static void logError(String log) {

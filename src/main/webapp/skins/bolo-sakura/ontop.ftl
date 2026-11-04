@@ -25,7 +25,7 @@
         <div class="the-feature square from_left_and_right">
             <a href="${servePath}${article.articlePermalink}" target="_blank">
                 <div class="img">
-                    <img src="${article.articleImg1URL}">
+                    <img src="${article.articleImg1URL?html}">
                 </div>
                 <div class="info">
                     <p>${(article.articleTitle)?html}</p>

@@ -59,17 +59,12 @@ public class TagRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getByArticleId(final String articleId) throws RepositoryException {
-        final List<JSONObject> ret = new ArrayList<>();
-
-        final List<JSONObject> tagArticleRelations = tagArticleRepository.getByArticleId(articleId);
-        for (final JSONObject tagArticleRelation : tagArticleRelations) {
-            final String tagId = tagArticleRelation.optString(Tag.TAG + "_" + Keys.OBJECT_ID);
-            final JSONObject tag = get(tagId);
-
-            ret.add(tag);
+        if (null == articleId || articleId.isBlank()) {
+            return new ArrayList<>();
         }
-
-        return ret;
+        final List<JSONObject> rows = select("SELECT t.* FROM " + getName() + " AS t JOIN "
+                + tagArticleRepository.getName() + " AS r ON r.tag_oId = t.oId WHERE r.article_oId = ?", articleId);
+        return null == rows ? new ArrayList<>() : rows;
     }
 
     /**

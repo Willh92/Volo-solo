@@ -235,21 +235,45 @@ public class ExportService {
             db = StringUtils.substringBefore(db, "?");
 
             try {
+                final ProcessBuilder pb = new ProcessBuilder("mysqldump", "-u" + dbUser, "--databases", db);
                 if (StringUtils.isNotBlank(dbPwd)) {
-                    final ProcessBuilder pb = new ProcessBuilder("mysqldump", "-u" + dbUser, "--databases", db);
                     pb.environment().put("MYSQL_PWD", dbPwd);
-                    pb.redirectErrorStream(false);
-                    final Process process = pb.start();
-                    try (var stdout = process.getInputStream()) {
-                        sql = IOUtils.toString(stdout, StandardCharsets.UTF_8);
-                    }
-                    if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
-                        process.destroyForcibly();
-                        sql = "";
-                    }
-                } else {
-                    sql = Execs.exec(new String[]{"mysqldump", "-u" + dbUser, "--databases", db}, 60 * 1000 * 5);
                 }
+                pb.redirectErrorStream(false);
+                final Process process = pb.start();
+                process.getOutputStream().close();
+                final java.util.concurrent.atomic.AtomicReference<String> stdoutHolder =
+                        new java.util.concurrent.atomic.AtomicReference<>("");
+                final java.util.concurrent.atomic.AtomicReference<String> stderrHolder =
+                        new java.util.concurrent.atomic.AtomicReference<>("");
+                final Thread outReader = new Thread(() -> {
+                    try (var stdout = process.getInputStream()) {
+                        stdoutHolder.set(IOUtils.toString(stdout, StandardCharsets.UTF_8));
+                    } catch (final IOException ignored) { }
+                }, "volo-mysqldump-stdout");
+                outReader.setDaemon(true);
+                final Thread errReader = new Thread(() -> {
+                    try (var stderr = process.getErrorStream()) {
+                        final byte[] errBytes = stderr.readNBytes(8192);
+                        stderrHolder.set(new String(errBytes, StandardCharsets.UTF_8));
+                    } catch (final IOException ignored) { }
+                }, "volo-mysqldump-stderr");
+                errReader.setDaemon(true);
+                outReader.start();
+                errReader.start();
+                if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
+                    process.destroyForcibly();
+                    LOGGER.log(Level.ERROR, "Export failed, mysqldump timed out after 5 minutes");
+                    return null;
+                }
+                outReader.join(5000L);
+                errReader.join(2000L);
+                if (process.exitValue() != 0) {
+                    LOGGER.log(Level.ERROR, "Export failed, mysqldump exited with code "
+                            + process.exitValue() + ": " + stderrHolder.get());
+                    return null;
+                }
+                sql = stdoutHolder.get();
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Export failed, please check command \"mysqldump\" is on your system", e);
 
@@ -357,22 +381,26 @@ public class ExportService {
             JdbcRepository.dispose();
             final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
 
-            final String tmpDir = System.getProperty("java.io.tmpdir");
-            final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-            String localFilePath = tmpDir + File.separator + "solo-blog-repo-" + date;
-            final File localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
-
-            final File postDir = new File(localFile, "posts");
-            exportHexoMd(posts, postDir.getPath());
-
-            final File zipFile = ZipUtil.zip(localFile);
+            File localFile = null;
+            File zipFile = null;
             byte[] zipData;
-            try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                zipData = IOUtils.toByteArray(inputStream);
-            }
+            try {
+                localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
+                final File postDir = new File(localFile, "posts");
+                exportHexoMd(posts, postDir.getPath());
 
-            FileUtils.deleteQuietly(localFile);
-            FileUtils.deleteQuietly(zipFile);
+                zipFile = ZipUtil.zip(localFile);
+                try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
+                    zipData = IOUtils.toByteArray(inputStream);
+                }
+            } finally {
+                if (localFile != null) {
+                    FileUtils.deleteQuietly(localFile);
+                }
+                if (zipFile != null) {
+                    FileUtils.deleteQuietly(zipFile);
+                }
+            }
 
             final String clientTitle = preference.optString(Option.ID_C_BLOG_TITLE);
             final String clientSubtitle = preference.optString(Option.ID_C_BLOG_SUBTITLE);
@@ -492,22 +520,26 @@ public class ExportService {
             final JSONObject mds = exportHexoMDs();
             final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
 
-            final String tmpDir = System.getProperty("java.io.tmpdir");
-            final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-            String localFilePath = tmpDir + File.separator + "solo-hexo-" + date;
-            final File localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
-
-            final File postDir = new File(localFile, "posts");
-            exportHexoMd(posts, postDir.getPath());
-
-            final File zipFile = ZipUtil.zip(localFile);
+            File localFile = null;
+            File zipFile = null;
             byte[] zipData;
-            try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                zipData = IOUtils.toByteArray(inputStream);
-            }
+            try {
+                localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
+                final File postDir = new File(localFile, "posts");
+                exportHexoMd(posts, postDir.getPath());
 
-            FileUtils.deleteQuietly(localFile);
-            FileUtils.deleteQuietly(zipFile);
+                zipFile = ZipUtil.zip(localFile);
+                try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
+                    zipData = IOUtils.toByteArray(inputStream);
+                }
+            } finally {
+                if (localFile != null) {
+                    FileUtils.deleteQuietly(localFile);
+                }
+                if (zipFile != null) {
+                    FileUtils.deleteQuietly(zipFile);
+                }
+            }
 
             final BeanManager beanManager = BeanManager.getInstance();
             UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);

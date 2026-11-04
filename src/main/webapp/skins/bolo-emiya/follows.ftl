@@ -21,12 +21,12 @@
   <@sidePage htmlTitle="${followLabel} - ${blogTitle}" pageTitle="${followLabel}">
     <div class="rowRowLayout">
       <#list follows as follow>
-        <a class="item" rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followDescription}" target="_blank">
+        <a class="item" rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${(follow.followDescription!'')?html}" target="_blank">
           <span class="item__title">
-            ${follow.followTitle}
+            ${follow.followTitle?html}
           </span>
           <span class="item__desc">
-            ${follow.followDescription}
+            ${(follow.followDescription!'')?html}
           </span>
         </a>
       </#list>

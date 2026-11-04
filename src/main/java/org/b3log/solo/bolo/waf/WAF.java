@@ -30,7 +30,7 @@ import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
  * @date : 2020-05-31
  **/
 public class WAF {
-    public static boolean POWER = false;
+    public static volatile boolean POWER = false;
 
     public static void on() {
         if (!POWER) {
@@ -83,8 +83,10 @@ public class WAF {
             return true;
         }
 
-        String contextPath = Latkes.getContextPath();
-        requestURL = requestURL.replaceFirst("^" + contextPath, "");
+        final String contextPath = Latkes.getContextPath();
+        if (!contextPath.isEmpty() && requestURL.startsWith(contextPath)) {
+            requestURL = requestURL.substring(contextPath.length());
+        }
         if (requestURL.isEmpty()) {
             requestURL = "/";
         }
@@ -118,9 +120,9 @@ public class WAF {
                         requestURL.startsWith("/oauth/bolo/login")
         )) {
 
-            WAFrule rule = new WAFrule();
+            final SimpleCurrentLimiter limiter = WAFstorage.currentLimiter;
 
-            if (rule.access(requestIP)) {
+            if (limiter == null || limiter.access(requestIP)) {
                 WAFlogger.logTrace(requestIP, requestURL);
 
                 return true;

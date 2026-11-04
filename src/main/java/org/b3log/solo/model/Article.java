@@ -203,8 +203,11 @@ public final class Article {
     private Article() {
     }
 
-    /** Finds a safe image in rendered article HTML without making network requests. */
-    public static String getArticleCoverURL(final String html) {
+    /** Extracts the first safe image URL from rendered HTML without making network requests. */
+    private static String firstSafeImageUrl(final String html) {
+        if (html == null || !StringUtils.containsIgnoreCase(html, "<img")) {
+            return "";
+        }
         for (final org.jsoup.nodes.Element image : Jsoup.parseBodyFragment(html).select("img[src]")) {
             final String source = image.attr("src").trim();
             if (source.isBlank() || source.contains("\\") || source.chars().anyMatch(Character::isISOControl)) continue;
@@ -212,14 +215,21 @@ public final class Article {
                 final java.net.URI uri = java.net.URI.create(source);
                 final String scheme = uri.getScheme();
                 if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) continue;
-                if (source.startsWith("#") || source.startsWith("?") || uri.getPath() == null
+                if (scheme == null && source.startsWith("//")) continue;
+                if (source.startsWith("#") || source.startsWith("?") || uri.getPath() == null || uri.getPath().isEmpty()
                         || uri.getPath().toLowerCase(java.util.Locale.ROOT).endsWith(".ico")) continue;
-                return Images.imageSize(source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
+                return source;
             } catch (IllegalArgumentException ignored) {
                 // Malformed or non-image URLs do not become cover sources.
             }
         }
         return "";
+    }
+
+    /** Finds a safe image in rendered article HTML without making network requests. */
+    public static String getArticleCoverURL(final String html) {
+        final String source = firstSafeImageUrl(html);
+        return source.isEmpty() ? "" : Images.imageSize(source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
     }
 
     /**
@@ -230,30 +240,11 @@ public final class Article {
      */
     public static String getArticleImg1URL(final JSONObject article) {
         final String summary = article.optString(Article.ARTICLE_ABSTRACT);
-        String content = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+        final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
                 ? "" : article.optString(Article.ARTICLE_CONTENT);
-        content = summary + "\n\n" + content;
-        final String html = Markdowns.toHTML(content);
-        final String[] imgs = StringUtils.substringsBetween(html, "<img", ">");
-        if (null == imgs || 0 == imgs.length) {
-            return Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
-        }
-
-        String ret = null;
-        for (final String img : imgs) {
-            ret = StringUtils.substringBetween(img, "src=\"", "\"");
-            if (!StringUtils.containsIgnoreCase(ret, ".ico")) {
-                break;
-            }
-        }
-
-        if (StringUtils.isBlank(ret)) {
-            return Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
-        }
-
-        ret = Images.imageSize(ret, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
-
-        return ret;
+        final String html = Markdowns.toHTML(summary + "\n\n" + body);
+        final String source = firstSafeImageUrl(html);
+        return Images.imageSize(source.isEmpty() ? Images.randImage() : source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
     }
 
     /**
@@ -264,28 +255,16 @@ public final class Article {
      */
     public static String getArticleImg1URLWithoutSetSize(final JSONObject article) {
         final String summary = article.optString(Article.ARTICLE_ABSTRACT);
-        String content = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+        final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
                 ? "" : article.optString(Article.ARTICLE_CONTENT);
-        content = summary + "\n\n" + content;
-        final String html = content;
-        final String[] imgs = StringUtils.substringsBetween(html, "<img", ">");
-        if (null == imgs || 0 == imgs.length) {
-            return Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
+        final String combined = summary + "\n\n" + body;
+        String source = firstSafeImageUrl(combined);
+        if (source.isEmpty()) {
+            source = firstSafeImageUrl(Markdowns.toHTML(combined));
         }
-
-        String ret = null;
-        for (final String img : imgs) {
-            ret = StringUtils.substringBetween(img, "src=\"", "\"");
-            if (!StringUtils.containsIgnoreCase(ret, ".ico")) {
-                break;
-            }
-        }
-
-        if (StringUtils.isBlank(ret)) {
-            return Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
-        }
-
-        return ret;
+        return source.isEmpty()
+                ? Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT)
+                : source;
     }
 
     /**
@@ -295,7 +274,7 @@ public final class Article {
      * @return the abstract plain text
      */
     public static String getAbstractText(final String content) {
-        final String ret = Jsoup.clean(Markdowns.toHTML(content), Safelist.none());
+        final String ret = Jsoup.parseBodyFragment(Markdowns.toHTML(content)).text();
         if (ret.length() > ARTICLE_ABSTRACT_LENGTH) {
             return ret.substring(0, ARTICLE_ABSTRACT_LENGTH) + "....";
         }

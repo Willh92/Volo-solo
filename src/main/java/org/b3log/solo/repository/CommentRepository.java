@@ -57,6 +57,9 @@ public class CommentRepository extends AbstractRepository {
     @Inject
     private CommentCache commentCache;
 
+    @Inject
+    private org.b3log.solo.cache.StatisticCache statisticCache;
+
     /**
      * Public constructor.
      */
@@ -67,14 +70,27 @@ public class CommentRepository extends AbstractRepository {
     @Override
     public String add(final JSONObject comment) throws RepositoryException {
         if (comment.isNull("commentDeleted")) comment.put("commentDeleted", false);
-        return super.add(comment);
+        final String id = super.add(comment);
+        comment.put(Keys.OBJECT_ID, id);
+        if (null != commentCache) {
+            commentCache.putComment(comment);
+        }
+        if (null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
+        return id;
     }
 
     @Override
     public void remove(final String id) throws RepositoryException {
         super.remove(id);
 
-        commentCache.removeComment(id);
+        if (null != commentCache) {
+            commentCache.removeComment(id);
+        }
+        if (null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
     }
 
     @Override
@@ -91,7 +107,7 @@ public class CommentRepository extends AbstractRepository {
 
         commentCache.putComment(ret);
 
-        return ret;
+        return org.b3log.solo.util.Solos.clone(ret);
     }
 
     @Override
@@ -99,7 +115,12 @@ public class CommentRepository extends AbstractRepository {
         super.update(id, comment, propertyNames);
 
         comment.put(Keys.OBJECT_ID, id);
-        commentCache.putComment(comment);
+        if (null != commentCache) {
+            commentCache.putComment(comment);
+        }
+        if (null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
     }
 
     /**

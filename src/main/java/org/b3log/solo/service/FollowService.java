@@ -253,6 +253,9 @@ public class FollowService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (e instanceof ServiceException se) {
+                throw se;
+            }
 
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -352,6 +355,9 @@ public class FollowService {
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (e instanceof ServiceException se) {
+                throw se;
             }
 
             LOGGER.log(Level.ERROR, "Adds a follow failed", e);

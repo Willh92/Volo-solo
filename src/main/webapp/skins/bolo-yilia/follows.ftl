@@ -42,10 +42,10 @@
                         <ul class="tags fn-clear">
                             <#list follows as follow>
                                 <li>
-                                    <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" class="tag"
-                                        title="${follow.followDescription}" target="_blank">
-                                        <img src="${follow.followIcon!faviconAPI}" width="16" height="16" />
-                                        ${follow.followTitle}
+                                    <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" class="tag"
+                                        title="${(follow.followDescription!'')?html}" target="_blank">
+                                        <img src="${(follow.followIcon!faviconAPI)?html}" width="16" height="16" />
+                                        ${follow.followTitle?html}
                                     </a>
                                 </li>
                             </#list>

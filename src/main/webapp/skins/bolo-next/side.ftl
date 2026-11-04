@@ -82,9 +82,9 @@
             <p class="site-author-name">Links</p>
             <#list links as link>
             <span class="links-of-author-item">
-                <a rel="friend" href="${link.linkAddress}"
-                   title="${link.linkDescription}" target="_blank">
-                    ${link.linkTitle}
+                <a rel="friend noopener noreferrer" href="${link.linkAddress?html}"
+                   title="${(link.linkDescription!'')?html}" target="_blank">
+                    ${link.linkTitle?html}
                 </a>
             </span>
             </#list>
@@ -95,9 +95,9 @@
             <p class="site-author-name">Follows</p>
             <#list follows as follow>
             <span class="links-of-author-item">
-                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}"
-                   title="${follow.followDescription}" target="_blank">
-                    ${follow.followTitle}
+                <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}"
+                   title="${(follow.followDescription!'')?html}" target="_blank">
+                    ${follow.followTitle?html}
                 </a>
             </span>
             </#list>

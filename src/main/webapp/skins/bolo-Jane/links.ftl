@@ -38,11 +38,11 @@
         </div>
         <div class="tags fn__clear">
             <#list links as link>
-            <a rel="friend" class="ft__red" href="${link.linkAddress}"
+            <a rel="friend noopener noreferrer" class="ft__red" href="${link.linkAddress?html}"
                target="_blank">
-                ${link.linkTitle}
+                ${link.linkTitle?html}
                 <#if link.linkDescription != ''>
-                <span class="ft__gray">(${link.linkDescription})</span>
+                <span class="ft__gray">(${link.linkDescription?html})</span>
                 </#if>
             </a>
             </#list>

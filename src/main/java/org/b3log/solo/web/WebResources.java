@@ -37,7 +37,9 @@ public final class WebResources {
         return cached;
     }
     public Path resolve(final String name) {
-        final Path file = root.resolve(name.replaceFirst("^/+", "")).normalize();
+        int start = 0;
+        while (start < name.length() && name.charAt(start) == '/') start++;
+        final Path file = root.resolve(start == 0 ? name : name.substring(start)).normalize();
         if (!file.startsWith(root)) throw new IllegalArgumentException("Resource escapes public directory");
         return file;
     }

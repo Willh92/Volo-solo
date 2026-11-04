@@ -112,10 +112,10 @@
                                                                 <#list follows as follow>
                                                                     <div class="link-body">
                                                                         <div class="link-avatar-div">
-                                                                            <a href="" rel="nofollow"
+                                                                            <a href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" rel="nofollow noopener noreferrer"
                                                                                 target="_blank">
-                                                                                <img alt="${follow.followDescription}"
-                                                                                    src="${follow.followIcon}"
+                                                                                <img alt="${(follow.followDescription!'')?html}"
+                                                                                    src="${(follow.followIcon!'')?html}"
                                                                                     class="link-avatar">
                                                                             </a>
                                                                         </div>
@@ -123,18 +123,18 @@
                                                                             <div class="link-meta">
                                                                                 <div itemprop="author"
                                                                                     class="link-author">
-                                                                                    <a href="${servePath}/follow/articles/${follow.followTitle}"
-                                                                                        rel="nofollow"
+                                                                                    <a href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}"
+                                                                                        rel="nofollow noopener noreferrer"
                                                                                         target="_blank"
-                                                                                        title="${follow.followTitle}"
+                                                                                        title="${follow.followTitle?html}"
                                                                                         class="author-name">
-                                                                                        ${follow.followTitle}
+                                                                                        ${follow.followTitle?html}
                                                                                     </a>
                                                                                 </div>
                                                                             </div>
                                                                             <div itemprop="description"
                                                                                 class="link-content">
-                                                                                ${follow.followDescription}
+                                                                                ${(follow.followDescription!'')?html}
                                                                             </div>
                                                                         </div>
                                                                     </div>

@@ -53,6 +53,9 @@ public class ArticleRepository extends AbstractRepository {
     @Inject
     private ArticleCache articleCache;
 
+    @Inject
+    private org.b3log.solo.cache.StatisticCache statisticCache;
+
     /**
      * Public constructor.
      */
@@ -61,10 +64,28 @@ public class ArticleRepository extends AbstractRepository {
     }
 
     @Override
+    public String add(final JSONObject article) throws RepositoryException {
+        final String id = super.add(article);
+        article.put(Keys.OBJECT_ID, id);
+        if (null != articleCache) {
+            articleCache.putArticle(article);
+        }
+        if (null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
+        return id;
+    }
+
+    @Override
     public void remove(final String id) throws RepositoryException {
         super.remove(id);
 
-        articleCache.removeArticle(id);
+        if (null != articleCache) {
+            articleCache.removeArticle(id);
+        }
+        if (null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
     }
 
     @Override
@@ -81,7 +102,7 @@ public class ArticleRepository extends AbstractRepository {
 
         articleCache.putArticle(ret);
 
-        return ret;
+        return org.b3log.solo.util.Solos.clone(ret);
     }
 
     @Override
@@ -89,7 +110,15 @@ public class ArticleRepository extends AbstractRepository {
         super.update(id, article, propertyNames);
 
         article.put(Keys.OBJECT_ID, id);
-        articleCache.putArticle(article);
+        if (null != articleCache) {
+            articleCache.putArticle(article);
+        }
+        final boolean viewCountOnly = null != propertyNames
+                && propertyNames.length == 1
+                && Article.ARTICLE_VIEW_COUNT.equals(propertyNames[0]);
+        if (!viewCountOnly && null != statisticCache) {
+            statisticCache.invalidateCounts();
+        }
     }
 
     @Override

@@ -19,27 +19,42 @@ public class IpBanService {
     private static final String OPTION_ID = "voloIpBans";
     @Inject private OptionQueryService optionQueryService;
     @Inject private OptionMgmtService optionMgmtService;
-    private record Rule(JSONObject data, IpRange range) { }
+    private record Rule(JSONObject data, IpRange range, long created, long expiresAt) { }
+    private static Rule toRule(final JSONObject data, final IpRange range) {
+        return new Rule(data, range, data.optLong("created"), data.optLong("expiresAt"));
+    }
     private volatile List<Rule> snapshot;
     protected long now() { return System.currentTimeMillis(); }
-    private boolean active(final Rule rule) { return rule.data().optLong("expiresAt") == 0 || rule.data().optLong("expiresAt") > now(); }
+    private boolean active(final Rule rule) { return rule.expiresAt() == 0 || rule.expiresAt() > now(); }
 
-    private synchronized List<Rule> rules() throws Exception {
-        if (snapshot == null) {
-            final JSONArray data = new JSONArray(org.b3log.solo.util.OptionDocuments.read(optionQueryService, OPTION_ID, "[]"));
-            final List<Rule> entries = new ArrayList<>();
-            for (int i = 0; i < data.length(); i++) {
-                final JSONObject entry = data.getJSONObject(i);
-                entries.add(new Rule(entry, IpRange.parse(entry.getString("range"))));
-            }
-            snapshot = List.copyOf(entries);
+    private List<Rule> rules() throws Exception {
+        final List<Rule> cached = snapshot;
+        if (cached != null) {
+            return cached;
         }
-        return snapshot;
+        synchronized (this) {
+            if (snapshot == null) {
+                final JSONArray data = new JSONArray(org.b3log.solo.util.OptionDocuments.read(optionQueryService, OPTION_ID, "[]"));
+                final List<Rule> entries = new ArrayList<>(data.length());
+                for (int i = 0; i < data.length(); i++) {
+                    final JSONObject entry = data.getJSONObject(i);
+                    entries.add(toRule(entry, IpRange.parse(entry.getString("range"))));
+                }
+                snapshot = List.copyOf(entries);
+            }
+            return snapshot;
+        }
     }
 
     public boolean blocked(final String address) throws Exception {
+        final List<Rule> currentRules = rules();
+        if (currentRules.isEmpty()) return false;
         final byte[] bytes = org.b3log.solo.util.IpAddresses.bytes(address);
-        for (final Rule entry : rules()) if (active(entry) && entry.range().contains(bytes)) return true;
+        if (bytes == null) return false;
+        final long timestamp = now();
+        for (final Rule entry : currentRules) {
+            if ((entry.expiresAt() == 0 || entry.expiresAt() > timestamp) && entry.range().contains(bytes)) return true;
+        }
         return false;
     }
 
@@ -72,7 +87,7 @@ public class IpBanService {
                 || rule.range().toString().contains(search)
                 || rule.data().optString("reason").toLowerCase(Locale.ROOT).contains(search)
                 || rule.data().optString("note").toLowerCase(Locale.ROOT).contains(search))
-                .sorted(java.util.Comparator.comparingLong((Rule rule) -> rule.data().optLong("created")).reversed())
+                .sorted(java.util.Comparator.comparingLong(Rule::created).reversed())
                 .toList();
         final int pageCount = Math.max(1, (filtered.size() + pageSize - 1) / pageSize);
         final int page = Math.min(requestedPage, pageCount), from = (page - 1) * pageSize;
@@ -80,7 +95,7 @@ public class IpBanService {
         for (final Rule rule : filtered.subList(from, Math.min(from + pageSize, filtered.size()))) {
             entries.put(new JSONObject(rule.data().toString()).put("targetType", "ip")
                     .put("source", rule.data().optString("source", "manual")).put("active", active(rule))
-                    .put("expiresAt", rule.data().optLong("expiresAt")).put("region", IpGeo.region(rule.range().baseAddress())));
+                    .put("expiresAt", rule.expiresAt()).put("region", IpGeo.region(rule.range().baseAddress())));
         }
         return new JSONObject().put("rules", entries).put("total", filtered.size()).put("page", page)
                 .put("pageSize", pageSize).put("pageCount", pageCount);
@@ -98,9 +113,10 @@ public class IpBanService {
         final List<Rule> updated = new ArrayList<>(rules());
         updated.removeIf(entry -> entry.range().toString().equals(range.toString()));
         makeRoom(updated);
-        updated.add(new Rule(new JSONObject().put("range", range.toString()).put("reason", reason == null ? "" : reason)
+        final long created = now();
+        updated.add(toRule(new JSONObject().put("range", range.toString()).put("reason", reason == null ? "" : reason)
                 .put("targetType", "ip").put("source", "manual").put("reasonCode", "manual")
-                .put("created", now()).put("expiresAt", durationSeconds == 0 ? 0 : now() + durationSeconds * 1000), range));
+                .put("created", created).put("expiresAt", durationSeconds == 0 ? 0 : created + durationSeconds * 1000), range));
         save(updated);
     }
 
@@ -128,7 +144,7 @@ public class IpBanService {
                 throw new IllegalArgumentException("仅自动风控记录可以修改累计次数。");
             }
             final long timestamp = now();
-            final long expiresAt = durationSeconds == null ? existing.data().optLong("expiresAt")
+            final long expiresAt = durationSeconds == null ? existing.expiresAt()
                     : durationSeconds == 0 ? 0 : timestamp + durationSeconds * 1000;
             if ((expiresAt == 0 || expiresAt > timestamp) && range.contains(currentAddress)) {
                 throw new IllegalArgumentException("此网段包含你当前的访问 IP，请通过其他连接管理，避免封禁自己。");
@@ -137,7 +153,7 @@ public class IpBanService {
             final JSONObject data = new JSONObject(existing.data().toString()).put("note", note)
                     .put("updated", timestamp).put("expiresAt", expiresAt);
             if (occurrences != null) data.put("occurrences", occurrences);
-            updated.set(i, new Rule(data, range));
+            updated.set(i, toRule(data, range));
             save(updated);
             return;
         }
@@ -154,19 +170,21 @@ public class IpBanService {
             if (!previous.range().toString().equals(range.toString()) || !previous.data().optString("source").equals("automatic")) continue;
             final int occurrences = Math.min(1_000_000, Math.max(0, previous.data().optInt("occurrences", 1)) + 1);
             final long days = occurrences == 1 ? 1 : occurrences == 2 ? 3 : occurrences == 3 ? 7 : 30;
+            final long timestamp = now();
             final JSONObject data = new JSONObject(previous.data().toString()).put("occurrences", occurrences)
-                    .put("updated", now()).put("reasonCode", trigger.code()).put("reason", trigger.reason())
-                    .put("expiresAt", trigger.code().equals("xss_payload") ? 0 : now() + days * 86_400_000L);
-            updated.set(i, new Rule(data, range));
+                    .put("updated", timestamp).put("reasonCode", trigger.code()).put("reason", trigger.reason())
+                    .put("expiresAt", trigger.code().equals("xss_payload") ? 0 : timestamp + days * 86_400_000L);
+            updated.set(i, toRule(data, range));
             save(updated);
             return;
         }
         updated.removeIf(entry -> !active(entry) && entry.range().toString().equals(range.toString()));
         makeRoom(updated);
-        updated.add(new Rule(new JSONObject().put("targetType", "ip").put("range", range.toString())
+        final long created = now();
+        updated.add(toRule(new JSONObject().put("targetType", "ip").put("range", range.toString())
                 .put("source", "automatic").put("reasonCode", trigger.code()).put("reason", trigger.reason())
-                .put("created", now()).put("occurrences", 1)
-                .put("expiresAt", trigger.code().equals("xss_payload") ? 0 : now() + 86_400_000L), range));
+                .put("created", created).put("occurrences", 1)
+                .put("expiresAt", trigger.code().equals("xss_payload") ? 0 : created + 86_400_000L), range));
         save(updated);
     }
 

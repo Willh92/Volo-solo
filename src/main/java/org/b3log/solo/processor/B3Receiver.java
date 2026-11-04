@@ -175,9 +175,7 @@ public class B3Receiver {
             }
             final String title = symArticle.optString("title");
             final String articleId = symArticle.optString("id");
-            final String sanitizedContent = Role.ADMIN_ROLE.equals(articleAuthor.optString(User.USER_ROLE))
-                    ? symArticle.optString("content")
-                    : Markdowns.clean(symArticle.optString("content"));
+            final String sanitizedContent = symArticle.optString("content");
             final JSONObject oldArticle = StringUtils.isBlank(articleId) ? null : articleQueryService.getArticleById(articleId);
             if (null == oldArticle) {
                 final JSONObject article = new JSONObject()

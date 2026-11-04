@@ -46,21 +46,21 @@
                     <#if 'list' != customVars.key1>
                         <#list links as link>
                             <div class="other__item">
-                                <a href="${link.linkAddress}" target="_blank"
-                                   rel="noopener">
-                                    ${link.linkTitle}
+                                <a href="${link.linkAddress?html}" target="_blank"
+                                   rel="noopener noreferrer">
+                                    ${link.linkTitle?html}
                                 </a>
-                                <div>${link.linkDescription}</div>
+                                <div>${(link.linkDescription!'')?html}</div>
                             </div>
                         </#list>
                     <#else>
                         <ul>
                             <#list links as link>
                                 <li>
-                                    <a href="${link.linkAddress}" title="${link.linkTitle}" target="_blank"
-                                       rel="noopener">
-                                        <img src="${link.linkIcon}"
-                                             alt="${link.linkDescription}">
+                                    <a href="${link.linkAddress?html}" title="${link.linkTitle?html}" target="_blank"
+                                       rel="noopener noreferrer">
+                                        <img src="${(link.linkIcon!'')?html}"
+                                             alt="${(link.linkDescription!'')?html}">
                                     </a>
                                 </li>
                             </#list>

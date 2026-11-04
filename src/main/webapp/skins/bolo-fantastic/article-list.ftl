@@ -34,7 +34,7 @@
                             <div class="blog-slider__item swiper-slide">
                                 <div class="blog-slider__img">
                                     <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
-                                        <img src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
+                                        <img src="${article.articleImg1URL?html}" alt="${(article.articleTitle!)?html}"
                                             referrerpolicy="origin">
                                     </a>
                                 </div>
@@ -74,7 +74,7 @@
                     <div class="card">
                         <div class="card-image">
                             <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
-                                <img class="thumbnail" src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
+                                <img class="thumbnail" src="${article.articleImg1URL?html}" alt="${(article.articleTitle!)?html}"
                                     referrerpolicy="origin">
                             </a>
                         </div>

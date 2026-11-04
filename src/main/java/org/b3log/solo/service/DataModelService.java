@@ -120,10 +120,10 @@ public class DataModelService {
         if (null == template || null == expression) {
             return false;
         }
-        Map<String, Boolean> perTemplate = TEMPLATE_EXPRESSION_CACHE.get(template);
-        if (null == perTemplate) {
-            perTemplate = new java.util.concurrent.ConcurrentHashMap<>();
-            TEMPLATE_EXPRESSION_CACHE.put(template, perTemplate);
+        final Map<String, Boolean> perTemplate;
+        synchronized (TEMPLATE_EXPRESSION_CACHE) {
+            perTemplate = TEMPLATE_EXPRESSION_CACHE.computeIfAbsent(
+                    template, ignored -> new java.util.concurrent.ConcurrentHashMap<>());
         }
         return perTemplate.computeIfAbsent(expression, expr -> Templates.hasExpression(template, expr));
     }
@@ -336,7 +336,6 @@ public class DataModelService {
         } finally {
             Stopwatchs.end();
         }
-        Stopwatchs.end();
     }
 
     /**
@@ -348,9 +347,6 @@ public class DataModelService {
     public void fillFollows(final Map<String, Object> dataModel) throws ServiceException {
         Stopwatchs.start("Fill Follows");
         try {
-            final Map<String, SortDirection> sorts = new HashMap<>();
-
-            sorts.put(Follow.FOLLOW_ORDER, SortDirection.ASCENDING);
             final Query query = new Query().addSort(Follow.FOLLOW_ORDER, SortDirection.ASCENDING).setPageCount(1);
             final List<JSONObject> follows = followRepository.getList(query);
 
@@ -362,7 +358,6 @@ public class DataModelService {
         } finally {
             Stopwatchs.end();
         }
-        Stopwatchs.end();
     }
 
     /**
@@ -383,8 +378,6 @@ public class DataModelService {
         } finally {
             Stopwatchs.end();
         }
-
-        Stopwatchs.end();
     }
 
     /**
@@ -1282,8 +1275,104 @@ public class DataModelService {
      * @throws ServiceException service exception
      * @see #setArticlesExProperties(RequestContext, List, JSONObject)
      */
+    private record CategoryPreload(
+            Map<String, String> tagTitleToId,
+            Map<String, String> firstCategoryByTagId,
+            Map<String, String> lastCategoryByRefId,
+            Map<String, JSONObject> categoriesById) { }
+
+    private CategoryPreload preloadArticleCategories(final List<JSONObject> articles) {
+        if (null == articles || articles.isEmpty()
+                || null == tagRepository || null == categoryTagRepository || null == categoryRepository) {
+            return null;
+        }
+        try {
+            final java.util.Set<String> tagTitles = new java.util.LinkedHashSet<>();
+            final java.util.Set<String> refIds = new java.util.LinkedHashSet<>();
+            for (final JSONObject article : articles) {
+                final String oid = article.optString(Keys.OBJECT_ID);
+                if (StringUtils.isNotBlank(oid)) {
+                    refIds.add(oid);
+                }
+                final String tagsStr = article.optString(Article.ARTICLE_TAGS_REF);
+                if (StringUtils.isNotBlank(tagsStr)) {
+                    for (final String rawTag : tagsStr.split(",")) {
+                        if (!rawTag.isEmpty()) {
+                            tagTitles.add(rawTag);
+                        }
+                    }
+                }
+            }
+
+            final Map<String, String> tagTitleToId = new HashMap<>();
+            if (!tagTitles.isEmpty()) {
+                final String placeholders = String.join(",", Collections.nCopies(tagTitles.size(), "?"));
+                final List<JSONObject> tagRows = tagRepository.select(
+                        "SELECT oId, tagTitle FROM " + tagRepository.getName()
+                                + " WHERE tagTitle IN (" + placeholders + ")",
+                        tagTitles.toArray());
+                if (null != tagRows) {
+                    for (final JSONObject row : tagRows) {
+                        final String id = row.optString(Keys.OBJECT_ID);
+                        final String title = row.optString(Tag.TAG_TITLE);
+                        if (!id.isEmpty() && !title.isEmpty()) {
+                            tagTitleToId.put(title, id);
+                            refIds.add(id);
+                        }
+                    }
+                }
+            }
+
+            final Map<String, String> firstCategoryByTagId = new HashMap<>();
+            final Map<String, String> lastCategoryByRefId = new HashMap<>();
+            final java.util.Set<String> categoryIds = new java.util.LinkedHashSet<>();
+            if (!refIds.isEmpty()) {
+                final String placeholders = String.join(",", Collections.nCopies(refIds.size(), "?"));
+                final List<JSONObject> relRows = categoryTagRepository.select(
+                        "SELECT category_oId, tag_oId FROM " + categoryTagRepository.getName()
+                                + " WHERE tag_oId IN (" + placeholders + ")",
+                        refIds.toArray());
+                if (null != relRows) {
+                    for (final JSONObject row : relRows) {
+                        final String refId = row.optString(Tag.TAG + "_" + Keys.OBJECT_ID);
+                        final String catId = row.optString(Category.CATEGORY + "_" + Keys.OBJECT_ID);
+                        if (!refId.isEmpty() && !catId.isEmpty()) {
+                            firstCategoryByTagId.putIfAbsent(refId, catId);
+                            lastCategoryByRefId.put(refId, catId);
+                            categoryIds.add(catId);
+                        }
+                    }
+                }
+            }
+
+            final Map<String, JSONObject> categoriesById = new HashMap<>();
+            if (!categoryIds.isEmpty()) {
+                final String placeholders = String.join(",", Collections.nCopies(categoryIds.size(), "?"));
+                final List<JSONObject> catRows = categoryRepository.select(
+                        "SELECT * FROM " + categoryRepository.getName()
+                                + " WHERE oId IN (" + placeholders + ")",
+                        categoryIds.toArray());
+                if (null != catRows) {
+                    for (final JSONObject cat : catRows) {
+                        categoriesById.put(cat.optString(Keys.OBJECT_ID), cat);
+                    }
+                }
+            }
+
+            return new CategoryPreload(tagTitleToId, firstCategoryByTagId, lastCategoryByRefId, categoriesById);
+        } catch (final Exception e) {
+            LOGGER.log(Level.DEBUG, "Batch category preload fell back to per-article lookup", e);
+            return null;
+        }
+    }
+
     private void setArticleExProperties(final RequestContext context, final JSONObject article,
             final JSONObject preference) throws ServiceException {
+        setArticleExProperties(context, article, preference, null);
+    }
+
+    private void setArticleExProperties(final RequestContext context, final JSONObject article,
+            final JSONObject preference, final CategoryPreload preload) throws ServiceException {
         try {
             final JSONObject author = articleQueryService.getAuthor(article);
             final String authorName = author.getString(User.USER_NAME);
@@ -1314,20 +1403,46 @@ public class DataModelService {
             article.put("needViewPwd", needViewPwd);
             article.remove(Article.ARTICLE_VIEW_PWD);
 
-            fillCategory(article);
+            if (null != preload) {
+                JSONObject tagCategory = null;
+                final String tagsStr = article.optString(Article.ARTICLE_TAGS_REF);
+                if (!tagsStr.isEmpty()) {
+                    for (final String tagTitle : tagsStr.split(",")) {
+                        final String tagId = preload.tagTitleToId().get(tagTitle);
+                        if (null != tagId) {
+                            final String catId = preload.firstCategoryByTagId().get(tagId);
+                            final JSONObject cat = null == catId ? null : preload.categoriesById().get(catId);
+                            if (null != cat) {
+                                tagCategory = Solos.clone(cat);
+                                break;
+                            }
+                        }
+                    }
+                }
+                article.put(Category.CATEGORY, tagCategory);
 
-            article.put("articleCategory", "");
-            article.put("categoryURI", "");
-            try {
-                JSONObject cate = categoryTagRepository.getByTagId(article.optString("oId"), 1, Integer.MAX_VALUE);
-                int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
-                String categoryOId = cateS.optString("category_oId");
-                cateS = categoryQueryService.getCategory(categoryOId);
-                article.put("articleCategory", cateS.optString("categoryTitle"));
-                article.put("categoryURI", cateS.optString("categoryURI"));
-            } catch (JSONException | NullPointerException e) {
-                // Uncategorized and legacy categories retain the empty display values.
+                final String directCatId = preload.lastCategoryByRefId().get(article.optString(Keys.OBJECT_ID));
+                final JSONObject directCat = null == directCatId ? null : preload.categoriesById().get(directCatId);
+                article.put("articleCategory", null == directCat ? "" : directCat.optString(Category.CATEGORY_TITLE));
+                article.put("categoryURI", null == directCat ? "" : directCat.optString(Category.CATEGORY_URI));
+            } else {
+                fillCategory(article);
+
+                article.put("articleCategory", "");
+                article.put("categoryURI", "");
+                try {
+                    final JSONObject cate = categoryTagRepository.getByTagId(article.optString("oId"), 1, Integer.MAX_VALUE);
+                    final int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                    final JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
+                    final String categoryOId = cateS.optString("category_oId");
+                    final JSONObject categoryObj = categoryRepository.get(categoryOId);
+                    if (null != categoryObj) {
+                        article.put("articleCategory", categoryObj.optString("categoryTitle"));
+                        article.put("categoryURI", categoryObj.optString("categoryURI"));
+                    }
+                } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
+                    // Uncategorized and legacy categories retain the empty display values.
+                }
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Sets article extra properties failed", e);
@@ -1414,8 +1529,12 @@ public class DataModelService {
     public void setArticlesExProperties(final RequestContext context, final List<JSONObject> articles,
             final JSONObject preference)
             throws ServiceException {
+        if (null == articles || articles.isEmpty()) {
+            return;
+        }
+        final CategoryPreload preload = preloadArticleCategories(articles);
         for (final JSONObject article : articles) {
-            setArticleExProperties(context, article, preference);
+            setArticleExProperties(context, article, preference, preload);
         }
     }
 

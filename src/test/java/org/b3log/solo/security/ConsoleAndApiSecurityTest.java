@@ -65,6 +65,12 @@ public class ConsoleAndApiSecurityTest {
                 "http://100.100.100.200/latest/meta-data/",
                 "http://[::1]:8080/secret",
                 "http://[::ffff:127.0.0.1]/secret",
+                "http://[fc00::1]/ula",
+                "http://[2001:db8::1]/doc",
+                "http://[64:ff9b::127.0.0.1]/nat64",
+                "http://[2002:7f00:0001::1]/6to4",
+                "http://[2001:0000:4136:e378:8000:63bf:f8ff:fefe]/teredo",
+                "http://192.0.2.1/test-net",
                 "file:///etc/passwd",
                 "javascript:alert(1)",
                 "https://user:pass@93.184.216.34/feed.xml"
@@ -199,16 +205,71 @@ public class ConsoleAndApiSecurityTest {
             limiter.write("203.0.113." + i);
         }
         Assert.assertTrue(limiter.cachePairMap.size() <= MainControl.MAX_CACHE_ENTRIES);
+        Assert.assertFalse(limiter.write("198.51.100.10"),
+                "Spoofed-IP flood eviction must not reset counters of actively rate-limited clients");
 
         Assert.assertTrue(PublicResourceHandler.isPublicAssetUri("/scss/appearance.css"));
         Assert.assertTrue(PublicResourceHandler.isPublicAssetUri("/skins/volo-studio/css/base.css?v=1"));
         Assert.assertTrue(PublicResourceHandler.isPublicAssetUri("/favicon.ico"));
+        Assert.assertFalse(PublicResourceHandler.isPublicAssetUri("/robots.txt"));
         Assert.assertFalse(PublicResourceHandler.isPublicAssetUri("/articles/2026/11/04/hello.html"));
         Assert.assertFalse(PublicResourceHandler.isPublicAssetUri("/admin-index.do"));
 
-        final String converted = Emotions.convert("Hello :huaji: and :vditor: and :not_a_real_shortcode:!");
+        final String converted = Emotions.convert("Hello :huaji: and :vditor: and :not_a_real_shortcode: at 12:30:huaji:!");
         Assert.assertTrue(converted.contains("huaji.gif"));
         Assert.assertTrue(converted.contains("vditor.png"));
         Assert.assertTrue(converted.contains(":not_a_real_shortcode:"));
+        Assert.assertTrue(converted.contains("12:30<img"), "Time colons before an emoji shortcode must remain intact");
+    }
+
+    @Test
+    public void markdownSanitizationArticleAbstractAndSafeCoverUrlsPreserveCodeWhileBlockingXss() {
+        final String rendered = "<pre><code class=\"language-java\">List&lt;T&gt; items;</code></pre>"
+                + "<p><a href=\"/articles/2026/11/05/demo.html\">Local</a> "
+                + "<a href=\"javascript:alert(1)\" onclick=\"alert(2)\">Bad</a></p>"
+                + "<ul><li class=\"task-list-item\"><input type=\"checkbox\" disabled checked/>Done</li></ul>"
+                + "<img src=\"x\" onerror=\"alert(3)\"/><script>alert(4)</script>";
+        final String cleaned = org.b3log.solo.util.Markdowns.clean(rendered);
+        Assert.assertTrue(cleaned.contains("List&lt;T&gt; items;"), "Code generics must remain intact");
+        Assert.assertTrue(cleaned.contains("href=\"/articles/2026/11/05/demo.html\""), "Root-relative links must be preserved");
+        Assert.assertTrue(cleaned.contains("type=\"checkbox\""), "GFM task-list checkboxes must be preserved");
+        Assert.assertFalse(cleaned.contains("<script"));
+        Assert.assertFalse(cleaned.contains("onerror"));
+        Assert.assertFalse(cleaned.contains("onclick"));
+        Assert.assertFalse(cleaned.contains("javascript:"));
+
+        final String abstractText = Article.getAbstractText("Hello **A & B** and <C>");
+        Assert.assertEquals(abstractText, "Hello A & B and");
+        Assert.assertEquals(Article.getAbstractText("Hello **A & B**"), "Hello A & B");
+
+        Assert.assertEquals(Article.getArticleCoverURL("<p><img src=\"//evil.example/track.png\"/></p>"), "");
+        Assert.assertEquals(Article.getArticleCoverURL("<p><img src=\"javascript:alert(1)\"/></p>"), "");
+        Assert.assertTrue(Article.getArticleCoverURL("<p><img src=\"/image/demo.webp\"/></p>").startsWith("/image/demo.webp"));
+    }
+
+    @Test
+    public void negativeCachesCloneIsolationAndXssFastPathRemainConsistent() {
+        Assert.assertNull(Solos.clone(null));
+        Assert.assertEquals(Solos.clone(new JSONObject()).length(), 0);
+
+        final org.b3log.solo.cache.OptionCache optionCache = new org.b3log.solo.cache.OptionCache();
+        Assert.assertFalse(optionCache.isMissing("nonexistentOption"));
+        optionCache.markMissing("nonexistentOption");
+        Assert.assertTrue(optionCache.isMissing("nonexistentOption"));
+        optionCache.putOption(new JSONObject().put(Keys.OBJECT_ID, "nonexistentOption").put("optionCategory", "test").put("optionValue", "v"));
+        Assert.assertFalse(optionCache.isMissing("nonexistentOption"));
+
+        final org.b3log.solo.cache.UserCache userCache = new org.b3log.solo.cache.UserCache();
+        userCache.putAdmin(new JSONObject().put(Keys.OBJECT_ID, "admin-1").put(User.USER_NAME, "admin").put(User.USER_ROLE, org.b3log.latke.model.Role.ADMIN_ROLE));
+        userCache.getAdmin().put(User.USER_NAME, "tampered");
+        Assert.assertEquals(userCache.getAdmin().getString(User.USER_NAME), "admin");
+        userCache.removeUser("admin-1");
+        Assert.assertNull(userCache.getAdmin());
+
+        Assert.assertFalse(org.b3log.solo.util.XssPayloads.executable("/articles/2026/11/05/hello.html"));
+        Assert.assertFalse(org.b3log.solo.util.XssPayloads.executable("/tags/%E6%8A%80%E6%9C%AF"));
+        Assert.assertTrue(org.b3log.solo.util.XssPayloads.executable("/search/%3Cscript%3Ealert(1)%3C/script%3E"));
+        Assert.assertTrue(org.b3log.solo.util.XssPayloads.executable("&#x3c;img src=x onerror=alert(1)&#x3e;"));
+        Assert.assertTrue(org.b3log.solo.util.XssPayloads.executable("javascript:alert(1)"));
     }
 }

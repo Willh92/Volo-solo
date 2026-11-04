@@ -47,13 +47,21 @@ public final class IpRange {
 
     public boolean contains(final byte[] address) {
         if (address == null || address.length != network.length) return false;
-        for (int bit = 0; bit < prefix; bit++) {
-            final int mask = 1 << (7 - bit % 8);
-            if ((address[bit / 8] & mask) != (network[bit / 8] & mask)) return false;
+        final int fullBytes = prefix >>> 3;
+        for (int i = 0; i < fullBytes; i++) {
+            if (address[i] != network[i]) return false;
+        }
+        final int remBits = prefix & 7;
+        if (remBits != 0) {
+            final int mask = 0xff << (8 - remBits);
+            if (((address[fullBytes] ^ network[fullBytes]) & mask) != 0) return false;
         }
         return true;
     }
 
-    public String baseAddress() { return text.split("/", 2)[0]; }
+    public String baseAddress() {
+        final int slash = text.indexOf('/');
+        return slash < 0 ? text : text.substring(0, slash);
+    }
     @Override public String toString() { return text; }
 }

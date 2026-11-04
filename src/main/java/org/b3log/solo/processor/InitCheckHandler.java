@@ -83,11 +83,12 @@ public class InitCheckHandler implements Handler {
         if (localURI.equals(AdminPaths.login())) {
             context.attr(Keys.HttpRequest.REQUEST_URI, Latkes.getContextPath() + AdminPaths.loginRoute());
         }
-        final boolean isSpiderBot = (boolean) context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT);
+        final boolean isSpiderBot = Boolean.TRUE.equals(context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT));
         LOGGER.log(Level.TRACE, "Request [URI={0}]", requestURI);
 
+        final String requestIP = org.b3log.solo.util.LoginThrottle.clientAddress(context.getRequest());
         try {
-            if (blockedAddress(org.b3log.solo.util.LoginThrottle.clientAddress(context.getRequest()))) {
+            if (blockedAddress(requestIP)) {
                 context.setHeader("Cache-Control", "no-store");
                 context.sendError(403);
                 context.abort();
@@ -101,7 +102,6 @@ public class InitCheckHandler implements Handler {
         }
 
         // Bolo WAF
-        final String requestIP = org.b3log.solo.util.LoginThrottle.clientAddress(context.getRequest());
         if (!WAF.in(requestIP, requestURI)) {
             // Rate limits are temporary. Never let browsers cache a blocked response as a gone resource.
             context.setHeader("Cache-Control", "no-store");
@@ -114,9 +114,15 @@ public class InitCheckHandler implements Handler {
         // 站点统计
 
         // 禁止直接获取 robots.txt https://github.com/b3log/solo/issues/12543
-        if (requestURI.startsWith("/robots.txt") && !isSpiderBot) {
+        if (localURI.startsWith("/robots.txt") && !isSpiderBot) {
             context.sendError(403);
             context.abort();
+
+            return;
+        }
+
+        if (org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)) {
+            context.handle();
 
             return;
         }

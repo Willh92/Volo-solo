@@ -43,11 +43,11 @@
                     </div>
                     <div class="tags fn__clear">
                         <#list follows as follow>
-                            <a rel="friend" class="ft__red" href="${servePath}/follow/articles/${follow.followTitle}"
+                            <a rel="friend noopener noreferrer" class="ft__red" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}"
                                 target="_blank">
-                                ${follow.followTitle}
+                                ${follow.followTitle?html}
                                 <#if follow.followDescription !=''>
-                                    <span class="ft__gray">(${follow.followDescription})</span>
+                                    <span class="ft__gray">(${follow.followDescription?html})</span>
                                 </#if>
                             </a>
                         </#list>

@@ -34,7 +34,57 @@ public class PluginRepository extends AbstractRepository {
     /**
      * Public constructor.
      */
+    private final java.util.Map<String, org.json.JSONObject> cache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<String> missingIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public PluginRepository() {
         super(Plugin.PLUGIN);
+    }
+
+    @Override
+    public String add(final org.json.JSONObject plugin) throws org.b3log.latke.repository.RepositoryException {
+        final String id = super.add(plugin);
+        plugin.put(org.b3log.latke.Keys.OBJECT_ID, id);
+        missingIds.remove(id);
+        cache.put(id, org.b3log.solo.util.Solos.clone(plugin));
+        return id;
+    }
+
+    @Override
+    public org.json.JSONObject get(final String id) throws org.b3log.latke.repository.RepositoryException {
+        final org.json.JSONObject cached = cache.get(id);
+        if (null != cached) {
+            return org.b3log.solo.util.Solos.clone(cached);
+        }
+        if (null != id && missingIds.contains(id)) {
+            return null;
+        }
+        final org.json.JSONObject loaded = super.get(id);
+        if (null == loaded) {
+            if (null != id && id.length() <= 128 && missingIds.size() < 256) {
+                missingIds.add(id);
+            }
+            return null;
+        }
+        cache.put(id, org.b3log.solo.util.Solos.clone(loaded));
+        return loaded;
+    }
+
+    @Override
+    public void update(final String id, final org.json.JSONObject plugin, final String... propertyNames)
+            throws org.b3log.latke.repository.RepositoryException {
+        super.update(id, plugin, propertyNames);
+        plugin.put(org.b3log.latke.Keys.OBJECT_ID, id);
+        missingIds.remove(id);
+        cache.put(id, org.b3log.solo.util.Solos.clone(plugin));
+    }
+
+    @Override
+    public void remove(final String id) throws org.b3log.latke.repository.RepositoryException {
+        super.remove(id);
+        cache.remove(id);
+        if (null != id && id.length() <= 128 && missingIds.size() < 256) {
+            missingIds.add(id);
+        }
     }
 }

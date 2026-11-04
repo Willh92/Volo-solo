@@ -29,9 +29,11 @@ public final class PublicResourceHandler implements Handler {
     private static final Set<String> EXTENSIONS = Set.of("css","js","png","jpg","jpeg","gif","svg","ico","webp","avif","woff","woff2","ttf","eot","otf","json","mp3","mp4","webm","ogg","moc","mtn","txt");
     private static final List<String> PUBLIC_PREFIXES = List.of("/scss/", "/js/", "/skins/", "/plugins/", "/images/");
     private static final Set<String> PUBLIC_EXACT_PATHS = Set.of("/favicon.ico", "/robots.txt", "/sw.js", "/service-worker.js");
+    private static final Set<String> PUBLIC_ASSET_EXACT_PATHS = Set.of("/favicon.ico", "/sw.js", "/service-worker.js");
     private static final Set<String> ALLOWED_METHODS = Set.of("GET", "HEAD");
     private static final Set<String> NO_CACHE_PATHS = Set.of("/sw.js", "/service-worker.js");
     private static final Set<String> GZIPPABLE_EXTENSIONS = Set.of("js", "css", "svg", "json");
+    private static final byte[] EMPTY_BYTES = new byte[0];
 
     public static boolean isPublicAssetUri(final String rawUri) {
         if (rawUri == null || rawUri.isEmpty()) return false;
@@ -40,7 +42,7 @@ public final class PublicResourceHandler implements Handler {
         if (q >= 0) uri = uri.substring(0, q);
         final String ctx = Latkes.getContextPath();
         if (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) uri = uri.substring(ctx.length());
-        if (PUBLIC_EXACT_PATHS.contains(uri)) return true;
+        if (PUBLIC_ASSET_EXACT_PATHS.contains(uri)) return true;
         boolean prefixMatched = false;
         for (int i = 0; i < PUBLIC_PREFIXES.size(); i++) {
             if (uri.startsWith(PUBLIC_PREFIXES.get(i))) { prefixMatched = true; break; }
@@ -98,25 +100,35 @@ public final class PublicResourceHandler implements Handler {
             final WebResources resources = SoloApplication.getWebResources();
             final Path realRoot = resources.realRoot();
             final Path file = resources.resolve(uri);
-            if (!Files.isRegularFile(file) || !file.toRealPath().startsWith(realRoot)) { context.sendError(404); context.abort(); return; }
+            final java.nio.file.attribute.BasicFileAttributes fileAttrs;
+            try {
+                fileAttrs = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
+            } catch (java.io.IOException missing) {
+                context.sendError(404); context.abort(); return;
+            }
+            if (!fileAttrs.isRegularFile() || !file.toRealPath().startsWith(realRoot)) { context.sendError(404); context.abort(); return; }
+            final long modified = fileAttrs.lastModifiedTime().toMillis();
             Path representation = file;
             if (GZIPPABLE_EXTENSIONS.contains(extension)) {
                 final Path gzipFile = file.resolveSibling(file.getFileName() + ".gz");
-                if (Files.isRegularFile(gzipFile)
-                        && gzipFile.toRealPath().startsWith(realRoot)
-                        && Files.getLastModifiedTime(gzipFile).toMillis() >= Files.getLastModifiedTime(file).toMillis()) {
-                    context.setHeader("Vary", "Accept-Encoding");
-                    if (acceptsGzip(context.header("Accept-Encoding"))) {
-                        representation = gzipFile;
-                        context.setHeader("Content-Encoding", "gzip");
+                try {
+                    final java.nio.file.attribute.BasicFileAttributes gzAttrs =
+                            Files.readAttributes(gzipFile, java.nio.file.attribute.BasicFileAttributes.class);
+                    if (gzAttrs.isRegularFile()
+                            && gzipFile.toRealPath().startsWith(realRoot)
+                            && gzAttrs.lastModifiedTime().toMillis() >= modified) {
+                        context.setHeader("Vary", "Accept-Encoding");
+                        if (acceptsGzip(context.header("Accept-Encoding"))) {
+                            representation = gzipFile;
+                            context.setHeader("Content-Encoding", "gzip");
+                        }
                     }
-                }
+                } catch (java.io.IOException ignored) { }
             }
             final String type = contentTypeForExtension(extension, file);
             context.getResponse().setContentType(type == null ? "application/octet-stream" : type);
             context.setHeader("X-Content-Type-Options", "nosniff");
-            final long modified = Files.getLastModifiedTime(file).toMillis();
-            final String etag = "W/\"" + Long.toHexString(modified) + "-" + Long.toHexString(Files.size(file))
+            final String etag = "W/\"" + Long.toHexString(modified) + "-" + Long.toHexString(fileAttrs.size())
                     + (representation.equals(file) ? "" : "-gzip") + "\"";
             context.setHeader("ETag", etag);
             context.setHeader("Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
@@ -126,8 +138,7 @@ public final class PublicResourceHandler implements Handler {
             final String condition = context.getRequest().getHeader("If-None-Match");
             boolean notModified = false;
             if (condition != null) {
-                notModified = Arrays.stream(condition.split(",")).map(String::trim)
-                        .anyMatch(value -> "*".equals(value) || etag.substring(2).equals(value.replaceFirst("^W/", "")));
+                notModified = matchesIfNoneMatch(condition, etag.substring(2));
             } else {
                 final String since = context.getRequest().getHeader("If-Modified-Since");
                 if (since != null) {
@@ -139,13 +150,37 @@ public final class PublicResourceHandler implements Handler {
             }
             if (notModified) {
                 context.setStatus(304);
-                context.sendBytes(new byte[0]);
+                context.sendBytes(EMPTY_BYTES);
                 context.abort();
                 return;
             }
-            context.sendBytes(context.method().equals("HEAD") ? new byte[0] : Files.readAllBytes(representation));
+            context.sendBytes(context.method().equals("HEAD") ? EMPTY_BYTES : Files.readAllBytes(representation));
             context.abort();
         } catch (Exception e) { context.sendError(404); context.abort(); }
+    }
+
+    private static boolean matchesIfNoneMatch(final String header, final String quotedTag) {
+        final int len = header.length();
+        int i = 0;
+        while (i < len) {
+            while (i < len && (header.charAt(i) == ',' || header.charAt(i) <= ' ')) i++;
+            if (i >= len) break;
+            int end = header.indexOf(',', i);
+            if (end < 0) end = len;
+            int trimEnd = end;
+            while (trimEnd > i && header.charAt(trimEnd - 1) <= ' ') trimEnd--;
+            if (trimEnd - i == 1 && header.charAt(i) == '*') return true;
+            int cmpStart = i;
+            if (trimEnd - cmpStart > 2 && header.charAt(cmpStart) == 'W' && header.charAt(cmpStart + 1) == '/') {
+                cmpStart += 2;
+            }
+            if (trimEnd - cmpStart == quotedTag.length()
+                    && header.regionMatches(cmpStart, quotedTag, 0, quotedTag.length())) {
+                return true;
+            }
+            i = end + 1;
+        }
+        return false;
     }
 
     private static boolean acceptsGzip(final String header) {

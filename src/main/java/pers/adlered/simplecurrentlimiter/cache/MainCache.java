@@ -33,7 +33,7 @@ public class MainCache {
     // 缓存 存储CachePair
     public Map<String, CachePair> cachePairMap = new ConcurrentHashMap<>();
     // 过期时间（毫秒）
-    public long expireTime = -1;
+    public volatile long expireTime = -1;
     // 时间单位次数
-    public long frequencyTime = -1;
+    public volatile long frequencyTime = -1;
 }

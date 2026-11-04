@@ -132,10 +132,12 @@ public class TagQueryService {
             final Query query = new Query().setPageCount(1);
 
             final List<JSONObject> ret = tagRepository.getList(query);
-            for (final JSONObject tag : ret) {
-                final String tagId = tag.optString(Keys.OBJECT_ID);
-                final int articleCount = tagArticleRepository.getPublishedArticleCount(tagId);
-                tag.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, articleCount);
+            if (!ret.isEmpty()) {
+                final java.util.Map<String, Integer> counts = tagArticleRepository.getPublishedArticleCountsByTag();
+                for (final JSONObject tag : ret) {
+                    final String tagId = tag.optString(Keys.OBJECT_ID);
+                    tag.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, counts.getOrDefault(tagId, 0));
+                }
             }
 
             return ret;
@@ -154,7 +156,7 @@ public class TagQueryService {
      */
     public List<JSONObject> getTagsOfPublishedArticles() throws ServiceException {
         final List<JSONObject> ret = getTags();
-        ret.removeIf(tag -> tagArticleRepository.getPublishedArticleCount(tag.optString(Keys.OBJECT_ID)) < 1);
+        ret.removeIf(tag -> tag.optInt(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT) < 1);
 
         return ret;
     }

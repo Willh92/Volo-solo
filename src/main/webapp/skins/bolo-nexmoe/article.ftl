@@ -23,7 +23,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract?html}">
+    <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract!''}">
         <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <link rel="stylesheet" href="${staticServePath}/js/lib/mdui.min.css">
         <link rel="stylesheet"
@@ -43,8 +43,8 @@
             <#if pjax><!---- pjax {#pjax} start ----></#if>
             <div class="nexmoe-post">
                 <div class="nexmoe-post-cover">
-                    <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${(article.articleTitle)?html}"
-                         data-src="${article.articleImg1URL}" class=" ls-is-cached lazyloaded">
+                    <img referrerpolicy="origin" src="${article.articleImg1URL?html}" alt="${(article.articleTitle)?html}"
+                         data-src="${article.articleImg1URL?html}" class=" ls-is-cached lazyloaded">
                     <h1>${(article.articleTitle)?html}</h1>
                 </div>
                 <div class="nexmoe-post-meta">

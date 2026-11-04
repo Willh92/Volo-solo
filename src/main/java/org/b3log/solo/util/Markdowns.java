@@ -87,18 +87,37 @@ public final class Markdowns {
      * Shared bounded daemon pool for Markdown rendering.
      */
     private static final AtomicInteger RENDER_THREAD_SEQ = new AtomicInteger(1);
-    private static final ExecutorService RENDER_POOL = new ThreadPoolExecutor(
-            2,
-            Math.max(4, Math.min(8, Runtime.getRuntime().availableProcessors())),
-            60L,
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(64),
-            runnable -> {
-                final Thread thread = new Thread(runnable, "volo-md-render-" + RENDER_THREAD_SEQ.getAndIncrement());
-                thread.setDaemon(true);
-                return thread;
-            },
-            new ThreadPoolExecutor.CallerRunsPolicy());
+    private static final ExecutorService RENDER_POOL = createRenderPool();
+
+    private static ExecutorService createRenderPool() {
+        final ThreadPoolExecutor pool = new ThreadPoolExecutor(
+                2,
+                Math.max(4, Math.min(8, Runtime.getRuntime().availableProcessors())),
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(64),
+                runnable -> {
+                    final Thread thread = new Thread(runnable, "volo-md-render-" + RENDER_THREAD_SEQ.getAndIncrement());
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        pool.allowCoreThreadTimeOut(true);
+        return pool;
+    }
+
+    private static final Safelist SAFE_HTML_WHITELIST = Safelist.relaxed()
+            .preserveRelativeLinks(true)
+            .addAttributes("a", "target", "rel")
+            .addAttributes("pre", "class")
+            .addAttributes("div", "class", "data-code")
+            .addAttributes("span", "class")
+            .addAttributes("code", "class")
+            .addAttributes("img", "class", "alt", "title")
+            .addAttributes("th", "align")
+            .addAttributes("td", "align")
+            .addTags("input")
+            .addAttributes("input", "type", "checked", "disabled");
 
     /**
      * Markdown to HTML timeout.
@@ -171,16 +190,53 @@ public final class Markdowns {
      * @return html
      */
     public static String clean(final String html) {
-        final Safelist whitelist = Safelist.relaxed();
-        // 允许代码块语言高亮信息
-        whitelist.addAttributes("pre", "class").
-                addAttributes("div", "class", "data-code").
-                addAttributes("span", "class").
-                addAttributes("code", "class").
-                addAttributes("img", "class");
+        if (StringUtils.isEmpty(html)) {
+            return "";
+        }
         final Document.OutputSettings outputSettings = new Document.OutputSettings();
         outputSettings.prettyPrint(false);
-        return Jsoup.clean(html, Latkes.getServePath(), whitelist, outputSettings);
+        final String baseUri = StringUtils.defaultIfBlank(Latkes.getServePath(), "https://localhost");
+        return Jsoup.clean(html, baseUri, SAFE_HTML_WHITELIST, outputSettings);
+    }
+
+    private static boolean isSafeLinkHref(final String rawHref) {
+        if (rawHref == null) return false;
+        final String href = rawHref.trim();
+        if (href.isEmpty()) return true;
+        for (int i = 0; i < href.length(); i++) {
+            if (Character.isISOControl(href.charAt(i))) return false;
+        }
+        if (href.startsWith("#")) return true;
+        if (href.startsWith("//")) return false;
+        final int colon = href.indexOf(':');
+        if (colon < 0) return true;
+        final int slash = href.indexOf('/');
+        final int q = href.indexOf('?');
+        final int hash = href.indexOf('#');
+        if ((slash >= 0 && slash < colon) || (q >= 0 && q < colon) || (hash >= 0 && hash < colon)) {
+            return true;
+        }
+        final String scheme = href.substring(0, colon).toLowerCase(Locale.ROOT);
+        return "http".equals(scheme) || "https".equals(scheme) || "mailto".equals(scheme) || "tel".equals(scheme);
+    }
+
+    private static boolean isSafeImageSrc(final String rawSrc) {
+        if (rawSrc == null) return false;
+        final String src = rawSrc.trim();
+        if (src.isEmpty() || src.startsWith("//")) return false;
+        for (int i = 0; i < src.length(); i++) {
+            if (Character.isISOControl(src.charAt(i))) return false;
+        }
+        final int colon = src.indexOf(':');
+        if (colon < 0) return true;
+        final int slash = src.indexOf('/');
+        final int q = src.indexOf('?');
+        final int hash = src.indexOf('#');
+        if ((slash >= 0 && slash < colon) || (q >= 0 && q < colon) || (hash >= 0 && hash < colon)) {
+            return true;
+        }
+        final String scheme = src.substring(0, colon).toLowerCase(Locale.ROOT);
+        return "http".equals(scheme) || "https".equals(scheme);
     }
 
     /**
@@ -195,12 +251,14 @@ public final class Markdowns {
             return "";
         }
 
-        final String cachedHTML = getHTML(markdownText);
-        if (null != cachedHTML) {
-            return cachedHTML;
+        final String cacheKey = markdownText.length() <= MAX_CACHEABLE_MD_LENGTH
+                ? DigestUtils.sha256Hex(markdownText) : null;
+        if (null != cacheKey) {
+            final String cachedHTML = MD_CACHE.get(cacheKey);
+            if (null != cachedHTML) {
+                return cachedHTML;
+            }
         }
-
-        final LangPropsService langPropsService = BeanManager.getInstance().getReference(LangPropsService.class);
 
         final Callable<String> call = () -> {
             String html = null;
@@ -229,11 +287,18 @@ public final class Markdowns {
             final Document doc = Jsoup.parseBodyFragment(html);
             doc.select("a").forEach(a -> {
                 final String src = a.attr("href");
-                if (!StringUtils.startsWithIgnoreCase(src, Latkes.getServePath()) && !StringUtils.startsWithIgnoreCase(src, "#")) {
+                if (a.hasAttr("href") && !isSafeLinkHref(src)) {
+                    a.removeAttr("href");
+                } else if (a.hasAttr("href") && !StringUtils.startsWithIgnoreCase(src, Latkes.getServePath()) && !StringUtils.startsWithIgnoreCase(src, "#")) {
                     a.attr("target", "_blank");
                     a.attr("rel", "noopener noreferrer");
                 }
                 a.removeAttr("id");
+            });
+            doc.select("img[src]").forEach(img -> {
+                if (!isSafeImageSrc(img.attr("src"))) {
+                    img.removeAttr("src");
+                }
             });
 
             final List<Node> toRemove = new ArrayList<>();
@@ -281,7 +346,9 @@ public final class Markdowns {
             ret = StringUtils.trim(ret);
             ret = Images.qiniuImgProcessing(ret);
 
-            putHTML(markdownText, ret);
+            if (null != cacheKey && ret.length() <= MAX_CACHEABLE_MD_LENGTH * 4) {
+                MD_CACHE.put(cacheKey, ret);
+            }
 
             return ret;
         };
@@ -304,7 +371,11 @@ public final class Markdowns {
             Stopwatchs.end();
         }
 
-        return langPropsService.get("contentRenderFailedLabel");
+        try {
+            return BeanManager.getInstance().getReference(LangPropsService.class).get("contentRenderFailedLabel");
+        } catch (final Exception ignored) {
+            return "Content render failed";
+        }
     }
 
     public static String toHtmlByLute(final String markdownText) throws Exception {
@@ -353,33 +424,5 @@ public final class Markdowns {
         final com.vladsch.flexmark.util.ast.Node document = PARSER.parse(markdownText);
 
         return RENDERER.render(document);
-    }
-
-    /**
-     * Gets HTML for the specified markdown text.
-     *
-     * @param markdownText the specified markdown text
-     * @return HTML
-     */
-    private static String getHTML(final String markdownText) {
-        if (markdownText.length() > MAX_CACHEABLE_MD_LENGTH) {
-            return null;
-        }
-        final String hash = DigestUtils.sha256Hex(markdownText);
-        return MD_CACHE.get(hash);
-    }
-
-    /**
-     * Puts the specified HTML into cache.
-     *
-     * @param markdownText the specified markdown text
-     * @param html         the specified HTML
-     */
-    private static void putHTML(final String markdownText, final String html) {
-        if (markdownText.length() > MAX_CACHEABLE_MD_LENGTH || html.length() > MAX_CACHEABLE_MD_LENGTH * 4) {
-            return;
-        }
-        final String hash = DigestUtils.sha256Hex(markdownText);
-        MD_CACHE.put(hash, html);
     }
 }

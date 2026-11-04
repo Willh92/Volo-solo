@@ -25,7 +25,9 @@ public class RiskControlService {
         if (administrator) return false;
         if (ipBanService.blocked(address)) { context.attr(SKIP, true); return true; }
         if (!Boolean.TRUE.equals(context.attr(SKIP)) && enabled()) {
-            if (org.b3log.solo.util.XssPayloads.executable(context.requestURI().split("\\?", 2)[0])) {
+            final String rawUri = context.requestURI();
+            final int qIdx = rawUri.indexOf('?');
+            if (org.b3log.solo.util.XssPayloads.executable(qIdx < 0 ? rawUri : rawUri.substring(0, qIdx))) {
                 ipBanService.automatic(address, new AttackTracker.Trigger("xss_payload", "请求路径包含可执行 XSS 载荷，永久封禁"));
                 context.attr(SKIP, true); return true;
             }

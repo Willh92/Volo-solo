@@ -27,6 +27,6 @@ import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
  * @date : 2020-05-31
  **/
 public class WAFstorage {
-    public static SimpleCurrentLimiter currentLimiter = null;
+    public static volatile SimpleCurrentLimiter currentLimiter = null;
 
 }

@@ -63,6 +63,9 @@ public class StatisticQueryService {
     @Inject
     private CommentRepository commentRepository;
 
+    @Inject
+    private org.b3log.solo.cache.StatisticCache statisticCache;
+
     /**
      * Gets the online visitor count.
      *
@@ -80,10 +83,22 @@ public class StatisticQueryService {
     public JSONObject getStatistic() {
         try {
             final JSONObject ret = optionQueryService.getOptions(Option.CATEGORY_C_STATISTIC);
-            final long publishedArticleCount = articleRepository.count(new Query().setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)));
-            ret.put(Option.ID_T_STATISTIC_PUBLISHED_ARTICLE_COUNT, publishedArticleCount);
-            final long commentCount = commentRepository.count(new Query().setFilter(new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false)));
-            ret.put(Option.ID_T_STATISTIC_PUBLISHED_BLOG_COMMENT_COUNT, commentCount);
+            if (null == ret) {
+                return null;
+            }
+            org.b3log.solo.cache.StatisticCache.Counts counts = null == statisticCache ? null : statisticCache.getCounts();
+            if (null == counts) {
+                final long publishedArticleCount = articleRepository.count(new Query().setFilter(
+                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)));
+                final long commentCount = commentRepository.count(new Query().setFilter(
+                        new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false)));
+                counts = new org.b3log.solo.cache.StatisticCache.Counts(publishedArticleCount, commentCount);
+                if (null != statisticCache) {
+                    statisticCache.putCounts(publishedArticleCount, commentCount);
+                }
+            }
+            ret.put(Option.ID_T_STATISTIC_PUBLISHED_ARTICLE_COUNT, counts.publishedArticleCount());
+            ret.put(Option.ID_T_STATISTIC_PUBLISHED_BLOG_COMMENT_COUNT, counts.commentCount());
 
             return ret;
         } catch (final Exception e) {

@@ -235,6 +235,9 @@ public class UserMgmtService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (e instanceof ServiceException se) {
+                throw se;
+            }
 
             LOGGER.log(Level.ERROR, "Updates a user failed", e);
             throw new ServiceException(e);
@@ -272,6 +275,9 @@ public class UserMgmtService {
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (e instanceof ServiceException se) {
+                throw se;
             }
 
             LOGGER.log(Level.ERROR, "Updates a user failed", e);
@@ -344,6 +350,9 @@ public class UserMgmtService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (e instanceof ServiceException se) {
+                throw se;
+            }
 
             LOGGER.log(Level.ERROR, "Adds a user failed", e);
             throw new ServiceException(e);
@@ -370,6 +379,9 @@ public class UserMgmtService {
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (e instanceof ServiceException se) {
+                throw se;
             }
 
             LOGGER.log(Level.ERROR, "Removes a user [id=" + userId + "] failed", e);

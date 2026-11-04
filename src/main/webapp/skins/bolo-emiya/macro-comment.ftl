@@ -25,7 +25,7 @@
       <#else>
       <a class="username" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
       </#if>
-      <a class="btn" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
+      <a class="btn" href="${servePath}${comment.commentSharpURL?html}">${viewLabel}»</a>
     </div>
     <main class="comment__detail">
       <div class="vditor-reset">

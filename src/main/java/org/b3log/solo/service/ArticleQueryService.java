@@ -530,11 +530,7 @@ public class ArticleQueryService {
 
             // Tags
             final JSONArray tags = new JSONArray();
-            final List<JSONObject> tagArticleRelations = tagArticleRepository.getByArticleId(articleId);
-            for (final JSONObject tagArticleRelation : tagArticleRelations) {
-                final String tagId = tagArticleRelation.getString(Tag.TAG + "_" + Keys.OBJECT_ID);
-                final JSONObject tag = tagRepository.get(tagId);
-
+            for (final JSONObject tag : tagRepository.getByArticleId(articleId)) {
                 tags.put(tag);
             }
             article.put(Article.ARTICLE_TAGS_REF, tags);
@@ -982,6 +978,9 @@ public class ArticleQueryService {
                 Stopwatchs.start("Get Article Content [Markdown]");
                 String content = article.optString(Article.ARTICLE_CONTENT);
                 content = Markdowns.toHTML(content);
+                if (!isAdminAuthor(article)) {
+                    content = Markdowns.clean(content);
+                }
                 article.put(Article.ARTICLE_CONTENT, content);
                 Stopwatchs.end();
             }
@@ -1012,17 +1011,41 @@ public class ArticleQueryService {
      *
      * @param article the specified article
      */
+    private boolean isAdminAuthor(final JSONObject article) {
+        if (null == article) {
+            return false;
+        }
+        final String authorId = article.optString(Article.ARTICLE_AUTHOR_ID);
+        if (StringUtils.isBlank(authorId) || null == userRepository) {
+            return true;
+        }
+        try {
+            final JSONObject author = userRepository.get(authorId);
+            return null != author && Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE));
+        } catch (final RepositoryException e) {
+            LOGGER.log(Level.WARN, "Checks article author role failed [authorId=" + authorId + "]", e);
+            return false;
+        }
+    }
+
     public void markdown(final JSONObject article) {
         Stopwatchs.start("Markdown Article [id=" + article.optString(Keys.OBJECT_ID) + "]");
+        final boolean adminAuthor = isAdminAuthor(article);
 
         String content = article.optString(Article.ARTICLE_CONTENT);
         content = Markdowns.toHTML(content);
+        if (!adminAuthor) {
+            content = Markdowns.clean(content);
+        }
         article.put(Article.ARTICLE_CONTENT, content);
 
         String abstractContent = article.optString(Article.ARTICLE_ABSTRACT);
         if (StringUtils.isNotBlank(abstractContent)) {
             Stopwatchs.start("Abstract");
             abstractContent = Markdowns.toHTML(abstractContent);
+            if (!adminAuthor) {
+                abstractContent = Markdowns.clean(abstractContent);
+            }
             article.put(Article.ARTICLE_ABSTRACT, abstractContent);
             Stopwatchs.end();
         }

@@ -46,11 +46,11 @@
                         <#if 0 !=follows?size>
                             <#list follows as follow>
                                 <div class="other__item">
-                                    <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" target="_blank">
-                                        ${follow.followTitle}
+                                    <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" target="_blank">
+                                        ${follow.followTitle?html}
                                     </a>
                                     <div>
-                                        ${follow.followDescription}
+                                        ${(follow.followDescription!'')?html}
                                     </div>
                                 </div>
                             </#list>

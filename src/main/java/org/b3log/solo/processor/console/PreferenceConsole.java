@@ -212,6 +212,9 @@ public class PreferenceConsole {
             preference.put(Option.ID_C_FISH_KEY, "");
             preference.put("sendKeySet", !preference.optString(Option.ID_C_SEND_KEY).isEmpty());
             preference.put(Option.ID_C_SEND_KEY, "");
+            final String rawTuChuang = preference.optString(Option.ID_C_TUCHUANG_CONFIG);
+            preference.put("tuChuangSecretSet", PreferenceMgmtService.hasTuChuangSecret(rawTuChuang));
+            preference.put(Option.ID_C_TUCHUANG_CONFIG, PreferenceMgmtService.redactTuChuangConfig(rawTuChuang));
             ret.put(Option.CATEGORY_C_PREFERENCE, preference);
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {

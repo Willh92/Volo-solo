@@ -46,9 +46,9 @@
                     <ul class="list">
                     <#list links as link>
                         <li>
-                            <a rel="friend" href="${link.linkAddress}" title="${link.linkDescription}"
+                            <a rel="friend noopener noreferrer" href="${link.linkAddress?html}" title="${(link.linkDescription!'')?html}"
                                target="_blank">
-                                ${link.linkTitle}
+                                ${link.linkTitle?html}
                             </a>
                         </li>
                     </#list>

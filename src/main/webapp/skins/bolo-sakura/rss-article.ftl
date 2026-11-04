@@ -29,8 +29,8 @@
         <#include 'macro-header.ftl'>
 
         <div class="pattern-center single-center">
-            <div class="pattern-attachment-img"><img src="${article.articleImg1URL}"
-                                                     data-src="${article.articleImg1URL}"
+            <div class="pattern-attachment-img"><img src="${article.articleImg1URL?html}"
+                                                     data-src="${article.articleImg1URL?html}"
                                                      class="lazyload" onerror="if(window.imgError) imgError(this)"
                                                      style="width: 100%; height: 100%; object-fit: cover; pointer-events: none;"
                                                      referrerpolicy="origin">

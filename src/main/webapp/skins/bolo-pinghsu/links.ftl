@@ -37,11 +37,11 @@
         <div class="page__content fn__clear">
         <#if 0 != links?size>
             <#list links as link>
-                <a rel="friend" href="${link.linkAddress}"
+                <a rel="friend noopener noreferrer" href="${link.linkAddress?html}"
                    class="page__item"
-                   title="${link.linkDescription}"
+                   title="${(link.linkDescription!'')?html}"
                    target="_blank">
-                    ${link.linkTitle}
+                    ${link.linkTitle?html}
                 </a>
             </#list>
         </#if>

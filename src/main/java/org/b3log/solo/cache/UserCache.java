@@ -52,7 +52,8 @@ public class UserCache {
      * @return admin user
      */
     public JSONObject getAdmin() {
-        return adminCache.get(Role.ADMIN_ROLE);
+        final JSONObject admin = adminCache.get(Role.ADMIN_ROLE);
+        return null == admin ? null : Solos.clone(admin);
     }
 
     /**
@@ -61,7 +62,7 @@ public class UserCache {
      * @param admin the specified admin user
      */
     public void putAdmin(final JSONObject admin) {
-        adminCache.put(Role.ADMIN_ROLE, admin);
+        adminCache.put(Role.ADMIN_ROLE, Solos.clone(admin));
     }
 
     /**
@@ -94,12 +95,12 @@ public class UserCache {
      * @param id the specified user id
      */
     public void removeUser(final String id) {
-        final JSONObject user = idCache.get(id);
-        if (null == user) {
-            return;
+        final JSONObject user = idCache.remove(id);
+        final JSONObject admin = adminCache.get(Role.ADMIN_ROLE);
+        if ((null != user && Role.ADMIN_ROLE.equals(user.optString(org.b3log.latke.model.User.USER_ROLE)))
+                || (null != admin && id.equals(admin.optString(Keys.OBJECT_ID)))) {
+            adminCache.remove(Role.ADMIN_ROLE);
         }
-
-        idCache.remove(id);
     }
 
     /**

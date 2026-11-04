@@ -117,10 +117,10 @@
                                                     <#list links as link>
                                                         <div class="link-body">
                                                             <div class="link-avatar-div">
-                                                                <a href="" rel="nofollow"
+                                                                <a href="${link.linkAddress?html}" rel="nofollow noopener noreferrer"
                                                                    target="_blank">
-                                                                    <img alt="${link.linkDescription}"
-                                                                         src="${link.linkIcon}"
+                                                                    <img alt="${(link.linkDescription!'')?html}"
+                                                                         src="${(link.linkIcon!'')?html}"
                                                                          class="link-avatar">
                                                                 </a>
                                                             </div>
@@ -128,17 +128,17 @@
                                                                 <div class="link-meta">
                                                                     <div itemprop="author"
                                                                          class="link-author">
-                                                                        <a href="${link.linkAddress}"
-                                                                           rel="nofollow"
+                                                                        <a href="${link.linkAddress?html}"
+                                                                           rel="nofollow noopener noreferrer"
                                                                            target="_blank"
-                                                                           title="${link.linkTitle}"
-                                                                           class="author-name">${link.linkTitle}</a>
+                                                                           title="${link.linkTitle?html}"
+                                                                           class="author-name">${link.linkTitle?html}</a>
                                                                     </div>
 
                                                                 </div>
                                                                 <div itemprop="description"
                                                                      class="link-content">
-                                                                    ${link.linkDescription}
+                                                                    ${(link.linkDescription!'')?html}
                                                                 </div>
                                                             </div>
 

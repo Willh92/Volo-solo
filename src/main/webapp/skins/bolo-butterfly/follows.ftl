@@ -44,14 +44,14 @@
                                 <div class="flink-list-item"
                                      style="--primary-color:linear-gradient( 135deg, #FFF886 10%, #F072B6 100%);
                      border-width:1px;border-style:solid;">
-                                    <a href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followTitle}" target="_blank">
+                                    <a href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${follow.followTitle?html}" target="_blank" rel="noopener noreferrer">
                                         <img class="rauto"
                                              data-lazy-src="https://blog.lete114.top/img/Lete.png"
                                              onerror="null"
-                                             alt="${follow.followIcon}"
-                                             src="${follow.followIcon}">
-                                        <span class="flink-item-name">${follow.followTitle}</span>
-                                        <span class="flink-item-desc">${follow.followDescription}</span>
+                                             alt="${follow.followTitle?html}"
+                                             src="${(follow.followIcon!'')?html}">
+                                        <span class="flink-item-name">${follow.followTitle?html}</span>
+                                        <span class="flink-item-desc">${(follow.followDescription!'')?html}</span>
                                     </a>
                                 </div>
                             </#list>

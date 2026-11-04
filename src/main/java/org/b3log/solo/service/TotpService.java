@@ -173,7 +173,12 @@ public class TotpService {
         this.clock = clock;
     }
 
-    private synchronized State state() {
+    private State state() {
+        final State cached = snapshot;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
         if (snapshot == null) {
             final JSONObject raw = new JSONObject(OptionDocuments.read(optionQueryService, OPTION_ID, "{}"));
             final String scope = ALLOWED_SCOPES.contains(raw.optString("scope")) ? raw.optString("scope") : "admin";
@@ -216,6 +221,7 @@ public class TotpService {
             );
         }
         return snapshot;
+        }
     }
 
     private synchronized void persist(final State next) throws Exception {
@@ -238,7 +244,7 @@ public class TotpService {
         snapshot = next;
     }
 
-    public synchronized JSONObject publicStatus() {
+    public JSONObject publicStatus() {
         final State current = state();
         return toStatusJson(current);
     }
@@ -357,7 +363,7 @@ public class TotpService {
         throw new IllegalArgumentException(message);
     }
 
-    public synchronized boolean settingRequiresVerification(final JSONObject request) {
+    public boolean settingRequiresVerification(final JSONObject request) {
         if (request == null) {
             return false;
         }
@@ -528,12 +534,12 @@ public class TotpService {
         return toStatusJson(next);
     }
 
-    public synchronized boolean isActive() {
+    public boolean isActive() {
         final State current = state();
         return current.enabled() && current.bound();
     }
 
-    public synchronized boolean requiresVerification(final JSONObject user, final Request request) {
+    public boolean requiresVerification(final JSONObject user, final Request request) {
         if (user == null) {
             return false;
         }
@@ -548,7 +554,7 @@ public class TotpService {
         return !isDeviceTrusted(current, user, request);
     }
 
-    public synchronized int rememberDays() {
+    public int rememberDays() {
         return state().rememberDays();
     }
 

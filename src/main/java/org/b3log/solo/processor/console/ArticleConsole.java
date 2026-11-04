@@ -108,17 +108,6 @@ public class ArticleConsole {
     @Inject
     private CategoryQueryService categoryQueryService;
 
-    private static void sanitizeAuthorArticleFields(final JSONObject currentUser, final JSONObject article) {
-        if (null == currentUser || !Role.ADMIN_ROLE.equals(currentUser.optString(User.USER_ROLE))) {
-            if (article.has(Article.ARTICLE_CONTENT)) {
-                article.put(Article.ARTICLE_CONTENT, Markdowns.clean(article.optString(Article.ARTICLE_CONTENT)));
-            }
-            if (article.has(Article.ARTICLE_ABSTRACT)) {
-                article.put(Article.ARTICLE_ABSTRACT, Markdowns.clean(article.optString(Article.ARTICLE_ABSTRACT)));
-            }
-        }
-    }
-
     /**
      * Pushes an article to community.
      *
@@ -222,6 +211,10 @@ public class ArticleConsole {
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
+
+            final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
+            renderer.setJSONObject(jsonObject);
+            jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
         }
     }
 
@@ -439,8 +432,6 @@ public class ArticleConsole {
 
                 return;
             }
-            sanitizeAuthorArticleFields(currentUser, article);
-
             articleMgmtService.updateArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article updated [id={0}]", requestJSONObject.getJSONObject(Article.ARTICLE).optString(Keys.OBJECT_ID));
 
@@ -467,7 +458,6 @@ public class ArticleConsole {
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
             article.put(Article.ARTICLE_AUTHOR_ID, currentUser.getString(Keys.OBJECT_ID));
-            sanitizeAuthorArticleFields(currentUser, article);
 
             final String articleId = articleMgmtService.addArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article created [id={0}]", articleId);

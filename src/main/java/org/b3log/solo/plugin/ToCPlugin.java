@@ -83,13 +83,27 @@ class ToCEventHandler extends AbstractEventListener<JSONObject> {
     @Override
     public void action(final Event<JSONObject> event) {
         final JSONObject data = event.getData();
+        if (null == data) {
+            return;
+        }
         final JSONObject article = data.optJSONObject(Article.ARTICLE);
+        if (null == article) {
+            return;
+        }
         final String content = article.optString(Article.ARTICLE_CONTENT);
+        if (!StringUtils.containsIgnoreCase(content, "<h")) {
+            article.put(Article.ARTICLE_T_TOC, (Object) java.util.Collections.emptyList());
+            return;
+        }
         final Document doc = Jsoup.parse(content, StringUtils.EMPTY, Parser.htmlParser());
         doc.outputSettings().prettyPrint(false);
 
-        final List<JSONObject> toc = new ArrayList<>();
         final Elements hs = doc.select("h1, h2, h3, h4, h5");
+        if (hs.isEmpty()) {
+            article.put(Article.ARTICLE_T_TOC, (Object) java.util.Collections.emptyList());
+            return;
+        }
+        final List<JSONObject> toc = new ArrayList<>(hs.size());
         for (int i = 0; i < hs.size(); i++) {
             final Element element = hs.get(i);
             final String tagName = element.tagName().toLowerCase();

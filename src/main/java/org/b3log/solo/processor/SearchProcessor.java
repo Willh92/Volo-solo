@@ -135,12 +135,21 @@ public class SearchProcessor {
         dataModel.putAll(langs);
 
         final int pageNum = Paginator.getPage(request);
-        String keyword = context.param(Common.KEYWORD);
-        if (StringUtils.isBlank(keyword)) {
-            keyword = "";
+        String keyword = StringUtils.trimToEmpty(context.param(Common.KEYWORD));
+        if (keyword.length() > 100) {
+            keyword = keyword.substring(0, 100);
         }
         dataModel.put(Common.KEYWORD, keyword);
-        final JSONObject result = articleQueryService.searchKeyword(keyword, pageNum, 15);
+        final JSONObject result;
+        if (keyword.isEmpty()) {
+            result = new JSONObject()
+                    .put(Article.ARTICLES, (Object) Collections.emptyList())
+                    .put(Pagination.PAGINATION, new JSONObject()
+                            .put(Pagination.PAGINATION_PAGE_COUNT, 0)
+                            .put(Pagination.PAGINATION_PAGE_NUMS, (Object) Collections.emptyList()));
+        } else {
+            result = articleQueryService.searchKeyword(keyword, pageNum, 15);
+        }
         final List<JSONObject> articles = (List<JSONObject>) result.opt(Article.ARTICLES);
 
         try {

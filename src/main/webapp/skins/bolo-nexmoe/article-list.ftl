@@ -26,7 +26,7 @@
                         <#if article.articlePutTop>
                             <i class="top iconfont solo-top"></i>
                         </#if>
-                        <img referrerpolicy="origin" src="${article.articleImg1URL}" alt="${(article.articleTitle)?html}"
+                        <img referrerpolicy="origin" src="${article.articleImg1URL?html}" alt="${(article.articleTitle)?html}"
                             data-src="/images/5c3aec85a4343.jpg" class="ls-is-cached lazyloaded index-img">
                         <h1><span class="skin-list-title" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</span></h1>
                     </div>

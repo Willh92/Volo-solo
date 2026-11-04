@@ -28,7 +28,7 @@
                 <#if article.articleImg1URL?? && article.articleImg1URL!=''>
                     <a href="${servePath}${article.articlePermalink}" class="media-left">
                         <p class="image is-64x64">
-                            <img class="thumbnail" src="${article.articleImg1URL!}" alt="${(article.articleTitle!)?html}">
+                            <img class="thumbnail" src="${(article.articleImg1URL!)?html}" alt="${(article.articleTitle!)?html}">
                         </p>
                     </a>
                 </#if>

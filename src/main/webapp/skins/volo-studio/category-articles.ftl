@@ -21,7 +21,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<@head title="${category.categoryTitle?html} - ${blogTitle}">
+<@head title="${category.categoryTitle} - ${blogTitle}">
     <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
 </@head>
 </head>

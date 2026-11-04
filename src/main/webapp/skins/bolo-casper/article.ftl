@@ -23,7 +23,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract?html}">
+    <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract!''}">
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
         <#if previousArticlePermalink??>
@@ -70,7 +70,7 @@
                 </#if>
             </h2>
         </div>
-        <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
+        <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}')"></div>
         <div class="wrapper">
             <section class="item__content item__content--article vditor-reset">
                 ${article.articleContent}

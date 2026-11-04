@@ -76,6 +76,64 @@ public class PreferenceMgmtService {
      */
     @Inject
     private CronMgmtService cronMgmtService;
+    public static final String CLEAR_SECRET_SENTINEL = "__VOLO_CLEAR_SECRET__";
+
+    public static int secretIndexForTuChuang(final String type) {
+        if (type == null) {
+            return -1;
+        }
+        return switch (type) {
+            case "picuang", "qiniu", "aliyun", "tencent" -> 2;
+            case "upyun" -> 3;
+            default -> -1;
+        };
+    }
+
+    public static boolean hasTuChuangSecret(final String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        final String[] parts = raw.split("<<>>", -1);
+        final int idx = secretIndexForTuChuang(parts[0]);
+        return idx > 0 && idx < parts.length && !parts[idx].isEmpty();
+    }
+
+    public static String redactTuChuangConfig(final String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return "";
+        }
+        final String[] parts = raw.split("<<>>", -1);
+        final int idx = secretIndexForTuChuang(parts[0]);
+        if (idx > 0 && idx < parts.length && !parts[idx].isEmpty()) {
+            parts[idx] = "";
+            return String.join("<<>>", parts);
+        }
+        return raw;
+    }
+
+    public static String mergeTuChuangConfig(final String incoming, final String stored) {
+        if (incoming == null || incoming.isEmpty()) {
+            return stored == null ? "" : stored;
+        }
+        final String[] inParts = incoming.split("<<>>", -1);
+        final int idx = secretIndexForTuChuang(inParts[0]);
+        if (idx < 0 || idx >= inParts.length) {
+            return incoming;
+        }
+        if (CLEAR_SECRET_SENTINEL.equals(inParts[idx])) {
+            inParts[idx] = "";
+            return String.join("<<>>", inParts);
+        }
+        if (inParts[idx].isEmpty() && stored != null && !stored.isEmpty()) {
+            final String[] oldParts = stored.split("<<>>", -1);
+            if (oldParts.length > idx && inParts[0].equals(oldParts[0]) && !oldParts[idx].isEmpty()) {
+                inParts[idx] = oldParts[idx];
+                return String.join("<<>>", inParts);
+            }
+        }
+        return incoming;
+    }
+
     @Inject
     private CommentFilterService commentFilterService;
 
@@ -113,9 +171,19 @@ public class PreferenceMgmtService {
         }
         for (final String secretKey : new String[]{Option.ID_C_MAIL_PASSWORD, Option.ID_C_GITHUB_PAT,
                 Option.ID_C_B3LOG_KEY, Option.ID_C_FISH_KEY, Option.ID_C_SEND_KEY}) {
-            if (preference.optString(secretKey).isEmpty()) {
+            final String incomingSecret = preference.optString(secretKey);
+            if (CLEAR_SECRET_SENTINEL.equals(incomingSecret) || preference.optBoolean(secretKey + "Clear")) {
+                preference.put(secretKey, "");
+            } else if (incomingSecret.isEmpty()) {
                 preference.put(secretKey, oldPreference.optString(secretKey));
             }
+        }
+        if (preference.has(Option.ID_C_TUCHUANG_CONFIG)) {
+            preference.put(Option.ID_C_TUCHUANG_CONFIG, mergeTuChuangConfig(
+                    preference.optString(Option.ID_C_TUCHUANG_CONFIG),
+                    oldPreference.optString(Option.ID_C_TUCHUANG_CONFIG)));
+        } else if (oldPreference.has(Option.ID_C_TUCHUANG_CONFIG)) {
+            preference.put(Option.ID_C_TUCHUANG_CONFIG, oldPreference.optString(Option.ID_C_TUCHUANG_CONFIG));
         }
         for (final String key : org.b3log.solo.bolo.prop.SmtpSettings.KEYS) {
             if (!preference.has(key)) preference.put(key, oldPreference.optString(key));

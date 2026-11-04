@@ -21,7 +21,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<@head title="${tag.tagTitle?html} ${tagLabel} - ${blogTitle}">
+<@head title="${tag.tagTitle} ${tagLabel} - ${blogTitle}">
     <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
 </@head>
 </head>

@@ -43,7 +43,8 @@ public class SmtpSettingsTest {
                 .put(Option.ID_C_GITHUB_PAT, "ghp_secretToken")
                 .put(Option.ID_C_B3LOG_KEY, "custom-b3-key")
                 .put(Option.ID_C_FISH_KEY, "fish-secret")
-                .put(Option.ID_C_SEND_KEY, "SCT-secret");
+                .put(Option.ID_C_SEND_KEY, "SCT-secret")
+                .put(Option.ID_C_TUCHUANG_CONFIG, "qiniu<<>>myAK<<>>mySuperSecret<<>>myBucket<<>>https://img.example.test<<>>");
         final var processor = new org.b3log.solo.processor.console.PreferenceConsole();
         final var options = processor.getClass().getDeclaredField("optionQueryService");
         options.setAccessible(true);
@@ -69,13 +70,45 @@ public class SmtpSettingsTest {
             Assert.assertTrue(data.getBoolean("fishKeySet"));
             Assert.assertEquals(data.getString(Option.ID_C_SEND_KEY), "");
             Assert.assertTrue(data.getBoolean("sendKeySet"));
+            Assert.assertEquals(data.getString(Option.ID_C_TUCHUANG_CONFIG), "qiniu<<>>myAK<<>><<>>myBucket<<>>https://img.example.test<<>>");
+            Assert.assertTrue(data.getBoolean("tuChuangSecretSet"));
             Assert.assertEquals(data.getString("smtpHost"), "smtp.qq.com");
             Assert.assertEquals(stored.getString("mailPassword"), "secret");
+            Assert.assertEquals(stored.getString(Option.ID_C_TUCHUANG_CONFIG), "qiniu<<>>myAK<<>>mySuperSecret<<>>myBucket<<>>https://img.example.test<<>>");
             Assert.assertEquals(stored.getString(Option.ID_C_GITHUB_PAT), "ghp_secretToken");
             Assert.assertEquals(stored.getString(Option.ID_C_B3LOG_KEY), "custom-b3-key");
             Assert.assertEquals(stored.getString(Option.ID_C_FISH_KEY), "fish-secret");
             Assert.assertEquals(stored.getString(Option.ID_C_SEND_KEY), "SCT-secret");
             Assert.assertFalse(stored.has("smtpHost"), "Read-time legacy conversion must not mutate cached settings");
         } finally { request.release(); response.release(); }
+    }
+
+    @Test public void tuChuangSecretsRedactRestoreOnBlankAndClearOnSentinel() {
+        final String storedQiniu = "qiniu<<>>ak1<<>>sk-secret<<>>bucket-a<<>>https://cdn.example.test<<>>";
+        Assert.assertTrue(org.b3log.solo.service.PreferenceMgmtService.hasTuChuangSecret(storedQiniu));
+        final String redactedQiniu = org.b3log.solo.service.PreferenceMgmtService.redactTuChuangConfig(storedQiniu);
+        Assert.assertEquals(redactedQiniu, "qiniu<<>>ak1<<>><<>>bucket-a<<>>https://cdn.example.test<<>>");
+        Assert.assertFalse(org.b3log.solo.service.PreferenceMgmtService.hasTuChuangSecret(redactedQiniu));
+
+        // Saving unrelated preferences or non-secret fields with blank secret slot restores existing secret
+        Assert.assertEquals(
+                org.b3log.solo.service.PreferenceMgmtService.mergeTuChuangConfig("qiniu<<>>ak1<<>><<>>bucket-b<<>>https://cdn.example.test<<>>", storedQiniu),
+                "qiniu<<>>ak1<<>>sk-secret<<>>bucket-b<<>>https://cdn.example.test<<>>");
+
+        // Switching provider never copies the previous provider's secret
+        Assert.assertEquals(
+                org.b3log.solo.service.PreferenceMgmtService.mergeTuChuangConfig("aliyun<<>>aliAK<<>><<>>oss-cn<<>>https://oss.example.test<<>>bucket<<>>dir<<>>", storedQiniu),
+                "aliyun<<>>aliAK<<>><<>>oss-cn<<>>https://oss.example.test<<>>bucket<<>>dir<<>>");
+
+        // Upyun stores operator password at index 3
+        final String storedUpyun = "upyun<<>>bucket<<>>operator<<>>up-secret<<>>https://up.example.test<<>>";
+        Assert.assertEquals(
+                org.b3log.solo.service.PreferenceMgmtService.redactTuChuangConfig(storedUpyun),
+                "upyun<<>>bucket<<>>operator<<>><<>>https://up.example.test<<>>");
+        Assert.assertEquals(
+                org.b3log.solo.service.PreferenceMgmtService.mergeTuChuangConfig(
+                        "upyun<<>>bucket<<>>operator<<>>" + org.b3log.solo.service.PreferenceMgmtService.CLEAR_SECRET_SENTINEL + "<<>>https://up.example.test<<>>",
+                        storedUpyun),
+                "upyun<<>>bucket<<>>operator<<>><<>>https://up.example.test<<>>");
     }
 }

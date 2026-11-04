@@ -24,7 +24,7 @@
             <html>
 
             <head>
-                <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract?html}">
+                <@head title="${article.articleTitle} - ${blogTitle}" description="${article.articleAbstract!''}">
                     <link rel="stylesheet"
                         href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}" />
                     <#if previousArticlePermalink??>
@@ -43,8 +43,8 @@
                     </#if>
                     <#include "macro-header.ftl">
                         <@header type="article"></@header>
-                        <div class="article__top" style="background-image: url('${(article.articleImg1URL!'')?html}')">
-                            <div style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
+                        <div class="article__top" style="background-image: url('${(article.articleImg1URL!'')?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}')">
+                            <div style="background-image: url('${(article.articleImg1URL!'')?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}')"></div>
                             <canvas id="articleTop"></canvas>
                         </div>
                         <div class="article">

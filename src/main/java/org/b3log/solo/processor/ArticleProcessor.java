@@ -191,6 +191,9 @@ public class ArticleProcessor {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    @Inject
+    private org.b3log.solo.repository.CategoryRepository categoryRepository;
+
     /**
      * Markdowns.
      * <p>
@@ -238,7 +241,8 @@ public class ArticleProcessor {
                     result.put(Keys.MSG, langPropsService.get("getFailLabel"));
                     return;
                 }
-                html = Markdowns.toHTML(markdownText);
+                final String rendered = Markdowns.toHTML(markdownText);
+                html = Solos.isAdminLoggedIn(context) ? rendered : Markdowns.clean(rendered);
             } else {
                 if (markdownText.length() > 2000) {
                     result.put(Keys.CODE, -1);
@@ -1005,20 +1009,17 @@ public class ArticleProcessor {
             // Fire [Before Render Article] event
             final JSONObject eventData = new JSONObject();
 
-            JSONObject cateS = null;
             try {
-                JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
-                String categoryOId = cateS.optString("category_oId");
-                cateS = categoryQueryService.getCategory(categoryOId);
-                article.put("articleCategory", cateS.opt("categoryTitle"));
-                try {
-                    article.put("categoryURI", cateS.opt("categoryURI"));
-                } catch (JSONException | NullPointerException e) {
-                    article.put("categoryURI", cateS.opt(""));
-                }
-            } catch (JSONException | NullPointerException e) {
+                final JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
+                final int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                final JSONObject rel = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
+                final String categoryOId = rel.optString("category_oId");
+                final JSONObject cateS = null != categoryRepository
+                        ? categoryRepository.get(categoryOId)
+                        : categoryQueryService.getCategory(categoryOId);
+                article.put("articleCategory", null == cateS ? "" : cateS.optString("categoryTitle"));
+                article.put("categoryURI", null == cateS ? "" : cateS.optString("categoryURI"));
+            } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
                 article.put("articleCategory", "");
             }
 

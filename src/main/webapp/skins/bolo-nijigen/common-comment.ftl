@@ -44,7 +44,7 @@
         <#if article?? && article.commentable>
             <a class="fn__right breadcrumb" href="#comment" data-comment-id="${comment.oId?html}" data-comment-name="${comment.commentName?html}" onclick="page.toggleEditor(this.dataset.commentId, this.dataset.commentName); return false;">${replyLabel}</a>
         <#else>
-         <a class="fn__right breadcrumb" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
+         <a class="fn__right breadcrumb" href="${servePath}${comment.commentSharpURL?html}">${viewLabel}»</a>
         </#if>
     </main>
 </li>

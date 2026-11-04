@@ -44,14 +44,14 @@
                                 <div class="flink-list-item"
                                      style="--primary-color:linear-gradient( 135deg, #FFF886 10%, #F072B6 100%);
                      border-width:1px;border-style:solid;">
-                                    <a href="${link.linkAddress}" title="${link.linkTitle}" target="_blank">
+                                    <a href="${link.linkAddress?html}" title="${link.linkTitle?html}" target="_blank" rel="noopener noreferrer">
                                         <img class="rauto"
                                              data-lazy-src="https://blog.lete114.top/img/Lete.png"
                                              onerror="null"
-                                             alt="${link.linkIcon}"
-                                             src="${link.linkIcon}">
-                                        <span class="flink-item-name">${link.linkTitle}</span>
-                                        <span class="flink-item-desc">${link.linkDescription}</span>
+                                             alt="${link.linkTitle?html}"
+                                             src="${(link.linkIcon!'')?html}">
+                                        <span class="flink-item-name">${link.linkTitle?html}</span>
+                                        <span class="flink-item-desc">${(link.linkDescription!'')?html}</span>
                                     </a>
                                 </div>
                             </#list>

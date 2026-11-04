@@ -24,7 +24,7 @@
                     <#assign isRss = (article.isRss!false)?c == "true">
                     <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                     title="${(article.articleTitle)?html}">
-                        <img class="post_bg" src="${article.articleImg1URL}">
+                        <img class="post_bg" src="${article.articleImg1URL?html}">
                     </a>
                     </div>
                     <div class="recent-post-info">

@@ -113,6 +113,14 @@ public final class SoloApplication {
      * Bean manager.
      */
     private BeanManager beanManager;
+    private static final int MAX_SESSIONS = 4096;
+    private static final java.util.concurrent.ConcurrentLinkedQueue<String> SESSION_ORDER =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final java.util.Set<String> SESSION_TRACKED =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private record UaFlags(boolean searchEngineBot, boolean mobileBot) { }
+    private static final java.util.concurrent.ConcurrentHashMap<String, UaFlags> UA_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
     private static final org.b3log.solo.web.WebResources WEB_RESOURCES = new org.b3log.solo.web.WebResources(
             java.nio.file.Path.of(System.getProperty("bolo.webRoot", java.nio.file.Files.isDirectory(java.nio.file.Path.of("src/main/webapp")) ? "src/main/webapp" : ".")));
     public static org.b3log.solo.web.WebResources getWebResources() { return WEB_RESOURCES; }
@@ -123,14 +131,23 @@ public final class SoloApplication {
         org.b3log.latke.http.Dispatcher.startRequestHandler = context -> {
             final Request req = context.getRequest();
             final org.b3log.latke.http.Session session = req.getSession();
-            final String rawCookies = req.getHeader("Cookie");
-            final boolean hadIncomingSession = session != null && rawCookies != null
-                    && rawCookies.contains(org.b3log.latke.http.Session.LATKE_SESSION_ID + "=" + session.getId());
+            boolean hadIncomingSession = false;
+            if (session != null) {
+                final java.util.Set<org.b3log.latke.http.Cookie> reqCookies = req.getCookies();
+                if (reqCookies != null) {
+                    for (final org.b3log.latke.http.Cookie cookie : reqCookies) {
+                        if (org.b3log.latke.http.Session.LATKE_SESSION_ID.equals(cookie.getName())
+                                && session.getId().equals(cookie.getValue())) {
+                            hadIncomingSession = true;
+                            break;
+                        }
+                    }
+                }
+            }
             req.setAttribute("bolo.hadIncomingSession", hadIncomingSession);
-            // Incoming browser cookies have no Path/expiry/security attributes. Do not echo them back,
-            // and do not attach transient anonymous session cookies unless an existing session was presented.
-            context.getResponse().getCookies().removeIf(cookie ->
-                    !hadIncomingSession || !org.b3log.latke.http.Session.LATKE_SESSION_ID.equals(cookie.getName()));
+            // Incoming browser cookies have no Path/expiry/SameSite/Secure attributes. Never echo them back;
+            // handlers that mint or update cookies attach explicit properly attributed Cookie instances.
+            context.getResponse().getCookies().clear();
             requestInitialized(req);
         };
         org.b3log.latke.http.Dispatcher.endRequestHandler = context -> {
@@ -139,9 +156,9 @@ public final class SoloApplication {
             requestDestroyed(req);
         };
         Routes.HANDLERS.removeIf(handler -> handler instanceof org.b3log.latke.http.handler.StaticResourceHandler);
+        Routes.HANDLERS.add(0, new PermalinkHandler());
         Routes.HANDLERS.add(0, new org.b3log.solo.web.PublicResourceHandler());
         Routes.HANDLERS.add(0, new InitCheckHandler());
-        Routes.HANDLERS.add(1, new PermalinkHandler());
 
         beanManager = BeanManager.getInstance();
         routeConsoleProcessors();
@@ -232,14 +249,29 @@ public final class SoloApplication {
     public static void evictTransientSession(final Request request) {
         if (request == null) return;
         final org.b3log.latke.http.Session session = request.getSession();
-        if (session != null && Boolean.FALSE.equals(request.getAttribute("bolo.hadIncomingSession"))) {
-            final String viewPwds = session.getAttribute(org.b3log.solo.model.Common.ARTICLES_VIEW_PWD);
-            if (viewPwds == null || viewPwds.isBlank() || "{}".equals(viewPwds)) {
-                org.b3log.latke.http.Sessions.CACHE.remove(session.getId());
+        if (session != null) {
+            final String sessionId = session.getId();
+            if (Boolean.FALSE.equals(request.getAttribute("bolo.hadIncomingSession"))) {
+                final String viewPwds = session.getAttribute(org.b3log.solo.model.Common.ARTICLES_VIEW_PWD);
+                if (viewPwds == null || viewPwds.isBlank() || "{}".equals(viewPwds)) {
+                    org.b3log.latke.http.Sessions.CACHE.remove(sessionId);
+                } else if (SESSION_TRACKED.add(sessionId)) {
+                    SESSION_ORDER.offer(sessionId);
+                }
+            } else if (SESSION_TRACKED.add(sessionId)) {
+                SESSION_ORDER.offer(sessionId);
             }
         }
-        if (org.b3log.latke.http.Sessions.CACHE.size() > 4096) {
-            org.b3log.latke.http.Sessions.CACHE.clear();
+        while (org.b3log.latke.http.Sessions.CACHE.size() > MAX_SESSIONS) {
+            final String oldest = SESSION_ORDER.poll();
+            if (oldest != null) {
+                SESSION_TRACKED.remove(oldest);
+                org.b3log.latke.http.Sessions.CACHE.remove(oldest);
+            } else {
+                SESSION_TRACKED.clear();
+                org.b3log.latke.http.Sessions.CACHE.clear();
+                break;
+            }
         }
     }
     public void requestInitialized(final Request httpServletRequest) {
@@ -378,26 +410,37 @@ public final class SoloApplication {
 
     private static void fillBotAttrs(final Request request) {
         final String userAgentStr = request.getHeader("User-Agent");
-        final UserAgent userAgent = UserAgent.parseUserAgentString(userAgentStr);
-        BrowserType browserType = userAgent.getBrowser().getBrowserType();
+        final String key = userAgentStr == null ? "" : userAgentStr;
+        UaFlags flags = key.length() <= 512 ? UA_CACHE.get(key) : null;
+        if (flags == null) {
+            final UserAgent userAgent = UserAgent.parseUserAgentString(userAgentStr);
+            BrowserType browserType = userAgent.getBrowser().getBrowserType();
 
-        if (StringUtils.containsIgnoreCase(userAgentStr, "mobile")
-                || StringUtils.containsIgnoreCase(userAgentStr, "MQQBrowser")
-                || StringUtils.containsIgnoreCase(userAgentStr, "iphone")
-                || StringUtils.containsIgnoreCase(userAgentStr, "MicroMessenger")
-                || StringUtils.containsIgnoreCase(userAgentStr, "CFNetwork")
-                || StringUtils.containsIgnoreCase(userAgentStr, "Android")) {
-            browserType = BrowserType.MOBILE_BROWSER;
-        } else if (StringUtils.containsIgnoreCase(userAgentStr, "Iframely")
-                || StringUtils.containsIgnoreCase(userAgentStr, "Google")
-                || StringUtils.containsIgnoreCase(userAgentStr, "BUbiNG")
-                || StringUtils.containsIgnoreCase(userAgentStr, "ltx71")
-                || StringUtils.containsIgnoreCase(userAgentStr, "py")) {
-            browserType = BrowserType.ROBOT;
+            if (StringUtils.containsIgnoreCase(userAgentStr, "mobile")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "MQQBrowser")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "iphone")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "MicroMessenger")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "CFNetwork")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "Android")) {
+                browserType = BrowserType.MOBILE_BROWSER;
+            } else if (StringUtils.containsIgnoreCase(userAgentStr, "Iframely")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "Google")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "BUbiNG")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "ltx71")
+                    || StringUtils.containsIgnoreCase(userAgentStr, "py")) {
+                browserType = BrowserType.ROBOT;
+            }
+            flags = new UaFlags(BrowserType.ROBOT == browserType, BrowserType.MOBILE_BROWSER == browserType);
+            if (key.length() <= 512) {
+                if (UA_CACHE.size() >= 512) {
+                    UA_CACHE.clear();
+                }
+                UA_CACHE.put(key, flags);
+            }
         }
 
-        request.setAttribute(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, BrowserType.ROBOT == browserType);
-        request.setAttribute(Keys.HttpRequest.IS_MOBILE_BOT, BrowserType.MOBILE_BROWSER == browserType);
+        request.setAttribute(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, flags.searchEngineBot());
+        request.setAttribute(Keys.HttpRequest.IS_MOBILE_BOT, flags.mobileBot());
     }
 
     /**

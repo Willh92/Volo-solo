@@ -104,6 +104,50 @@ public class MiddlewareTerminationTest {
         }
     }
 
+    @Test public void staticAssetsBypassInitServiceWithoutBotAttrNpeAndRobotsEnforcesBotFlag() throws Exception {
+        LatkeTestSupport.configure();
+        final Handler guard = new InitCheckHandler() {
+            @Override protected boolean inspectRisk(final RequestContext context) { return false; }
+            @Override protected boolean blockedAddress(final String address) { return false; }
+        };
+
+        // Public static asset with NO IS_SEARCH_ENGINE_BOT attribute set must pass straight through to downstream
+        try (Exchange assetExchange = new Exchange("/scss/appearance.css")) {
+            final AtomicInteger downstream = new AtomicInteger();
+            assetExchange.context.addHandler(guard);
+            assetExchange.context.addHandler(ignored -> downstream.incrementAndGet());
+            assetExchange.context.handle();
+            Assert.assertEquals(downstream.get(), 1, "Public static assets must bypass InitService even before initialization");
+            Assert.assertEquals(assetExchange.raw.status().code(), 200);
+        }
+
+        // /robots.txt without bot attribute -> 403 Forbidden (no NPE)
+        try (Exchange browserRobots = new Exchange("/robots.txt")) {
+            browserRobots.run(guard);
+            Assert.assertEquals(browserRobots.raw.status().code(), 403);
+        }
+
+        // /robots.txt with IS_SEARCH_ENGINE_BOT=true -> allowed to downstream handler
+        try (Exchange botRobots = new Exchange("/robots.txt")) {
+            botRobots.context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT, true);
+            final AtomicInteger downstream = new AtomicInteger();
+            botRobots.context.addHandler(new InitCheckHandler() {
+                @Override protected boolean inspectRisk(final RequestContext context) { return false; }
+                @Override protected boolean blockedAddress(final String address) { return false; }
+                @Override public void handle(final RequestContext context) {
+                    // Verify /robots.txt passes the bot gate; intercept right before InitService DB check
+                    if ("/robots.txt".equals(context.requestURI()) && Boolean.TRUE.equals(context.attr(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT))) {
+                        downstream.incrementAndGet();
+                        return;
+                    }
+                    super.handle(context);
+                }
+            });
+            botRobots.context.handle();
+            Assert.assertEquals(downstream.get(), 1);
+        }
+    }
+
     private static final class Exchange implements AutoCloseable {
         private final DefaultFullHttpRequest http;
         private final DefaultFullHttpResponse raw = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);

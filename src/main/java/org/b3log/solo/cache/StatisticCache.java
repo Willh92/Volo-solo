@@ -37,7 +37,26 @@ public class StatisticCache {
     /**
      * Statistic cache.
      */
+    public record Counts(long publishedArticleCount, long commentCount) { }
+
     private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
+    private volatile Counts counts;
+
+    public Counts getCounts() {
+        return counts;
+    }
+
+    public void putCounts(final long publishedArticleCount, final long commentCount) {
+        this.counts = new Counts(publishedArticleCount, commentCount);
+    }
+
+    public void invalidateCounts() {
+        this.counts = null;
+    }
+
+    public void clearStatistic() {
+        cache.clear();
+    }
 
     /**
      * Get the statistic.
@@ -62,5 +81,6 @@ public class StatisticCache {
      */
     public void clear() {
         cache.clear();
+        counts = null;
     }
 }

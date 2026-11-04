@@ -31,11 +31,9 @@ import java.util.regex.Pattern;
  */
 public final class Emotions {
 
-    /**
-     * Emoji pattern.
-     */
-    private static final Pattern EMOJI_PATTERN = Pattern.compile(":.+:");
-    private static final Pattern SHORTCODE_PATTERN = Pattern.compile(":([a-z0-9_+-]+):");
+    private static boolean isShortcodeChar(final char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '+' || ch == '-';
+    }
     /**
      * Emoji list.
      */
@@ -58,25 +56,55 @@ public final class Emotions {
      * @return converted content
      */
     public static String convert(final String content) {
-        if (content == null || content.indexOf(':') < 0 || !EMOJI_PATTERN.matcher(content).find()) {
+        if (content == null) {
+            return null;
+        }
+        final int firstColon = content.indexOf(':');
+        if (firstColon < 0 || content.indexOf(':', firstColon + 1) < 0) {
             return content;
         }
 
         final String ret = toUnicode(content);
-        if (ret.indexOf(':') < 0) {
+        final int len = ret.length();
+        int open = ret.indexOf(':');
+        if (open < 0 || ret.indexOf(':', open + 1) < 0) {
             return ret;
         }
-        return SHORTCODE_PATTERN.matcher(ret).replaceAll(match -> {
-            final String emojiCode = match.group(1);
-            if (!EMOJI_SET.contains(emojiCode)) {
-                return java.util.regex.Matcher.quoteReplacement(match.group(0));
+
+        StringBuilder sb = null;
+        int cursor = 0;
+        while (open >= 0 && open + 2 < len) {
+            int p = open + 1;
+            while (p < len && isShortcodeChar(ret.charAt(p))) {
+                p++;
             }
-            final String suffix = "huaji".equals(emojiCode) ? ".gif" : ".png";
-            final String repl = "<img alt=\"" + emojiCode
-                    + "\" class=\"emoji\" src=\"https://file.fishpi.cn/vditor/3.8.13/dist/images/emoji/"
-                    + emojiCode + suffix + "\" title=\"" + emojiCode + "\" />";
-            return java.util.regex.Matcher.quoteReplacement(repl);
-        });
+            if (p > open + 1 && p < len && ret.charAt(p) == ':') {
+                final String emojiCode = ret.substring(open + 1, p);
+                if (EMOJI_SET.contains(emojiCode)) {
+                    if (sb == null) {
+                        sb = new StringBuilder(len + 128);
+                    }
+                    sb.append(ret, cursor, open);
+                    final String suffix = "huaji".equals(emojiCode) ? ".gif" : ".png";
+                    sb.append("<img alt=\"").append(emojiCode)
+                            .append("\" class=\"emoji\" src=\"https://file.fishpi.cn/vditor/3.8.13/dist/images/emoji/")
+                            .append(emojiCode).append(suffix)
+                            .append("\" title=\"").append(emojiCode).append("\" />");
+                    cursor = p + 1;
+                    open = ret.indexOf(':', cursor);
+                    continue;
+                }
+                // Non-emoji ':token:' — closing ':' may start an immediately adjacent ':emoji:'
+                open = p;
+                continue;
+            }
+            open = p < len && ret.charAt(p) == ':' ? p : ret.indexOf(':', p);
+        }
+        if (sb == null) {
+            return ret;
+        }
+        sb.append(ret, cursor, len);
+        return sb.toString();
     }
 
     /**

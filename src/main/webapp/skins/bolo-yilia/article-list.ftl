@@ -44,7 +44,7 @@
             </header>
             <#if article.articleAbstractText==''>
                 <a class="abstract" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
-                    <img src="${article.articleImg1URL}" />
+                    <img src="${article.articleImg1URL?html}" />
                 </a>
                 <#else>
                     <a class="abstract vditor-reset" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">

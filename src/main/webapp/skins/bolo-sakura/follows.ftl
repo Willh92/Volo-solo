@@ -32,9 +32,9 @@
                     <h3 class="link-title"><span class="fake-title">我的关注</span></h3>
                     <ul class="link-items fontSmooth">
                         <#list follows as follow>
-                            <li class="link-item"><a class="link-item-inner effect-apollo" href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followTitle}" target="_blank" rel="friend"><img class="lazyload" onerror="if(window.imgError) imgError(this)" data-src="${follow.followIcon}" src="${follow.followIcon}"><span class="sitename">${follow.followTitle}</span>
+                            <li class="link-item"><a class="link-item-inner effect-apollo" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${follow.followTitle?html}" target="_blank" rel="friend noopener noreferrer"><img class="lazyload" onerror="if(window.imgError) imgError(this)" data-src="${(follow.followIcon!'')?html}" src="${(follow.followIcon!'')?html}"><span class="sitename">${follow.followTitle?html}</span>
                                     <div class="linkdes">
-                                        ${follow.followDescription}
+                                        ${(follow.followDescription!'')?html}
                                     </div>
                                 </a></li>
                         </#list>

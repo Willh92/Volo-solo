@@ -54,23 +54,34 @@ public class CaptchaService {
         try { return MessageDigest.getInstance("SHA-256").digest((id + ":" + answer.strip().toUpperCase(Locale.ROOT)).getBytes(StandardCharsets.UTF_8)); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
-    public synchronized Challenge issue(final String purpose, final String address) throws Exception {
+    public Challenge issue(final String purpose, final String address) throws Exception {
         if (!Set.of("login", "comment").contains(purpose)) throw new IllegalArgumentException("验证码用途不正确。");
         final String ip = IpAddresses.canonical(address);
         if (ip.isEmpty()) throw new IllegalArgumentException("无法识别验证码请求来源。");
-        final long now = clock.getAsLong();
-        final Rate rate = rates.get(ip);
-        final int count = rate == null || now - rate.start >= 60_000 ? 1 : rate.count + 1;
-        if (count > 20) throw new IllegalStateException("验证码刷新过于频繁，请稍后再试。");
-        rates.put(ip, new Rate(count == 1 ? now : rate.start, count));
-        while (rates.size() > 10_000) rates.remove(rates.keySet().iterator().next());
-        entries.values().removeIf(value -> value.expires <= now);
-        while (entries.size() >= 4096) entries.remove(entries.keySet().iterator().next());
-        final byte[] nonce = new byte[24]; RANDOM.nextBytes(nonce);
-        final String id = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce), answer = answers.get();
-        final String image = image(answer);
-        entries.put(id, new Entry(purpose, ip, digest(id, answer), now + TTL));
-        return new Challenge(id, image, now + TTL);
+        final String id;
+        final String answer;
+        final long expiresAt;
+        synchronized (this) {
+            final long now = clock.getAsLong();
+            final Rate rate = rates.get(ip);
+            final int count = rate == null || now - rate.start >= 60_000 ? 1 : rate.count + 1;
+            if (count > 20) throw new IllegalStateException("验证码刷新过于频繁，请稍后再试。");
+            rates.put(ip, new Rate(count == 1 ? now : rate.start, count));
+            while (rates.size() > 10_000) rates.remove(rates.keySet().iterator().next());
+            entries.values().removeIf(value -> value.expires <= now);
+            while (entries.size() >= 4096) entries.remove(entries.keySet().iterator().next());
+            final byte[] nonce = new byte[24]; RANDOM.nextBytes(nonce);
+            id = Base64.getUrlEncoder().withoutPadding().encodeToString(nonce);
+            answer = answers.get();
+            expiresAt = now + TTL;
+            entries.put(id, new Entry(purpose, ip, digest(id, answer), expiresAt));
+        }
+        try {
+            return new Challenge(id, image(answer), expiresAt);
+        } catch (final Exception renderFailure) {
+            synchronized (this) { entries.remove(id); }
+            throw renderFailure;
+        }
     }
     public synchronized boolean consume(final String purpose, final String address, final String id, final String answer) {
         if (id == null || !id.matches("[A-Za-z0-9_-]{32}") || answer == null || !answer.strip().matches("[A-Za-z0-9]{5}")) return false;
@@ -103,15 +114,25 @@ public class CaptchaService {
                     glyphs.setTransform(transform);
                 }
             } finally { glyphs.dispose(); }
-            final double phaseX = RANDOM.nextDouble() * Math.PI * 2, phaseY = RANDOM.nextDouble() * Math.PI * 2;
-            final BufferedImage warped = new BufferedImage(180, 64, BufferedImage.TYPE_INT_ARGB);
+            final var jitter = java.util.concurrent.ThreadLocalRandom.current();
+            final double phaseX = jitter.nextDouble() * Math.PI * 2, phaseY = jitter.nextDouble() * Math.PI * 2;
+            final int[] dx = new int[64];
+            for (int y = 0; y < 64; y++) dx[y] = (int) Math.round(2.8 * Math.sin(y / 11.0 + phaseX));
+            final int[] dy = new int[180];
+            for (int x = 0; x < 180; x++) dy[x] = (int) Math.round(2.2 * Math.sin(x / 17.0 + phaseY));
+            final int[] srcPixels = letters.getRGB(0, 0, 180, 64, null, 0, 180);
+            final int[] dstPixels = new int[180 * 64];
             for (int y = 0; y < 64; y++) {
+                final int shiftX = dx[y], rowOffset = y * 180;
                 for (int x = 0; x < 180; x++) {
-                    final int sourceX = x + (int) Math.round(2.8 * Math.sin(y / 11.0 + phaseX));
-                    final int sourceY = y + (int) Math.round(2.2 * Math.sin(x / 17.0 + phaseY));
-                    if (sourceX >= 0 && sourceX < 180 && sourceY >= 0 && sourceY < 64) warped.setRGB(x, y, letters.getRGB(sourceX, sourceY));
+                    final int sourceX = x + shiftX, sourceY = y + dy[x];
+                    if (sourceX >= 0 && sourceX < 180 && sourceY >= 0 && sourceY < 64) {
+                        dstPixels[rowOffset + x] = srcPixels[sourceY * 180 + sourceX];
+                    }
                 }
             }
+            final BufferedImage warped = new BufferedImage(180, 64, BufferedImage.TYPE_INT_ARGB);
+            warped.setRGB(0, 0, 180, 64, dstPixels, 0, 180);
             graphics.drawImage(warped, 0, 0, null);
             curves(graphics, 2, new Color(96, 125, 106, 175));
             for (int i = 0; i < 90; i++) {

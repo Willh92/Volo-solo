@@ -41,11 +41,11 @@
                     <div class="page__content fn__clear">
                         <#if 0 !=follows?size>
                             <#list follows as follow>
-                                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}"
+                                <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}"
                                     class="page__item"
-                                    title="${follow.followDescription}"
+                                    title="${(follow.followDescription!'')?html}"
                                     target="_blank">
-                                    ${follow.followTitle}
+                                    ${follow.followTitle?html}
                                 </a>
                             </#list>
                         </#if>

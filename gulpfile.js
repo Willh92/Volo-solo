@@ -206,19 +206,43 @@ function cleanProcess () {
     './src/main/webapp/js/*.min.js',
     './src/main/webapp/js/admin/admin.min.js',
     './src/main/webapp/js/lib/compress/*.min.js',
-    './src/main/webapp/skins/*/js/*.min.js'])
+    './src/main/webapp/skins/*/js/*.min.js',
+    './src/main/webapp/**/*.gz'])
 }
 
-async function compressEditorRuntime () {
+async function compressStaticAssets () {
   const fs = require('node:fs/promises')
+  const path = require('node:path')
   const zlib = require('node:zlib')
-  for (const name of ['index.min.js', 'js/lute/lute.min.js']) {
-    const file = './src/main/webapp/js/lib/vditor/dist/' + name
-    await fs.writeFile(file + '.gz', zlib.gzipSync(await fs.readFile(file), {level: 9}))
+  const roots = ['js', 'scss', 'skins', 'plugins', 'images'].map(dir => path.resolve(__dirname, 'src/main/webapp', dir))
+  const compressible = /\.(?:js|css|svg|json)$/i
+  async function walk (dir) {
+    let entries
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await walk(fullPath)
+      } else if (entry.isFile() && compressible.test(entry.name)) {
+        const raw = await fs.readFile(fullPath)
+        if (raw.length < 1024) continue
+        const gz = zlib.gzipSync(raw, { level: 9 })
+        if (gz.length < raw.length) {
+          await fs.writeFile(fullPath + '.gz', gz)
+        }
+      }
+    }
+  }
+  for (const root of roots) {
+    await walk(root)
   }
 }
 
 gulp.task('default',
   gulp.series(loadTools, cleanProcess, vendorAssets, sassSkinProcess, sassCommonProcess,
     gulp.parallel(minSkinJS, minJS),
-    gulp.parallel(miniPjax, miniAdmin, miniAdminLibs), compressEditorRuntime))
+    gulp.parallel(miniPjax, miniAdmin, miniAdminLibs), compressStaticAssets))

@@ -43,7 +43,7 @@
                                                         <a class="user-name" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
                                                 </#if>
                                                 <time class="ft-gray">${comment.commentDate?string("yyyy-MM-dd HH:mm")}</time>
-                                                <a class="reply-btn" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>
+                                                <a class="reply-btn" href="${servePath}${comment.commentSharpURL?html}">${viewLabel}»</a>
                                             </div>
                                             <div class="vditor-reset">
                                                 ${comment.commentContent}

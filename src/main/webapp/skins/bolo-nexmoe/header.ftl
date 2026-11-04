@@ -19,7 +19,7 @@
 -->
 <#if customVars.bg??>
     <div class="nexmoe-bg"
-         style="background-image:url(<#if customVars.bgUrl??>${customVars.bgUrl}<#else>${staticServePath}/skins/${skinDirName}/images/bg.jpg</#if>);opacity: .${customVars.bg};"></div>
+         style="background-image:url('<#if customVars.bgUrl??>${customVars.bgUrl?replace('\\', '')?replace("'", '%27')?replace('(', '%28')?replace(')', '%29')?html}<#else>${staticServePath}/skins/${skinDirName}/images/bg.jpg</#if>');opacity: .${(customVars.bg!'')?replace('[^0-9]', '', 'r')};"></div>
 <#else>
     <canvas id="c_n1" class="nexmoe-bg"></canvas>
 </#if>
@@ -29,7 +29,7 @@
             <i class="mdui-icon  iconfont solo-list"></i>
         </a>
         <div class="mdui-toolbar-spacer"></div>
-        <a href="/" title="${blogTitle}" class="mdui-btn mdui-btn-icon">
-            <img src="${adminUser.userAvatar}" title="${blogTitle}" alt="${blogTitle}"></a>
+        <a href="/" title="${blogTitle?html}" class="mdui-btn mdui-btn-icon">
+            <img src="${(adminUser.userAvatar!'')?html}" title="${blogTitle?html}" alt="${blogTitle?html}"></a>
     </div>
 </div>

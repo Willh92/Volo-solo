@@ -38,8 +38,8 @@
                         <ul class="list">
                             <#list follows as follow>
                                 <li>
-                                    <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followDescription}" target="_blank">
-                                        ${follow.followTitle}
+                                    <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${(follow.followDescription!'')?html}" target="_blank">
+                                        ${follow.followTitle?html}
                                     </a>
                                 </li>
                             </#list>

@@ -58,7 +58,7 @@
                                             <span class="clear"></span>
                                         </div>
                                         <div class="recent-comments-content">
-                                            <a href="${servePath}${comment.commentSharpURL}">
+                                            <a href="${servePath}${comment.commentSharpURL?html}">
                                                 ${comment.commentContent}
                                             </a>
                                         </div>
@@ -154,13 +154,13 @@
                     <ul>
                         <#list links as link>
                             <li>
-                                <a rel="friend" href="${link.linkAddress}" title="${link.linkTitle}" target="_blank">
-                                    <img alt="${link.linkTitle}"
-                                        src="${link.linkIcon!faviconAPI}"
+                                <a rel="friend noopener noreferrer" href="${link.linkAddress?html}" title="${link.linkTitle?html}" target="_blank">
+                                    <img alt="${link.linkTitle?html}"
+                                        src="${(link.linkIcon!faviconAPI)?html}"
                                         width="16" height="16" /></a>
-                                <a rel="friend" href="${link.linkAddress}" title="${link.linkTitle}"
+                                <a rel="friend noopener noreferrer" href="${link.linkAddress?html}" title="${link.linkTitle?html}"
                                     target="_blank">
-                                    ${link.linkTitle}
+                                    ${link.linkTitle?html}
                                 </a>
                             </li>
                         </#list>
@@ -175,13 +175,13 @@
                     <ul>
                         <#list follows as follow>
                             <li>
-                                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followTitle}" target="_blank">
-                                    <img alt="${follow.followTitle}"
-                                        src="${follow.followIcon!faviconAPI}"
-                                        width=" 16" height="16" /></a>
-                                <a rel="friend" href="${servePath}/follow/articles/${follow.followTitle}" title="${follow.followTitle}"
+                                <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${follow.followTitle?html}" target="_blank">
+                                    <img alt="${follow.followTitle?html}"
+                                        src="${(follow.followIcon!faviconAPI)?html}"
+                                        width="16" height="16" /></a>
+                                <a rel="friend noopener noreferrer" href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}" title="${follow.followTitle?html}"
                                     target="_blank">
-                                    ${follow.followTitle}
+                                    ${follow.followTitle?html}
                                 </a>
                             </li>
                         </#list>

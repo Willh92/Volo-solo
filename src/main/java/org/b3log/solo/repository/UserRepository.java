@@ -115,6 +115,6 @@ public class UserRepository extends AbstractRepository {
 
         userCache.putAdmin(ret);
 
-        return ret;
+        return org.b3log.solo.util.Solos.clone(ret);
     }
 }

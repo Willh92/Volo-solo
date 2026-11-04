@@ -181,13 +181,20 @@ public class StatisticMgmtService {
                 final Cookie c = new Cookie("visited", URLs.encode(builder.toString()));
                 c.setMaxAge(COOKIE_EXPIRY);
                 c.setPath("/");
+                c.setHttpOnly(true);
+                c.setSameSite("Lax");
                 response.addCookie(c);
             } else if (needToAppend) {
+                while (cookieJSONArray.length() >= 64) {
+                    cookieJSONArray.remove(0);
+                }
                 cookieJSONArray.put(request.getRequestURI());
 
                 final Cookie c = new Cookie("visited", URLs.encode(cookieJSONArray.toString()));
                 c.setMaxAge(COOKIE_EXPIRY);
                 c.setPath("/");
+                c.setHttpOnly(true);
+                c.setSameSite("Lax");
                 response.addCookie(c);
             }
         } catch (final Exception e) {
@@ -284,6 +291,8 @@ public class StatisticMgmtService {
      */
     private void updateStatistic(final String id, final JSONObject statistic) throws RepositoryException {
         optionRepository.update(id, statistic);
-        statisticCache.clear();
+        if (null != statisticCache) {
+            statisticCache.clearStatistic();
+        }
     }
 }

@@ -340,9 +340,24 @@ public final class Solos {
      * @return the current logged-in user, returns {@code null} if not found
      */
     private static final String CURRENT_USER_ATTR = "bolo.currentUser";
+    private static final String CURRENT_USER_REFRESHED_ATTR = "bolo.currentUserRefreshed";
     private static final Object NO_CURRENT_USER = new Object();
 
+    /**
+     * Resolves the authenticated user from the request cookie without re-issuing {@code Set-Cookie}.
+     *
+     * @param request the HTTP request
+     * @return shallow copy of the current user, or {@code null} if unauthenticated
+     */
+    public static JSONObject peekCurrentUser(final Request request) {
+        return resolveCurrentUser(request, null, false);
+    }
+
     public static JSONObject getCurrentUser(final Request request, final Response response) {
+        return resolveCurrentUser(request, response, null != response);
+    }
+
+    private static JSONObject resolveCurrentUser(final Request request, final Response response, final boolean refreshCookie) {
         if (null == request) {
             return null;
         }
@@ -351,11 +366,27 @@ public final class Solos {
             return null;
         }
         if (cached instanceof JSONObject cachedUser) {
+            if (refreshCookie && !Boolean.TRUE.equals(request.getAttribute(CURRENT_USER_REFRESHED_ATTR))) {
+                login(cachedUser, response);
+                request.setAttribute(CURRENT_USER_REFRESHED_ATTR, Boolean.TRUE);
+            }
             return clone(cachedUser);
         }
 
-        final Cookie[] cookies = request.getCookies().toArray(new Cookie[0]);
-        if (null == cookies || 0 == cookies.length) {
+        final var cookies = request.getCookies();
+        if (null == cookies || cookies.isEmpty()) {
+            request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
+            return null;
+        }
+
+        Cookie authCookie = null;
+        for (final Cookie cookie : cookies) {
+            if (COOKIE_NAME.equals(cookie.getName())) {
+                authCookie = cookie;
+                break;
+            }
+        }
+        if (null == authCookie) {
             request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
             return null;
         }
@@ -363,41 +394,32 @@ public final class Solos {
         final BeanManager beanManager = BeanManager.getInstance();
         final UserRepository userRepository = beanManager.getReference(UserRepository.class);
         try {
-            for (int i = 0; i < cookies.length; i++) {
-                final Cookie cookie = cookies[i];
-                if (!COOKIE_NAME.equals(cookie.getName())) {
-                    continue;
-                }
-
-                final String value = Crypts.decryptByAES(cookie.getValue(), COOKIE_SECRET);
+            final String value = Crypts.decryptByAES(authCookie.getValue(), COOKIE_SECRET);
+            if (StringUtils.isNotBlank(value)) {
                 final JSONObject cookieJSONObject = new JSONObject(value);
-
                 final String userId = cookieJSONObject.optString(Keys.OBJECT_ID);
-                if (StringUtils.isBlank(userId)) {
-                    break;
-                }
-
-                JSONObject user = userRepository.get(userId);
-                if (null == user) {
-                    break;
-                }
-
-                final String b3Key = user.optString(UserExt.USER_B3_KEY);
-                final String tokenVal = cookieJSONObject.optString(Keys.TOKEN);
-                final String token = StringUtils.substringBeforeLast(tokenVal, ":");
-                if (StringUtils.equals(b3Key, token)) {
-                    if (null != response) {
-                        login(user, response);
+                if (StringUtils.isNotBlank(userId)) {
+                    final JSONObject user = userRepository.get(userId);
+                    if (null != user) {
+                        final String b3Key = user.optString(UserExt.USER_B3_KEY);
+                        final String tokenVal = cookieJSONObject.optString(Keys.TOKEN);
+                        final String token = StringUtils.substringBeforeLast(tokenVal, ":");
+                        if (StringUtils.equals(b3Key, token)) {
+                            if (refreshCookie) {
+                                login(user, response);
+                                request.setAttribute(CURRENT_USER_REFRESHED_ATTR, Boolean.TRUE);
+                            }
+                            request.setAttribute(CURRENT_USER_ATTR, clone(user));
+                            return user;
+                        }
                     }
-                    request.setAttribute(CURRENT_USER_ATTR, clone(user));
-
-                    return user;
                 }
             }
         } catch (final Exception e) {
             LOGGER.log(Level.TRACE, "Parses cookie failed, clears the cookie [name=" + COOKIE_NAME + "]");
-
-            logout(request, response);
+            if (refreshCookie) {
+                logout(request, response);
+            }
         }
 
         request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
@@ -443,6 +465,7 @@ public final class Solos {
     public static void logout(final Request request, final Response response) {
         if (null != request) {
             request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
+            request.setAttribute(CURRENT_USER_REFRESHED_ATTR, Boolean.FALSE);
             final Session session = request.getSession();
             if (null != session) {
                 session.setAttribute(Common.ARTICLES_VIEW_PWD, "{}");
@@ -471,7 +494,7 @@ public final class Solos {
      *         returns {@code false} otherwise
      */
     public static boolean isLoggedIn(final RequestContext context) {
-        return null != Solos.getCurrentUser(context.getRequest(), context.getResponse());
+        return null != peekCurrentUser(context.getRequest());
     }
 
     /**
@@ -482,7 +505,7 @@ public final class Solos {
      *         administrator, returns {@code false} otherwise
      */
     public static boolean isAdminLoggedIn(final RequestContext context) {
-        final JSONObject user = getCurrentUser(context.getRequest(), context.getResponse());
+        final JSONObject user = peekCurrentUser(context.getRequest());
         if (null == user) {
             return false;
         }
@@ -499,13 +522,13 @@ public final class Solos {
      *         administrator, author, returns {@code false} otherwise
      */
     public static boolean isAdminOrAuthorLoggedIn(final RequestContext context) {
-        final JSONObject user = getCurrentUser(context.getRequest(), context.getResponse());
+        final JSONObject user = peekCurrentUser(context.getRequest());
         if (null == user) {
             return false;
         }
 
-        return (Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE)) ||
-                Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)));
+        final String role = user.optString(User.USER_ROLE);
+        return Role.ADMIN_ROLE.equals(role) || Role.DEFAULT_ROLE.equals(role);
     }
 
     /**
@@ -537,18 +560,13 @@ public final class Solos {
 
         final Session session = request.getSession();
         if (null != session) {
-            Map<String, String> viewPwds = viewPasswords(session);
-            if (null == viewPwds) {
-                viewPwds = new HashMap<>();
-            }
-
-            if (articleViewPwd.equals(viewPwds.get(article.optString(Keys.OBJECT_ID)))) {
+            final Map<String, String> viewPwds = viewPasswords(session);
+            if (null != viewPwds && articleViewPwd.equals(viewPwds.get(article.optString(Keys.OBJECT_ID)))) {
                 return false;
             }
         }
 
-        final Response response = context.getResponse();
-        final JSONObject currentUser = getCurrentUser(request, response);
+        final JSONObject currentUser = peekCurrentUser(request);
 
         return !(null != currentUser && !Role.VISITOR_ROLE.equals(currentUser.optString(User.USER_ROLE)));
     }
@@ -599,7 +617,17 @@ public final class Solos {
      * @return cloned object
      */
     public static JSONObject clone(final JSONObject src) {
-        return new JSONObject(src, CollectionUtils.jsonArrayToArray(src.names(), String[].class));
+        if (null == src) {
+            return null;
+        }
+        if (src.isEmpty()) {
+            return new JSONObject();
+        }
+        final JSONObject copy = new JSONObject();
+        for (final String key : src.keySet()) {
+            copy.put(key, src.opt(key));
+        }
+        return copy;
     }
 
     /**

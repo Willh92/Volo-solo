@@ -39,10 +39,10 @@
         <#if 0 != links?size>
             <#list links as link>
                 <div class="other__item">
-                    <a rel="friend" href="${link.linkAddress}" target="_blank">
-                        ${link.linkTitle}
+                    <a rel="friend noopener noreferrer" href="${link.linkAddress?html}" target="_blank">
+                        ${link.linkTitle?html}
                     </a>
-                    <div>${link.linkDescription}</div>
+                    <div>${(link.linkDescription!'')?html}</div>
                 </div>
             </#list>
         </#if>

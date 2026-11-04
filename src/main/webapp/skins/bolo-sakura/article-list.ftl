@@ -24,7 +24,7 @@
 <article class="post post-list-thumb" itemscope="" itemtype="http://schema.org/BlogPosting">
     <div class="post-thumb">
         <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
-            <img class="lazyload" referrerpolicy="origin" src="${article.articleImg1URL}" onerror="if(window.imgError) imgError(this)" data-src="${article.articleImg1URL}">
+            <img class="lazyload" referrerpolicy="origin" src="${article.articleImg1URL?html}" onerror="if(window.imgError) imgError(this)" data-src="${article.articleImg1URL?html}">
         </a>
     </div>
     <div class="post-content-wrap">

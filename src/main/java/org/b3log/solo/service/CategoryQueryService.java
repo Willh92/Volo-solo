@@ -107,25 +107,19 @@ public class CategoryQueryService {
      * @return tags, returns an empty list if not found
      */
     public List<JSONObject> getTags(final String categoryId) {
-        final List<JSONObject> ret = new ArrayList<>();
-
-        final Query query = new Query().
-                setFilter(new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId));
+        if (null == categoryId || categoryId.isBlank()) {
+            return new ArrayList<>();
+        }
         try {
-            final List<JSONObject> relations = categoryTagRepository.getList(query);
-            for (final JSONObject relation : relations) {
-                final String tagId = relation.optString(Tag.TAG + "_" + Keys.OBJECT_ID);
-                final JSONObject tag = tagRepository.get(tagId);
-                if (null == tag) { // 修复修改分类时空指针错误 https://github.com/b3log/solo/pull/12876
-                    continue;
-                }
-                ret.add(tag);
-            }
+            final List<JSONObject> rows = tagRepository.select(
+                    "SELECT t.* FROM " + tagRepository.getName() + " AS t JOIN "
+                            + categoryTagRepository.getName() + " AS ct ON ct.tag_oId = t.oId WHERE ct.category_oId = ?",
+                    categoryId);
+            return null == rows ? new ArrayList<>() : rows;
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Gets category [id=" + categoryId + "] tags error", e);
+            return new ArrayList<>();
         }
-
-        return ret;
     }
 
     /**

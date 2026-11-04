@@ -27,6 +27,8 @@
 admin.preference = {
   locale: '',
   editorMode: '',
+  tuChuangSecretSet: false,
+  tuChuangType: '',
   loaded: false,
   /*
    * 初始化
@@ -90,8 +92,10 @@ admin.preference = {
 
         $('#sendKey').attr('placeholder', preference.sendKeySet ? '已设置，留空保留原密钥' : '').val(preference.sendKey)
         $('#replyRemind').val(preference.replyRemind)
+        admin.preference.tuChuangSecretSet = !!preference.tuChuangSecretSet
         $('#sourceTC').text(preference.tuChuangConfig)
-        sltd = $('#sourceTC').text().split('<<>>')[0]
+        var sltd = $('#sourceTC').text().split('<<>>')[0]
+        admin.preference.tuChuangType = sltd || ''
         $('#tcS').val(sltd)
         $('#hacpaiUser').val(preference.hacpaiUser)
         $('#b3logKey').attr('placeholder', preference.b3logKeySet ? '已设置，留空保留原密钥' : '').val(preference.b3logKey)

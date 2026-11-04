@@ -44,15 +44,17 @@ public final class AttackTracker {
                 || a == 254 && (c & 192) == 128 || a == 255;
     }
 
-    public synchronized Trigger record(final String address, final String input, final int status, final boolean administrator) {
+    public Trigger record(final String address, final String input, final int status, final boolean administrator) {
         if (administrator || internal(address)) return null;
-        String path = input == null ? "/" : input.split("\\?", 2)[0];
+        final int queryIdx = input == null ? -1 : input.indexOf('?');
+        String path = input == null ? "/" : (queryIdx < 0 ? input : input.substring(0, queryIdx));
         if (path.length() > 4096) path = path.substring(0, 4096);
-        for (int i = 0; i < 2; i++) {
-            try { path = URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8); }
+        for (int i = 0; i < 2 && path.indexOf('%') >= 0; i++) {
+            try { path = URLDecoder.decode(path.indexOf('+') >= 0 ? path.replace("+", "%2B") : path, StandardCharsets.UTF_8); }
             catch (IllegalArgumentException malformed) { break; }
         }
-        path = path.toLowerCase(Locale.ROOT).replace('\\', '/');
+        path = path.toLowerCase(Locale.ROOT);
+        if (path.indexOf('\\') >= 0) path = path.replace('\\', '/');
         if (path.startsWith("/error/")) return null;
         final boolean traversal = path.contains("../") || path.indexOf('\0') >= 0;
         final boolean sensitive = SENSITIVE_PATH_PATTERN.matcher(path).matches();
@@ -61,30 +63,32 @@ public final class AttackTracker {
         // Assets, repeated one-off broken links and successful requests do not count as failed probes.
         if (asset && !traversal && !sensitive && !script) return null;
         final long now = clock.getAsLong();
-        Window state = clients.get(address);
-        if (state == null || now - state.start >= WINDOW) {
-            state = new Window(now); clients.put(address, state);
-        }
-        while (clients.size() > 10_000) clients.remove(clients.keySet().iterator().next());
-        if (status == 0) {
-            state.requests++;
-            if (traversal) return new Trigger("path_traversal", "检测到路径遍历或空字节探测");
-            if (sensitive || script) {
-                if (state.probePaths.size() < 16) state.probePaths.add(path);
-                state.probes++;
-                if (state.probePaths.size() >= 3 || state.probes >= 8)
-                    return new Trigger(sensitive ? "sensitive_probe" : "script_scan", "2 分钟内多次探测敏感文件或非本站脚本路径（" + state.probes + " 次，" + state.probePaths.size() + " 个路径）");
+        synchronized (this) {
+            Window state = clients.get(address);
+            if (state == null || now - state.start >= WINDOW) {
+                state = new Window(now); clients.put(address, state);
             }
-            if (state.requests >= 480) return new Trigger("request_flood", "2 分钟内至少 480 次非静态资源请求");
-        } else if (status == 404) {
-            state.missing++;
-            if (state.paths.size() < 32) state.paths.add(path);
-            if (state.paths.size() >= 20 || state.missing >= 60)
-                return new Trigger("not_found_scan", "2 分钟内连续 404（" + state.missing + " 次，" + state.paths.size() + " 个路径）");
-        } else if (status == 400 || status == 401 || status == 403 || status == 405 || status == 429) {
-            if (++state.failures >= 40) return new Trigger("rejected_flood", "2 分钟内至少 40 次无效、未授权或超限请求");
+            while (clients.size() > 10_000) clients.remove(clients.keySet().iterator().next());
+            if (status == 0) {
+                state.requests++;
+                if (traversal) return new Trigger("path_traversal", "检测到路径遍历或空字节探测");
+                if (sensitive || script) {
+                    if (state.probePaths.size() < 16) state.probePaths.add(path);
+                    state.probes++;
+                    if (state.probePaths.size() >= 3 || state.probes >= 8)
+                        return new Trigger(sensitive ? "sensitive_probe" : "script_scan", "2 分钟内多次探测敏感文件或非本站脚本路径（" + state.probes + " 次，" + state.probePaths.size() + " 个路径）");
+                }
+                if (state.requests >= 480) return new Trigger("request_flood", "2 分钟内至少 480 次非静态资源请求");
+            } else if (status == 404) {
+                state.missing++;
+                if (state.paths.size() < 32) state.paths.add(path);
+                if (state.paths.size() >= 20 || state.missing >= 60)
+                    return new Trigger("not_found_scan", "2 分钟内连续 404（" + state.missing + " 次，" + state.paths.size() + " 个路径）");
+            } else if (status == 400 || status == 401 || status == 403 || status == 405 || status == 429) {
+                if (++state.failures >= 40) return new Trigger("rejected_flood", "2 分钟内至少 40 次无效、未授权或超限请求");
+            }
+            return null;
         }
-        return null;
     }
     public synchronized void clear(final String address) { clients.remove(address); }
 }

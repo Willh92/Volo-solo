@@ -52,10 +52,22 @@ public class PageRepository extends AbstractRepository {
     }
 
     @Override
+    public String add(final JSONObject page) throws RepositoryException {
+        final String id = super.add(page);
+        page.put(Keys.OBJECT_ID, id);
+        if (null != pageCache) {
+            pageCache.putPage(page);
+        }
+        return id;
+    }
+
+    @Override
     public void remove(final String id) throws RepositoryException {
         super.remove(id);
 
-        pageCache.removePage(id);
+        if (null != pageCache) {
+            pageCache.removePage(id);
+        }
     }
 
     @Override
@@ -72,7 +84,7 @@ public class PageRepository extends AbstractRepository {
 
         pageCache.putPage(ret);
 
-        return ret;
+        return org.b3log.solo.util.Solos.clone(ret);
     }
 
     @Override
@@ -80,7 +92,9 @@ public class PageRepository extends AbstractRepository {
         super.update(id, page, propertyNames);
 
         page.put(Keys.OBJECT_ID, id);
-        pageCache.putPage(page);
+        if (null != pageCache) {
+            pageCache.putPage(page);
+        }
     }
 
     /**
@@ -91,6 +105,15 @@ public class PageRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByPermalink(final String permalink) throws RepositoryException {
+        if (null != pageCache) {
+            final JSONObject cached = pageCache.getPageByPermalink(permalink);
+            if (null != cached) {
+                return cached;
+            }
+            if (null != pageCache.getPages()) {
+                return null;
+            }
+        }
         final Query query = new Query().setFilter(new PropertyFilter(Page.PAGE_PERMALINK, FilterOperator.EQUAL, permalink)).setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
@@ -98,7 +121,11 @@ public class PageRepository extends AbstractRepository {
             return null;
         }
 
-        return array.optJSONObject(0);
+        final JSONObject found = array.optJSONObject(0);
+        if (null != found && null != pageCache) {
+            pageCache.putPage(found);
+        }
+        return found;
     }
 
     /**
@@ -191,8 +218,18 @@ public class PageRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getPages() throws RepositoryException {
+        if (null != pageCache) {
+            final List<JSONObject> cached = pageCache.getPages();
+            if (null != cached) {
+                return cached;
+            }
+        }
         final Query query = new Query().addSort(Page.PAGE_ORDER, SortDirection.ASCENDING).setPageCount(1);
-
-        return getList(query);
+        final List<JSONObject> pages = getList(query);
+        if (null != pageCache) {
+            pageCache.putPages(pages);
+            return pageCache.getPages();
+        }
+        return pages;
     }
 }

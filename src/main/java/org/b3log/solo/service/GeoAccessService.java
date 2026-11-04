@@ -191,11 +191,17 @@ public class GeoAccessService {
         return (Boolean) flag;
     }
 
-    private synchronized Policy policy() throws Exception {
-        if (current == null) {
-            current = Policy.read(new JSONObject(org.b3log.solo.util.OptionDocuments.read(optionQueryService, OPTION_ID, "{}")));
+    private Policy policy() throws Exception {
+        final Policy cached = current;
+        if (cached != null) {
+            return cached;
         }
-        return current;
+        synchronized (this) {
+            if (current == null) {
+                current = Policy.read(new JSONObject(org.b3log.solo.util.OptionDocuments.read(optionQueryService, OPTION_ID, "{}")));
+            }
+            return current;
+        }
     }
 
     public boolean blocked(final String address) throws Exception {

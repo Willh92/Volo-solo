@@ -72,10 +72,11 @@
             <#list links as link>
                 <li>
                     <a
-                        href="${link.linkAddress}"
+                        href="${link.linkAddress?html}"
                         target="_blank"
-                        title="${link.linkTitle}">
-                        ${link.linkTitle}
+                        rel="noopener noreferrer"
+                        title="${link.linkTitle?html}">
+                        ${link.linkTitle?html}
                     </a>
                 </li>
             </#list>
@@ -88,10 +89,11 @@
             <#list follows as follow>
                 <li>
                     <a
-                        href="${servePath}/follow/articles/${follow.followTitle}"
+                        href="${servePath}/follow/articles/${follow.followTitle?url('UTF-8')}"
                         target="_blank"
-                        title="${follow.followTitle}">
-                        ${follow.followTitle}
+                        rel="noopener noreferrer"
+                        title="${follow.followTitle?html}">
+                        ${follow.followTitle?html}
                     </a>
                 </li>
             </#list>

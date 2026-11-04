@@ -108,7 +108,7 @@ public class SitemapProcessor {
 
             String content = sitemap.toString();
             content = XMLs.format(content);
-            LOGGER.log(Level.INFO, "Generated sitemap");
+            LOGGER.log(Level.DEBUG, "Generated sitemap");
             renderer.setContent(content);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Generates sitemap failed", e);
@@ -210,11 +210,15 @@ public class SitemapProcessor {
     private void addArchives(final Sitemap sitemap) throws Exception {
         final JSONObject result = archiveDateRepository.get(new Query());
         final JSONArray archiveDates = org.b3log.solo.util.QueryResults.array(result);
+        final java.util.Set<String> seenMonths = new java.util.LinkedHashSet<>();
 
         for (int i = 0; i < archiveDates.length(); i++) {
             final JSONObject archiveDate = archiveDates.getJSONObject(i);
             final long time = archiveDate.getLong(ArchiveDate.ARCHIVE_TIME);
             final String dateString = DateFormatUtils.format(time, "yyyy/MM");
+            if (!seenMonths.add(dateString)) {
+                continue;
+            }
 
             final URL url = new URL();
 
