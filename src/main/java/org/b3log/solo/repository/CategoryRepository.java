@@ -188,26 +188,31 @@ public class CategoryRepository extends AbstractRepository {
         final Query query = new Query().addSort(Category.CATEGORY_ORDER, SortDirection.ASCENDING).setPage(1, num)
                 .setPageCount(1);
         final List<JSONObject> ret = getList(query);
+        if (ret.isEmpty()) {
+            return ret;
+        }
 
         final BeanManager beanManager = BeanManager.getInstance();
-        final ArticleRepository articleRepository = beanManager.getReference(ArticleRepository.class);
-        final TagArticleRepository tagArticleRepository = beanManager.getReference(TagArticleRepository.class);
         final CategoryTagRepository categoryTagRepository = beanManager.getReference(CategoryTagRepository.class);
+        final Object[] categoryIds = new Object[ret.size()];
+        for (int i = 0; i < ret.size(); i++) {
+            categoryIds[i] = ret.get(i).optString(Keys.OBJECT_ID);
+        }
+        final java.util.Map<String, Integer> tagCounts = new java.util.HashMap<>();
+        final List<JSONObject> countRows = categoryTagRepository.select(
+                "SELECT category_oId, COUNT(*) AS C FROM " + categoryTagRepository.getName()
+                        + " WHERE category_oId IN (" + String.join(",", java.util.Collections.nCopies(categoryIds.length, "?"))
+                        + ") GROUP BY category_oId",
+                categoryIds);
+        if (countRows != null) {
+            for (final JSONObject row : countRows) {
+                tagCounts.put(row.optString(Category.CATEGORY + "_" + Keys.OBJECT_ID), row.optInt("C"));
+            }
+        }
 
         for (final JSONObject category : ret) {
             final String categoryId = category.optString(Keys.OBJECT_ID);
-            final JSONArray categoryTags = org.b3log.solo.util.QueryResults.array(categoryTagRepository.getByCategoryId(categoryId, 1, Integer.MAX_VALUE));
-            /* final StringBuilder queryCount = new StringBuilder("SELECT count(DISTINCT(b3_solo_article.oId)) as C FROM ");
-            final StringBuilder queryStr = new StringBuilder(articleRepository.getName() + " AS b3_solo_article,").
-                    append(tagArticleRepository.getName() + " AS b3_solo_tag_article").
-                    append(" WHERE b3_solo_article.oId=b3_solo_tag_article.article_oId ").
-                    append(" AND b3_solo_article.articleStatus=").append(Article.ARTICLE_STATUS_C_PUBLISHED).
-                    append(" AND ").append("b3_solo_tag_article.tag_oId").append(" IN (").
-                    append("SELECT tag_oId FROM ").append(categoryTagRepository.getName() + " AS b3_solo_category_tag WHERE b3_solo_category_tag.category_oId = ").
-                    append(categoryId).append(")");
-            final List<JSONObject> articlesCountResult = select(queryCount.append(queryStr.toString()).toString());
-            final int articleCount = articlesCountResult == null ? 0 : articlesCountResult.get(0).optInt("C"); */
-            category.put(Category.CATEGORY_T_PUBLISHED_ARTICLE_COUNT, categoryTags.length());
+            category.put(Category.CATEGORY_T_PUBLISHED_ARTICLE_COUNT, tagCounts.getOrDefault(categoryId, 0));
         }
 
         return ret;

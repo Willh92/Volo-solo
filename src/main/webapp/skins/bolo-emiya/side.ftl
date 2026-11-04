@@ -33,7 +33,7 @@
     <div class="search">
       <form class="search__form" action="${servePath}/search">
         <div class="input">
-          <input type="text" name="keyword" placeholder="输入关键字搜索">
+          <input autocomplete="off" type="text" name="keyword" placeholder="输入关键字搜索">
           <button type="submit"></button>
         </div>
       </form>

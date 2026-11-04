@@ -24,12 +24,22 @@
     <p class="utility-eyebrow">受保护的文章</p>
     <h1 id="articlePasswordTitle">${articleTitle?html}</h1>
     <p class="utility-error-hint">这篇文章设置了访问密码，输入后即可继续阅读。</p>
-    <form method="POST" action="${servePath}/console/article-pwd" class="utility-password-form">
+    <form method="POST" action="${servePath}/console/article-pwd" class="utility-password-form" autocomplete="off">
         <label for="pwdTyped">访问密码</label>
-        <input type="password" id="pwdTyped" name="pwdTyped" autocomplete="current-password" maxlength="1024" required aria-describedby="articlePasswordMessage"/>
-        <input type="hidden" name="articleId" value="${articleId?html}"/>
+        <input type="password" id="pwdTyped" name="pwdTyped" autocomplete="off" maxlength="1024" required aria-describedby="articlePasswordMessage"/>
+        <input type="hidden" name="articleId" value="${articleId?html}" autocomplete="off"/>
         <p id="articlePasswordMessage" class="utility-password-error" role="alert"><#if msg??>${msg?html}</#if></p>
         <button id="confirm" type="submit" class="utility-button">继续阅读 <span aria-hidden="true">→</span></button>
     </form>
 </section>
+<script>
+window.addEventListener('pageshow', function (e) {
+    var input = document.getElementById('pwdTyped');
+    if (!input) return;
+    var nav = window.performance && window.performance.getEntriesByType && window.performance.getEntriesByType('navigation')[0];
+    if (e.persisted || (nav && nav.type === 'back_forward')) {
+        input.value = '';
+    }
+});
+</script>
 </@utilityPage>

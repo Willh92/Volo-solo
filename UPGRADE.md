@@ -26,7 +26,7 @@ H2 1.4.199 数据文件不能直接使用 H2 2.5.252 打开。应先用旧驱动
 
 ## 启动
 
-在部署目录执行 `sh start.sh`（Linux）或 `start.cmd`（Windows），默认监听 TCP 8080。脚本优先使用 `JAVA_HOME`，端口可通过 `--listen_port 8080` 指定。
+在部署目录执行 `sh start.sh`（Linux）或 `start.cmd`（Windows），默认监听 TCP 8080。脚本优先使用 `JAVA_HOME`，端口可通过 `--listen_port 8080` 指定。未显式设置环境变量 `JAVA_OPTS` 时，启动脚本与 `volo-unix.init.example` 默认启用 `-Xms128m -Xmx384m -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.awt.headless=true -Dio.netty.allocator.maxOrder=9`；站点可根据负载在环境中自定义 `JAVA_OPTS` 覆盖默认值。
 
 自定义启动命令的类路径为 Linux `WEB-INF/classes:WEB-INF/lib/*:.`、Windows `WEB-INF/classes;WEB-INF/lib/*;.`；工作目录应为解压后的应用目录。
 
@@ -115,9 +115,9 @@ proxy_pass http://unix:/dev/shm/volo/volo.sock:;
 
 ### 缓存与压缩
 
-编辑器主脚本和 Lute 提供预压缩 gzip 版本，并使用 `Vary`、ETag、`Cache-Control` 协商缓存。正文、摘要及评论编辑器共享已加载的运行库。
+编辑器主脚本、Lute 及公共静态 JS/CSS/SVG/JSON 支持预压缩 `.gz` 与 `Vary`、ETag、`Cache-Control` 协商缓存；本地图床 `/pic/local/*` 支持 ETag、`Last-Modified` 条件请求（`304 Not Modified`）并限制为安全图片类型。正文、摘要及评论编辑器共享已加载的运行库。
 
-Nginx、面板或 CDN 不应向静态响应统一追加 `Cache-Control: no-store`、`no-cache`，也无需统一清除 `Expires`。静态资源和动态页面的缓存策略由应用设置；登录与后台页面仍禁止缓存。
+Nginx、面板或 CDN 不应向静态响应统一追加 `Cache-Control: no-store`、`no-cache`，也无需统一清除 `Expires`。静态资源和动态页面的缓存策略由应用设置：匿名访问不保留空会话且不下发临时会话 Cookie；已登录状态下访问前台页面自动切换为 `Cache-Control: private, no-cache`，登录与后台页面始终禁止缓存。
 
 压缩配置参考 `nginx-cache.conf.example`。静态资源响应的缓存策略应有效且无冲突，支持 gzip 的请求应返回 `Content-Encoding: gzip`。
 
@@ -230,7 +230,7 @@ Nginx、面板或 CDN 不应向静态响应统一追加 `Cache-Control: no-store
 
 - 本地图床应使用 Java 用户可读写的持久目录；更换路径前备份并迁移图片。容器部署应挂载持久卷。
 - JSON、SQL、Hexo 导出位于“实用功能 → 数据导出”，响应均禁止缓存并在完成后清理临时目录。JSON 导出会自动剔除 `voloTotpAuth` 密钥配置；SQL 导出为完整原始库表灾难恢复备份，包含全部表记录，需加密并妥善保管。请求体上限为 64 MiB，应用单文件上限为 50 MiB；大规模恢复应使用数据库备份工具。
-- GitHub 备份、社区同步、SMTP 与 Server 酱通知需分别配置凭据。关于页读取公开仓库信息，不使用文章备份令牌。
+- GitHub 备份、社区同步、SMTP 与 Server 酱通知需分别配置凭据；后台设置接口对已保存的社区密钥、Server 酱令牌和邮件密码脱敏，留空保存保留原值。关注站点 RSS/Atom 拉取与友链图标抓取仅允许公网 HTTP(S) 地址，自动阻断回环、内网及元数据地址并限制重定向与体积。关于页读取公开仓库信息，不使用文章备份令牌。
 - “偏好设定 → 我的 GitHub”统一管理 GitHub ID、自动同步、立即同步、是否包含 Fork 和逐仓库显示设置。同步读取该账号全部公开仓库，默认展示原创仓库；隐藏仓库或排除 Fork 后，统计卡片的项目数、Stars 和 Forks 只计算实际展示的仓库。Stars 是这些仓库获得的星标总数。显示选择在下次同步后保留；同步失败保留旧快照，空仓库列表会正常更新。
 - GitHub 文章的头部横幅、统计卡片和统计标题链接到对应的 GitHub 用户主页。个人资料仓库 README 同步需配置具有相应仓库 Contents 读写权限的 Token。预先创建与用户名同名的公开资料仓库，可避免授予创建仓库权限。同步采用仓库默认分支，失败不会写入成功缓存，下一次任务会重试；同步开关保存后生效，定时任务约每天运行一次。
 - “实用功能 → 维护工具”提供远程文章备份、社区站点刷新和通知邮箱缓存清理。社区备份和社区站点刷新需要启用 B3log 插件。

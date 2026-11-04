@@ -19,8 +19,8 @@ package pers.adlered.simplecurrentlimiter.cache;
 
 import pers.adlered.simplecurrentlimiter.cache.pair.CachePair;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * <h3>SimpleCurrentLimiter</h3>
@@ -31,7 +31,7 @@ import java.util.Map;
  **/
 public class MainCache {
     // 缓存 存储CachePair
-    public Map<String, CachePair> cachePairMap = new HashMap<>();
+    public Map<String, CachePair> cachePairMap = new ConcurrentHashMap<>();
     // 过期时间（毫秒）
     public long expireTime = -1;
     // 时间单位次数

@@ -24,6 +24,7 @@
   var status = document.getElementById('status')
   var username = document.getElementById('username')
   var password = document.getElementById('password')
+  var toggleBtn = document.getElementById('togglePassword')
   var captchaIdInput = document.getElementById('loginCaptchaId')
   var primaryFields = document.getElementById('loginPrimaryFields')
   var totpFields = document.getElementById('loginTotpFields')
@@ -64,6 +65,15 @@
     }
   }
 
+  function hidePassword () {
+    if (!password) return
+    password.type = 'password'
+    if (toggleBtn && toggleBtn.setAttribute) {
+      toggleBtn.setAttribute('aria-pressed', 'false')
+      toggleBtn.setAttribute('aria-label', '显示密码')
+    }
+  }
+
   document.getElementById('loginCaptcha').dataset.context = new URL(form.action, window.location.href).pathname.replace(/\/oauth\/bolo\/login$/, '')
   var captcha = window.VoloCaptcha.mount(document.getElementById('loginCaptcha'), 'login', function (state) {
     captchaReady = !!state.ready
@@ -83,6 +93,7 @@
 
   function enterTotpStep (result) {
     totpStep = true
+    hidePassword()
     if (primaryFields) primaryFields.hidden = true
     if (username) username.disabled = true
     if (password) password.disabled = true
@@ -117,7 +128,7 @@
     if (totpCodeInput && totpCodeInput.focus) totpCodeInput.focus()
   }
 
-  function exitTotpStep (errorText) {
+  function exitTotpStep (errorText, silent) {
     totpStep = false
     if (totpFields) totpFields.hidden = true
     if (totpTokenInput) {
@@ -144,21 +155,39 @@
     if (form.isConnected) captcha.refresh()
     message(errorText || '')
     syncButtonState()
-    if (password && password.focus) password.focus()
+    if (!silent && password && password.focus) password.focus()
+  }
+
+  function onPageShow (event) {
+    if (!event || !event.persisted) return
+    busy = false
+    form.removeAttribute('aria-busy')
+    hidePassword()
+    if (password) password.value = ''
+    if (captchaIdInput) captchaIdInput.value = ''
+    if (totpStep) exitTotpStep('', true)
+    else {
+      captcha.refresh()
+      message('')
+      syncButtonState()
+    }
   }
 
   if (mode === '0') message('用户名或密码错误，请重试。')
-  document.getElementById('togglePassword').addEventListener('click', function () {
-    var show = password.type === 'password'
-    password.type = show ? 'text' : 'password'
-    this.setAttribute('aria-pressed', String(show))
-    this.setAttribute('aria-label', show ? '隐藏密码' : '显示密码')
-  })
-  if (totpBackBtn) {
+  if (toggleBtn && toggleBtn.addEventListener) {
+    toggleBtn.addEventListener('click', function () {
+      var show = password.type === 'password'
+      password.type = show ? 'text' : 'password'
+      this.setAttribute('aria-pressed', String(show))
+      this.setAttribute('aria-label', show ? '隐藏密码' : '显示密码')
+    })
+  }
+  if (totpBackBtn && totpBackBtn.addEventListener) {
     totpBackBtn.addEventListener('click', function () {
       if (!busy) exitTotpStep('')
     })
   }
+  if (window.addEventListener) window.addEventListener('pageshow', onPageShow)
 
   function cooldown (seconds) {
     retryUntil = Date.now() + Math.max(1, Math.min(86400, Number(seconds) || 60)) * 1000
@@ -178,7 +207,13 @@
     retryTimer = setInterval(update, 1000)
   }
 
-  if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(retryTimer); captcha.destroy() })
+  if (window.BoloNavigation) {
+    window.BoloNavigation.onLeave(function () {
+      clearInterval(retryTimer)
+      if (window.removeEventListener) window.removeEventListener('pageshow', onPageShow)
+      captcha.destroy()
+    })
+  }
   form.addEventListener('input', function () { if (!busy && Date.now() >= retryUntil) message('') })
   form.addEventListener('submit', async function (event) {
     event.preventDefault()
@@ -253,6 +288,10 @@
       shouldRefreshCaptcha = false
       var next = new URL(result.redirect, window.location.origin)
       if (next.origin !== window.location.origin) throw new Error('Invalid login redirect')
+      hidePassword()
+      if (password) password.value = ''
+      if (totpCodeInput) totpCodeInput.value = ''
+      if (totpTokenInput) totpTokenInput.value = ''
       button.querySelector('span').textContent = '正在进入后台…'
       await window.BoloNavigation.navigate(next.href, {replace: true})
     } catch (error) {

@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
@@ -107,6 +108,25 @@ public class DataModelService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(DataModelService.class);
+
+    /**
+     * Caches FreeMarker template AST expression lookups so Templates.hasExpression does not
+     * re-serialize the entire template AST on every page and sidebar render.
+     */
+    private static final Map<Template, Map<String, Boolean>> TEMPLATE_EXPRESSION_CACHE =
+            Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private static boolean hasExpression(final Template template, final String expression) {
+        if (null == template || null == expression) {
+            return false;
+        }
+        Map<String, Boolean> perTemplate = TEMPLATE_EXPRESSION_CACHE.get(template);
+        if (null == perTemplate) {
+            perTemplate = new java.util.concurrent.ConcurrentHashMap<>();
+            TEMPLATE_EXPRESSION_CACHE.put(template, perTemplate);
+        }
+        return perTemplate.computeIfAbsent(expression, expr -> Templates.hasExpression(template, expr));
+    }
 
     /**
      * Article repository.
@@ -251,7 +271,7 @@ public class DataModelService {
             if (null == template) {
                 LOGGER.debug("The skin dose not contain [index.ftl] template");
             } else // See https://github.com/b3log/solo/issues/179 for more details
-            if (Templates.hasExpression(template, "<#list articles1 as article>")) {
+            if (hasExpression(template, "<#list articles1 as article>")) {
                 isArticles1 = true;
                 query.addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING);
                 LOGGER.trace("Query ${articles1} in index.ftl");
@@ -1012,9 +1032,10 @@ public class DataModelService {
             // 皮肤不显示访客用户 https://github.com/b3log/solo/issues/12752
             final Query query = new Query().setPageCount(1)
                     .setFilter(new PropertyFilter(User.USER_ROLE, FilterOperator.NOT_EQUAL, Role.VISITOR_ROLE));
-            final List<JSONObject> userList = userRepository.getList(query);
+            final List<JSONObject> userList = userRepository.getList(query).stream()
+                    .map(Solos::sanitizeUser).collect(Collectors.toList());
             dataModel.put(User.USERS, userList);
-            final JSONObject admin = userRepository.getAdmin();
+            final JSONObject admin = Solos.sanitizeUser(userRepository.getAdmin());
             dataModel.put(Common.ADMIN_USER, admin);
             // 返回 Bolo 设定的链滴用户名
             String userName = "";
@@ -1107,27 +1128,27 @@ public class DataModelService {
                 }
             }
 
-            if (Templates.hasExpression(template, "<#list recentArticles as article>")) {
+            if (hasExpression(template, "<#list recentArticles as article>")) {
                 fillRecentArticles(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#list links as link>")) {
+            if (hasExpression(template, "<#list links as link>")) {
                 fillLinks(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list follows as follow>")) {
+            if (hasExpression(template, "<#list follows as follow>")) {
                 fillFollows(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list recentComments as comment>")) {
+            if (hasExpression(template, "<#list recentComments as comment>")) {
                 fillRecentComments(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#list mostCommentArticles as article>")) {
+            if (hasExpression(template, "<#list mostCommentArticles as article>")) {
                 fillMostCommentArticles(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#list mostViewCountArticles as article>")) {
+            if (hasExpression(template, "<#list mostViewCountArticles as article>")) {
                 fillMostViewCountArticles(dataModel, preference);
             }
         } catch (final ServiceException e) {
@@ -1153,35 +1174,35 @@ public class DataModelService {
         try {
             LOGGER.log(Level.DEBUG, "Filling user template[name{0}]", template.getName());
 
-            if (Templates.hasExpression(template, "<#list links as link>")) {
+            if (hasExpression(template, "<#list links as link>")) {
                 fillLinks(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list follows as follow>")) {
+            if (hasExpression(template, "<#list follows as follow>")) {
                 fillFollows(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list tags as tag>")) {
+            if (hasExpression(template, "<#list tags as tag>")) {
                 fillTags(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list categories as category>")) {
+            if (hasExpression(template, "<#list categories as category>")) {
                 fillCategories(dataModel);
             }
 
-            if (Templates.hasExpression(template, "<#list recentComments as comment>")) {
+            if (hasExpression(template, "<#list recentComments as comment>")) {
                 fillRecentComments(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#list mostCommentArticles as article>")) {
+            if (hasExpression(template, "<#list mostCommentArticles as article>")) {
                 fillMostCommentArticles(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#list mostViewCountArticles as article>")) {
+            if (hasExpression(template, "<#list mostViewCountArticles as article>")) {
                 fillMostViewCountArticles(dataModel, preference);
             }
 
-            if (Templates.hasExpression(template, "<#include \"side.ftl\"/>")) {
+            if (hasExpression(template, "<#include \"side.ftl\"/>")) {
                 fillSide(context, dataModel, preference);
             }
 
@@ -1281,7 +1302,8 @@ public class DataModelService {
                 article.put(Common.HAS_UPDATED, false);
             }
 
-            if (Solos.needViewPwd(context, article)) {
+            final boolean needViewPwd = Solos.needViewPwd(context, article);
+            if (needViewPwd) {
                 final String content = langPropsService.get("articleContentPwd");
                 article.put(ARTICLE_CONTENT, content);
             }
@@ -1289,6 +1311,8 @@ public class DataModelService {
             processArticleAbstract(preference, article);
 
             articleQueryService.markdown(article);
+            article.put("needViewPwd", needViewPwd);
+            article.remove(Article.ARTICLE_VIEW_PWD);
 
             fillCategory(article);
 

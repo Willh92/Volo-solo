@@ -727,8 +727,8 @@
         <div class="vpanel">
             <div class="vwrap">
                 <div class="vheader item3">
-                    <input placeholder="你的昵称" id="boloUser" class="vnick vinput" type="text">
-                    <input placeholder="你的个人主页URL（选填）" id="boloSite" class="vmail vinput" type="text">
+                    <input autocomplete="off" placeholder="你的昵称" id="boloUser" class="vnick vinput" type="text">
+                    <input autocomplete="off" placeholder="你的个人主页URL（选填）" id="boloSite" class="vmail vinput" type="text">
                 </div>
                 <div class="vedit">
                     <textarea placeholder="${postCommentsLabel} ..." class="veditor vinput" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>

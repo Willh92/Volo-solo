@@ -56,6 +56,7 @@ public final class ConsoleRenderer extends AbstractFreeMarkerRenderer {
 
     @Override
     protected void beforeRender(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
     }
 
     @Override

@@ -574,9 +574,9 @@
                             </div>
                             <form class="comment-form">
                                 <div class="author-info">
-                                    <input type="text" tabindex="1" required="required" aria-required="true"
+                                    <input autocomplete="off" type="text" tabindex="1" required="required" aria-required="true"
                                            id="boloUser" placeholder="你的昵称">
-                                    <input type="text" tabindex="2" required="required" aria-required="true"
+                                    <input autocomplete="off" type="text" tabindex="2" required="required" aria-required="true"
                                            id="boloSite" placeholder="你的个人主页URL（选填）">
                                 </div>
                                 <div class="comment-textarea">

@@ -203,6 +203,15 @@ public class PreferenceConsole {
             catch (IllegalArgumentException invalidStoredSetting) { /* Keep incomplete legacy settings editable. */ }
             preference.put("smtpPasswordSet", !preference.optString(Option.ID_C_MAIL_PASSWORD).isEmpty());
             preference.put(Option.ID_C_MAIL_PASSWORD, "");
+            preference.put("githubPATSet", !preference.optString(Option.ID_C_GITHUB_PAT).isEmpty());
+            preference.put(Option.ID_C_GITHUB_PAT, "");
+            final String storedB3Key = preference.optString(Option.ID_C_B3LOG_KEY);
+            preference.put("b3logKeySet", !storedB3Key.isEmpty() && !"123456".equals(storedB3Key));
+            preference.put(Option.ID_C_B3LOG_KEY, "");
+            preference.put("fishKeySet", !preference.optString(Option.ID_C_FISH_KEY).isEmpty());
+            preference.put(Option.ID_C_FISH_KEY, "");
+            preference.put("sendKeySet", !preference.optString(Option.ID_C_SEND_KEY).isEmpty());
+            preference.put(Option.ID_C_SEND_KEY, "");
             ret.put(Option.CATEGORY_C_PREFERENCE, preference);
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
@@ -392,6 +401,12 @@ public class PreferenceConsole {
             errMsgBuilder.append(langPropsService.get("feedOutputCntLabel")).append("]  ")
                     .append(langPropsService.get("nonNegativeIntegerOnlyLabel"));
             responseObject.put(Keys.MSG, errMsgBuilder.toString());
+            return true;
+        }
+
+        final String faviconURL = preference.optString(Option.ID_C_FAVICON_URL);
+        if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(faviconURL)) {
+            responseObject.put(Keys.MSG, "网站图标地址仅支持站内路径或 http/https 地址。");
             return true;
         }
 

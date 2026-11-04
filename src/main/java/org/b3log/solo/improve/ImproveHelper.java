@@ -38,21 +38,46 @@ public class ImproveHelper implements Runnable {
 
     // 提交反馈服务器地址
     private static final String helperHost = "http://report.stackoverflow.wiki:4399/Log";
-    private final RequestContext context;
+    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+            .setConnectTimeout(2000).setConnectionRequestTimeout(1000).setSocketTimeout(2000).build();
 
-    public ImproveHelper(RequestContext context) {
-        this.context = context;
+    private final String requestURI;
+    private final String maskedClientIP;
+    private final String userAgent;
+    private final String referer;
+
+    public ImproveHelper(final RequestContext context) {
+        final Request request = context == null ? null : context.getRequest();
+        if (request == null) {
+            this.requestURI = null;
+            this.maskedClientIP = null;
+            this.userAgent = null;
+            this.referer = null;
+            return;
+        }
+        this.requestURI = request.getRequestURI();
+        String clientIP = request.getRemoteAddr();
+        try {
+            if (clientIP != null) {
+                final String[] ipSplit = clientIP.split("\\.");
+                if (ipSplit.length >= 3) {
+                    clientIP = ipSplit[0] + "." + ipSplit[1] + "." + ipSplit[2] + ".*";
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        this.maskedClientIP = clientIP;
+        this.userAgent = request.getHeader("User-Agent");
+        this.referer = request.getHeader("Referer");
     }
 
     @Override
     public void run() {
-        if (ImproveOptions.doJoinHelpImprovePlan().equals("true")) {
-            JSONObject statisticsObject = new JSONObject();
+        if (requestURI != null && "true".equals(ImproveOptions.doJoinHelpImprovePlan())) {
+            final JSONObject statisticsObject = new JSONObject();
             statisticsObject.put("category", "statistics");
 
-            JSONObject statisticsDataObject = new JSONObject();
-            Request request = context.getRequest();
-
+            final JSONObject statisticsDataObject = new JSONObject();
             /*
               隐私信息说明
               serverTime: 服务器当前时间戳
@@ -65,36 +90,23 @@ public class ImproveHelper implements Runnable {
             try {
                 statisticsDataObject.put("serverTime", System.currentTimeMillis());
                 statisticsDataObject.put("serverHost", Latkes.getStaticServePath());
-                statisticsDataObject.put("requestURL", request.getRequestURI());
-                String clientIP;
-                try {
-                    clientIP = request.getRemoteAddr();
-                    String[] ipSplit = clientIP.split("\\.");
-                    clientIP = ipSplit[0] + "." + ipSplit[1] + "." + ipSplit[2] + ".*";
-                } catch (Exception e) {
-                    clientIP = request.getRemoteAddr();
-                }
-                statisticsDataObject.put("clientIP", clientIP);
-                statisticsDataObject.put("userAgent", request.getHeader("User-Agent"));
-                statisticsDataObject.put("referer", request.getHeader("Referer"));
+                statisticsDataObject.put("requestURL", requestURI);
+                statisticsDataObject.put("clientIP", maskedClientIP);
+                statisticsDataObject.put("userAgent", userAgent);
+                statisticsDataObject.put("referer", referer);
             } catch (Exception ignored) {
                 return;
             }
 
             statisticsObject.put("data", statisticsDataObject);
 
-            CloseableHttpClient uploadSiteStatisticsHttpClient = new PassSSL().createSSLClientDefault();
-            HttpPost httpPost = new HttpPost(helperHost);
-            String params = statisticsObject.toString();
-            StringEntity httpEntity = new StringEntity(params, "utf-8");
-            RequestConfig config = RequestConfig.custom().setConnectTimeout(2000).setConnectionRequestTimeout(1000).setSocketTimeout(2000).build();
-            httpPost.setConfig(config);
+            final HttpPost httpPost = new HttpPost(helperHost);
+            httpPost.setConfig(REQUEST_CONFIG);
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setEntity(httpEntity);
+            httpPost.setEntity(new StringEntity(statisticsObject.toString(), "utf-8"));
 
-            try {
-                CloseableHttpResponse response = uploadSiteStatisticsHttpClient.execute(httpPost);
-                response.close();
+            try (CloseableHttpClient client = new PassSSL().createSSLClientDefault();
+                 CloseableHttpResponse ignored = client.execute(httpPost)) {
             } catch (IOException ignored) {
             }
         }

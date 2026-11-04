@@ -180,8 +180,10 @@ public class ArticleQueryService {
                                     new PropertyFilter(Article.ARTICLE_TITLE, FilterOperator.LIKE, "%" + keyword + "%"),
                                     new PropertyFilter(Article.ARTICLE_TAGS_REF, FilterOperator.LIKE,
                                             "%" + keyword + "%"),
-                                    new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE,
-                                            "%" + keyword + "%"))))
+                                    CompositeFilterOperator.and(
+                                            new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""),
+                                            new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE, "%" + keyword + "%")))))
+
                     .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).setPage(currentPageNum, pageSize);
 
             final JSONObject result = articleRepository.get(query);
@@ -616,7 +618,21 @@ public class ArticleQueryService {
                 query.addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING);
             }
             final String keyword = requestJSONObject.optString(Common.KEYWORD);
-            if (StringUtils.isBlank(keyword)) {
+            final String filterAuthorId = requestJSONObject.optString(Article.ARTICLE_AUTHOR_ID);
+            Filter filter = new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, articleStatus);
+            if (StringUtils.isNotBlank(filterAuthorId)) {
+                filter = CompositeFilterOperator.and(filter,
+                        new PropertyFilter(Article.ARTICLE_AUTHOR_ID, FilterOperator.EQUAL, filterAuthorId));
+            }
+            if (StringUtils.isNotBlank(keyword)) {
+                filter = CompositeFilterOperator.and(filter,
+                        CompositeFilterOperator.or(
+                                new PropertyFilter(Article.ARTICLE_TITLE, FilterOperator.LIKE, "%" + keyword + "%"),
+                                new PropertyFilter(Article.ARTICLE_TAGS_REF, FilterOperator.LIKE, "%" + keyword + "%"),
+                                new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE, "%" + keyword + "%")));
+            }
+            query.setFilter(filter);
+            if (Boolean.FALSE) if (StringUtils.isBlank(keyword)) {
                 query.setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, articleStatus));
             } else {
                 query.setFilter(CompositeFilterOperator.and(
@@ -947,6 +963,15 @@ public class ArticleQueryService {
             final JSONObject article = articleRepository.get(articleId);
             if (null == article) {
                 return null;
+            }
+
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)) {
+                final JSONObject preference = optionQueryService.getPreference();
+                final boolean allowDraft = null != preference && preference.optBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
+                final boolean authorized = null != context && canAccessArticle(articleId, Solos.getCurrentUser(context.getRequest(), context.getResponse()));
+                if (!allowDraft && !authorized) {
+                    return null;
+                }
             }
 
             if (null != context && Solos.needViewPwd(context, article)) {

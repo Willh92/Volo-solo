@@ -53,6 +53,22 @@ public final class Images {
      * Community file service URL.
      */
     public static String COMMUNITY_FILE_URL = "https://b3logfile.com";
+    private static final java.util.regex.Pattern PROCESSABLE_IMAGE_PATH =
+            java.util.regex.Pattern.compile(".*\\.(?:png|jpe?g|webp|bmp)$");
+    private static final long BING_ARCHIVE_MIN_MILLIS;
+    private static final long BING_ARCHIVE_DELTA_MILLIS;
+
+    static {
+        long minMillis = 1509724800000L;
+        long maxMillis = 1703088000000L;
+        try {
+            minMillis = DateUtils.parseDate("20171104", new String[]{"yyyyMMdd"}).getTime();
+            maxMillis = DateUtils.parseDate("20231221", new String[]{"yyyyMMdd"}).getTime();
+        } catch (final Exception ignored) {
+        }
+        BING_ARCHIVE_MIN_MILLIS = minMillis;
+        BING_ARCHIVE_DELTA_MILLIS = Math.max(1L, maxMillis - minMillis);
+    }
 
     /**
      * Private constructor.
@@ -104,7 +120,7 @@ public final class Images {
         if (url == null || url.contains("?") || url.contains("#")) return false;
         try {
             final String path = java.net.URI.create(url).getPath();
-            return path != null && path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(?:png|jpe?g|webp|bmp)$");
+            return path != null && PROCESSABLE_IMAGE_PATH.matcher(path.toLowerCase(java.util.Locale.ROOT)).matches();
         } catch (IllegalArgumentException e) {
             return false;
         }
@@ -162,11 +178,7 @@ public final class Images {
      */
     public static String randImage() {
         try {
-            final long min = DateUtils.parseDate("20171104", new String[]{"yyyyMMdd"}).getTime();
-            // The archive includes 2023-12-20; the random upper bound is exclusive.
-            final long max = DateUtils.parseDate("20231221", new String[]{"yyyyMMdd"}).getTime();
-            final long delta = max - min;
-            final long time = ThreadLocalRandom.current().nextLong(0, delta) + min;
+            final long time = ThreadLocalRandom.current().nextLong(0, BING_ARCHIVE_DELTA_MILLIS) + BING_ARCHIVE_MIN_MILLIS;
 
             return COMMUNITY_FILE_URL + "/bing/" + DateFormatUtils.format(time, "yyyyMMdd") + ".jpg";
         } catch (final Exception e) {

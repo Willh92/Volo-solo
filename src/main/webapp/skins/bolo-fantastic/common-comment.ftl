@@ -17,9 +17,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="li-comment-${comment.oId}" itemtype="http://schema.org/Comment" itemprop="comment"
+<li id="li-comment-${comment.oId?html}" itemtype="http://schema.org/Comment" itemprop="comment"
     class="comment index-1" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
-    <div id="comment-${comment.oId}" class="comment-body">
+    <div id="comment-${comment.oId?html}" class="comment-body">
         <div class="comment-avatar">
             <a href="" rel="nofollow" target="_blank">
                 <img data-avatar-seed="${comment.commentName?html}" alt="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" class="avatar">
@@ -28,24 +28,23 @@
         <div class="contain-main">
             <div class="comment-meta">
                 <div itemprop="author" class="comment-author">
-                    <#if "http://" == comment.commentURL>
+                    <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                         <a href="javascript:void(0);" rel="nofollow" target="_blank"
                            class="author-name">${comment.commentName?html}</a>
                     <#else>
-                        <a href="${comment.commentURL?html}" rel="nofollow" target="_blank"
+                        <a href="${comment.commentURL?html}" rel="nofollow noopener noreferrer" target="_blank"
                            class="author-name">${comment.commentName?html}</a>
                     </#if>
 
                     <#if comment.isReply>
                         <span class="comment-content" style="margin:0;padding:0;">@</span>
-                        <a href="${servePath}${article.permalink}#li-comment-${comment.commentOriginalCommentId}"
-                           onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 20);"
-                           onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+                        <a href="${servePath}${article.permalink}#li-comment-${comment.commentOriginalCommentId?html}"
+                           onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 20);"
+                           onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
                         >${comment.commentOriginalCommentName?html}</a>
                     </#if>
 
-                    <div class="useragent-info"><a href="${comment.commentURL?html}"
-                                                   target="_blank">${(comment.commentURL!'')?html}</a></div>
+                    <#if !(!(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://')><div class="useragent-info"><a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${(comment.commentURL!'')?html}</a></div></#if>
                 </div>
                 <#if article.commentable>
                     <span class="comment-reply" style="cursor: pointer;">

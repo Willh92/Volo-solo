@@ -43,8 +43,8 @@
                     </#if>
                     <#include "macro-header.ftl">
                         <@header type="article"></@header>
-                        <div class="article__top" style="background-image: url(${article.articleImg1URL})">
-                            <div style="background-image: url(${article.articleImg1URL})"></div>
+                        <div class="article__top" style="background-image: url('${(article.articleImg1URL!'')?html}')">
+                            <div style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
                             <canvas id="articleTop"></canvas>
                         </div>
                         <div class="article">
@@ -114,7 +114,7 @@
                             </h3>');
                         </#if>
                         <#if 0 !=relevantArticlesDisplayCount>
-                            page.loadRelevantArticles('${article.oId}', '<h3>
+                            page.loadRelevantArticles('${article.oId?js_string}', '<h3>
                                 ${relevantArticlesLabel}
                             </h3>');
                         </#if>

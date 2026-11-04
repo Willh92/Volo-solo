@@ -91,20 +91,54 @@ public final class LoginThrottle {
         return Arrays.toString(Arrays.copyOf(bytes, 8));
     }
 
+    private static final String CLIENT_ADDR_ATTR = "bolo.clientAddress";
+    private record TrustedProxies(String raw, java.util.Set<String> peers) { }
+    private record CachedClientAddress(String rawPeer, String rawRealIp, String rawProxies, boolean unixActive, String resolved) { }
+    private static volatile TrustedProxies cachedTrustedProxies = new TrustedProxies("", java.util.Set.of());
+
+    private static java.util.Set<String> trustedProxySet(final String setting) {
+        final String proxies = setting == null ? "" : setting;
+        final TrustedProxies cached = cachedTrustedProxies;
+        if (proxies.equals(cached.raw())) return cached.peers();
+        final java.util.Set<String> parsed = proxies.isBlank() ? java.util.Set.of()
+                : Arrays.stream(proxies.split(","))
+                        .map(value -> "unix".equals(value.trim()) ? "unix" : normalize(value))
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        cachedTrustedProxies = new TrustedProxies(proxies, parsed);
+        return parsed;
+    }
+
     /** Shared client identity for login protection and the page-rate WAF. */
     public static String clientAddress(final Request request) {
+        final boolean unixActive = org.b3log.solo.web.UnixSocketSupport.isActive();
         final String rawPeer = peerAddress(request);
-        final String peer = "unix".equals(rawPeer) && org.b3log.solo.web.UnixSocketSupport.isActive() ? "unix" : normalize(rawPeer);
-        if (peer == null) return "unknown";
-        final String setting = Latkes.getLocalProperty("loginTrustedProxies");
-        final String proxies = setting == null ? "" : setting;
-        final boolean trusted = Arrays.stream(proxies.split(","))
-                .map(value -> "unix".equals(value.trim()) ? "unix" : normalize(value)).anyMatch(peer::equals);
-        if (trusted) {
-            final String forwarded = normalize(request.getHeader("X-Real-IP"));
-            if (forwarded != null) return forwarded;
+        final String rawRealIp = request == null ? null : request.getHeader("X-Real-IP");
+        final String rawProxies = Latkes.getLocalProperty("loginTrustedProxies");
+        if (request != null) {
+            final Object cached = request.getAttribute(CLIENT_ADDR_ATTR);
+            if (cached instanceof CachedClientAddress entry
+                    && entry.unixActive() == unixActive
+                    && java.util.Objects.equals(entry.rawPeer(), rawPeer)
+                    && java.util.Objects.equals(entry.rawRealIp(), rawRealIp)
+                    && java.util.Objects.equals(entry.rawProxies(), rawProxies)) {
+                return entry.resolved();
+            }
         }
-        return peer;
+        final String peer = "unix".equals(rawPeer) && unixActive ? "unix" : normalize(rawPeer);
+        String resolved = "unknown";
+        if (peer != null) {
+            resolved = peer;
+            if (trustedProxySet(rawProxies).contains(peer)) {
+                final String forwarded = normalize(rawRealIp);
+                if (forwarded != null) resolved = forwarded;
+            }
+        }
+        if (request != null) {
+            request.setAttribute(CLIENT_ADDR_ATTR,
+                    new CachedClientAddress(rawPeer, rawRealIp, rawProxies, unixActive, resolved));
+        }
+        return resolved;
     }
 
     /** Unix trust comes from the active listener, never from a user-supplied HTTP header. */

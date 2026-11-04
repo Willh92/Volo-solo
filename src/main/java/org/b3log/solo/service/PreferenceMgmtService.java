@@ -111,7 +111,12 @@ public class PreferenceMgmtService {
                 Option.ID_C_WAF_CURRENT_LIMIT_TIMES, Option.ID_C_SPAM}) {
             if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
         }
-        if (preference.optString(Option.ID_C_MAIL_PASSWORD).isEmpty()) preference.put(Option.ID_C_MAIL_PASSWORD, oldPreference.optString(Option.ID_C_MAIL_PASSWORD));
+        for (final String secretKey : new String[]{Option.ID_C_MAIL_PASSWORD, Option.ID_C_GITHUB_PAT,
+                Option.ID_C_B3LOG_KEY, Option.ID_C_FISH_KEY, Option.ID_C_SEND_KEY}) {
+            if (preference.optString(secretKey).isEmpty()) {
+                preference.put(secretKey, oldPreference.optString(secretKey));
+            }
+        }
         for (final String key : org.b3log.solo.bolo.prop.SmtpSettings.KEYS) {
             if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
         }

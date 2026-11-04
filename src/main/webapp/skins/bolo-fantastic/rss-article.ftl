@@ -147,7 +147,7 @@
                                 page.loadRandomArticles('<h3>${randomArticlesLabel?js_string}</h3>');
                             </#if>
                             <#if 0 !=relevantArticlesDisplayCount>
-                                page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel?js_string}</h3>');
+                                page.loadRelevantArticles('${article.oId?js_string}', '<h3>${relevantArticlesLabel?js_string}</h3>');
                             </#if>
                         </@comment_script>
             </body>

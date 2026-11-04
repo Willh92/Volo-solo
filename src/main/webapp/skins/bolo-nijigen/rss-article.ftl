@@ -55,7 +55,7 @@
                                                 </span>
                                             </time>
                                             <h2 class="item__title">
-                                                <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                                <a rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                                     ${(article.articleTitle)?html}
                                                 </a>
                                                 <#if article.articlePutTop>
@@ -87,7 +87,7 @@
                                                     </#list>
                                                 </span>
                                                 <#if interactive=="on">
-                                                    <a class="tag" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">
+                                                    <a class="tag" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                                                         <i class="icon__comments"></i>
                                                         ${article.articleCommentCount} ${commentLabel}
                                                     </a>
@@ -182,7 +182,7 @@
                                     </header>');
                                 </#if>
                                 <#if 0 !=relevantArticlesDisplayCount>
-                                    page.loadRelevantArticles('${article.oId}', '<header class="module__header">
+                                    page.loadRelevantArticles('${article.oId?js_string}', '<header class="module__header">
                                         ${relevantArticlesLabel}
                                     </header>');
                                 </#if>

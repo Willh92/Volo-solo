@@ -22,7 +22,7 @@
     <#assign isRss = (article.isRss!false)?c == "true">
         <article class="item">
             <h2 class="item__title">
-                <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                <a class="skin-list-title" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                     ${(article.articleTitle)?html}
                 </a>
                 <#if article.articlePutTop>
@@ -32,14 +32,14 @@
                 </#if>
                 <#if article.hasUpdated>
                     <sup>
-                        <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                        <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                             ${updatedLabel}
                         </a>
                     </sup>
                 </#if>
             </h2>
             <a class="item__abstract" pjax-title="${(article.articleTitle)?html}"
-               href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+               href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                 <#if article.articleAbstractText?length gt 80>
                     ${article.articleAbstractText[0..80]}
                 <#else>
@@ -70,14 +70,14 @@
                 <#if interactive == "on">
                 <#if article.articleCommentCount != 0>
                     &nbsp;·&nbsp;
-                    <a class="item__tag" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">
+                    <a class="item__tag" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                         ${article.articleCommentCount} ${commentLabel}
                     </a>
                 </#if>
                 </#if>
                 <#if article.articleViewCount != 0>
                     &nbsp;·&nbsp;
-                    <a class="item__tag" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                    <a class="item__tag" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                         ${article.articleViewCount} ${viewLabel}
                     </a>
                 </#if>

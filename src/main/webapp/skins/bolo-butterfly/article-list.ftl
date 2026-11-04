@@ -22,13 +22,13 @@
             <article class="recent-post-item" itemscope="" itemtype="http://schema.org/BlogPosting">
                     <div class="post_cover">
                     <#assign isRss = (article.isRss!false)?c == "true">
-                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
+                    <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                     title="${(article.articleTitle)?html}">
                         <img class="post_bg" src="${article.articleImg1URL}">
                     </a>
                     </div>
                     <div class="recent-post-info">
-                        <a class="article-title skin-list-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</a>
+                        <a class="article-title skin-list-title" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</a>
                         <div class="article-meta-wrap">
                             <time class="post-meta__date" title="">
                                 <i class="far fa-calendar-alt"></i>
@@ -53,7 +53,7 @@
                                 <span class="article-meta__separator">|</span>
                                 <#list article.articleTags?split(",") as articleTag>
                                 <i class="fas fa-tag article-meta__icon"></i>
-                                <a class="article-meta__tags" href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag}</a>
+                                <a class="article-meta__tags" href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag?html}</a>
                                 <span class="article-meta__link"> </span>
                                 </#list>
                             </span>
@@ -193,7 +193,7 @@
             <div class="card-content">
                 <form class="bar5" action="${servePath}/search">
                     <div class="input">
-                        <input type="text" name="keyword" placeholder="输入关键字搜索">
+                        <input autocomplete="off" type="text" name="keyword" placeholder="输入关键字搜索">
                     </div>
                 </form>
             </div>

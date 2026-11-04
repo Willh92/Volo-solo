@@ -25,6 +25,8 @@ import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
+import org.b3log.latke.model.Role;
+import org.b3log.latke.model.User;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
@@ -38,6 +40,7 @@ import org.b3log.solo.model.Common;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.service.*;
 import org.b3log.solo.util.Images;
+import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -105,34 +108,42 @@ public class ArticleConsole {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    private static void sanitizeAuthorArticleFields(final JSONObject currentUser, final JSONObject article) {
+        if (null == currentUser || !Role.ADMIN_ROLE.equals(currentUser.optString(User.USER_ROLE))) {
+            if (article.has(Article.ARTICLE_CONTENT)) {
+                article.put(Article.ARTICLE_CONTENT, Markdowns.clean(article.optString(Article.ARTICLE_CONTENT)));
+            }
+            if (article.has(Article.ARTICLE_ABSTRACT)) {
+                article.put(Article.ARTICLE_ABSTRACT, Markdowns.clean(article.optString(Article.ARTICLE_ABSTRACT)));
+            }
+        }
+    }
+
     /**
      * Pushes an article to community.
      *
      * @param context the specified request context
      */
     public void pushArticleToCommunity(final RequestContext context) {
+        final String articleId = context.param("id");
+        final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+        try {
+            if (StringUtils.isBlank(articleId) || !articleQueryService.canAccessArticle(articleId, currentUser)) {
+                context.renderJSON(new JSONObject().put(Keys.CODE, -1).put(Keys.MSG, langPropsService.get("forbiddenLabel")));
+                return;
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, e.getMessage(), e);
+            context.renderJSON(new JSONObject().put(Keys.CODE, -1).put(Keys.MSG, langPropsService.get("getFailLabel")));
+            return;
+        }
         final JSONObject result = new JSONObject().put(Keys.CODE, 0);
         context.renderJSON(result);
-        final String articleId = context.param("id");
         articleMgmtService.pushArticleToCommunity(articleId);
     }
 
     /**
      * Gets article thumbs.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": true,
-     *     "data": [
-     *         "https://b3logfile.com/bing/20171226.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://b3logfile.com/bing/20171105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://b3logfile.com/bing/20180105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://b3logfile.com/bing/20171114.jpg?imageView2/1/w/960/h/540/interlace/1/q/100"
-     *     ]
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -148,10 +159,8 @@ public class ArticleConsole {
             strN = "6";
         }
 
-        final int n = Integer.valueOf(strN);
+        final int n = Math.min(20, Math.max(1, Integer.valueOf(strN)));
         final List<String> urls = Images.randomImages(n);
-
-        // original: 1920*1080
 
         final String wStr = context.param("w");
         int w = Article.ARTICLE_THUMB_IMG_WIDTH;
@@ -171,28 +180,6 @@ public class ArticleConsole {
 
     /**
      * Gets an article by the specified request json object.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "oId": "",
-     *     "articleTitle": "",
-     *     "articleAbstract": "",
-     *     "articleContent": "",
-     *     "articlePermalink": "",
-     *     "articleTags": [{
-     *         "oId": "",
-     *         "tagTitle": ""
-     *     }, ....],
-     *     "articleSignId": "",
-     *     "signs": [{
-     *         "oId": "",
-     *         "signHTML": ""
-     *     }, ....]
-     *     "sc": "GET_ARTICLE_SUCC"
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -201,16 +188,28 @@ public class ArticleConsole {
         context.setRenderer(renderer);
         try {
             final String articleId = context.pathVar("id");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                final JSONObject forbidden = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
+                forbidden.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                renderer.setJSONObject(forbidden);
+                return;
+            }
             final JSONObject result = articleQueryService.getArticle(articleId);
+            if (null == result) {
+                final JSONObject missing = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
+                missing.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                renderer.setJSONObject(missing);
+                return;
+            }
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
-            JSONObject cateS = null;
             try {
-                JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
+                final JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
+                final int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                final JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
                 result.put("category", cateS.optString("category_oId"));
-            } catch (JSONException | NullPointerException e) {
+            } catch (final JSONException | NullPointerException e) {
                 result.put("category", "");
             }
 
@@ -221,38 +220,13 @@ public class ArticleConsole {
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
-        } catch (RepositoryException RE) { RE.printStackTrace(); }
+        } catch (final RepositoryException e) {
+            LOGGER.log(Level.ERROR, e.getMessage(), e);
+        }
     }
 
     /**
-     * Gets articles(by crate date descending) by the specified request json object.
-     * <p>
-     * The request URI contains the pagination arguments. For example, the request URI is
-     * /console/articles/status/published/1/10/20, means the current page is 1, the page size is 10, and the window size
-     * is 20.
-     * </p>
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "articles": [{
-     *         "oId": "",
-     *         "articleTitle": "",
-     *         "articleCommentCount": int,
-     *         "articleCreateTime"; long,
-     *         "articleViewCount": int,
-     *         "articleTags": "tag1, tag2, ....",
-     *         "articlePutTop": boolean,
-     *         "articleStatus": int
-     *      }, ....]
-     * }
-     * </pre>, order by article update date and sticky(put top).
-     * </p>
+     * Gets articles(by create date descending) by the specified request json object.
      *
      * @param context the specified request context
      */
@@ -266,6 +240,11 @@ public class ArticleConsole {
             path = path.substring((status + "/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
             requestJSONObject.put(Article.ARTICLE_STATUS, "published".equals(status) ? Article.ARTICLE_STATUS_C_PUBLISHED : Article.ARTICLE_STATUS_C_DRAFT);
+
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!Solos.isAdminLoggedIn(context) && null != currentUser) {
+                requestJSONObject.put(Article.ARTICLE_AUTHOR_ID, currentUser.optString(Keys.OBJECT_ID));
+            }
 
             final JSONArray excludes = new JSONArray();
             excludes.put(Article.ARTICLE_CONTENT);
@@ -302,20 +281,10 @@ public class ArticleConsole {
 
     /**
      * Removes an article by the specified request.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
     public void removeArticle(final RequestContext context) {
-        // 备注：文章分类总数必须 --
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();
@@ -332,11 +301,9 @@ public class ArticleConsole {
             }
 
             final Transaction transaction = categoryTagRepository.beginTransaction();
-            // TagId 是文章号
             categoryTagRepository.removeByTagId(articleId);
             transaction.commit();
 
-            // 删除文章
             articleMgmtService.removeArticle(articleId);
 
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
@@ -353,15 +320,6 @@ public class ArticleConsole {
 
     /**
      * Cancels publish an article by the specified request.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -396,16 +354,7 @@ public class ArticleConsole {
     }
 
     /**
-     * Cancels an top article by the specified request.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
+     * Cancels a top article by the specified request.
      *
      * @param context the specified request context
      */
@@ -438,15 +387,6 @@ public class ArticleConsole {
 
     /**
      * Puts an article to top by the specified request.
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -479,35 +419,6 @@ public class ArticleConsole {
 
     /**
      * Updates an article by the specified request json object.
-     * <p>
-     * The specified request json object, for example,
-     * <pre>
-     * {
-     *     "article": {
-     *         "oId": "",
-     *         "articleTitle": "",
-     *         "articleAbstract": "",
-     *         "articleContent": "",
-     *         "articleTags": "tag1,tag2,tag3", // optional, default set "待分类"
-     *         "articlePermalink": "", // optional
-     *         "articleStatus": int, // 0: published, 1: draft
-     *         "articleSignId": "" // optional
-     *         "articleCommentable": boolean,
-     *         "articleViewPwd": "",
-     *         "postToCommunity": boolean
-     *     }
-     *  }
-     * </pre>
-     * </p>
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -528,6 +439,7 @@ public class ArticleConsole {
 
                 return;
             }
+            sanitizeAuthorArticleFields(currentUser, article);
 
             articleMgmtService.updateArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article updated [id={0}]", requestJSONObject.getJSONObject(Article.ARTICLE).optString(Keys.OBJECT_ID));
@@ -543,35 +455,6 @@ public class ArticleConsole {
 
     /**
      * Adds an article with the specified request.
-     * <p>
-     * The specified request json object, for example,
-     * <pre>
-     * {
-     *     "article": {
-     *         "articleTitle": "",
-     *         "articleAbstract": "",
-     *         "articleContent": "",
-     *         "articleTags": "tag1,tag2,tag3", // optional, default set "待分类"
-     *         "articlePermalink": "", // optional
-     *         "articleStatus": int, // 0: published, 1: draft
-     *         "postToCommunity": boolean,
-     *         "articleSignId": "" // optional
-     *         "articleCommentable": boolean,
-     *         "articleViewPwd": ""
-     *     }
-     * }
-     * </pre>
-     * </p>
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "oId": "", // Generated article id
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
      *
      * @param context the specified request context
      */
@@ -582,7 +465,9 @@ public class ArticleConsole {
         try {
             final JSONObject requestJSONObject = context.requestJSON();
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            requestJSONObject.getJSONObject(Article.ARTICLE).put(Article.ARTICLE_AUTHOR_ID, currentUser.getString(Keys.OBJECT_ID));
+            final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
+            article.put(Article.ARTICLE_AUTHOR_ID, currentUser.getString(Keys.OBJECT_ID));
+            sanitizeAuthorArticleFields(currentUser, article);
 
             final String articleId = articleMgmtService.addArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article created [id={0}]", articleId);

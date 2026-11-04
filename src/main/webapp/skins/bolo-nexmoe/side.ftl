@@ -101,9 +101,8 @@
             <h3 class="nexmoe-widget-title">功能按钮</h3>
             <div class="nexmoe-widget nexmoe-social features">
 
-                    <a href="${servePath}/search" title="搜索">
+                    <a href="${servePath}/search" title="搜索" aria-label="搜索">
                         <i class="mdui-list-item-icon iconfont solo-search"></i>
-                        <div class="mdui-list-item-content">搜索</div>
                     </a>
 
                 <a href="${servePath}/rss.xml" title="RSS">

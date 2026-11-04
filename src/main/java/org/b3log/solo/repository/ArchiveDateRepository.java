@@ -103,13 +103,32 @@ public class ArchiveDateRepository extends AbstractRepository {
     /** Public month counts and detail queries use the same union of published articles. */
     public List<JSONObject> getPublishedArchiveDates() throws RepositoryException {
         final List<JSONObject> dates = select("SELECT * FROM " + getName() + " ORDER BY archiveTime DESC, oId");
+        if (dates.isEmpty()) return new ArrayList<>();
+        final java.util.Map<String, Integer> countsById = archiveDateArticleRepository.getPublishedArticleCountsByArchiveDate();
         final LinkedHashMap<YearMonth, List<JSONObject>> months = new LinkedHashMap<>();
         for (final JSONObject date : dates) months.computeIfAbsent(monthOf(date), key -> new ArrayList<>()).add(date);
         final List<JSONObject> result = new ArrayList<>();
         for (final List<JSONObject> month : months.values()) {
-            final List<String> ids = new ArrayList<>();
-            for (final JSONObject date : month) ids.add(date.getString(Keys.OBJECT_ID));
-            final int count = archiveDateArticleRepository.getPublishedArticleCount(ids);
+            final int count;
+            if (month.size() == 1) {
+                count = countsById.getOrDefault(month.get(0).getString(Keys.OBJECT_ID), 0);
+            } else {
+                int nonZeroRecords = 0;
+                int singleCount = 0;
+                final List<String> ids = new ArrayList<>(month.size());
+                for (final JSONObject date : month) {
+                    final String id = date.getString(Keys.OBJECT_ID);
+                    ids.add(id);
+                    final int c = countsById.getOrDefault(id, 0);
+                    if (c > 0) {
+                        nonZeroRecords++;
+                        singleCount = c;
+                    }
+                }
+                count = nonZeroRecords == 0 ? 0
+                        : nonZeroRecords == 1 ? singleCount
+                        : archiveDateArticleRepository.getPublishedArticleCount(ids);
+            }
             if (count < 0) throw new RepositoryException("Could not count published archive articles");
             if (count == 0) continue;
             result.add(month.get(0).put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, count));
@@ -125,12 +144,14 @@ public class ArchiveDateRepository extends AbstractRepository {
      */
     public List<JSONObject> getArchiveDates() throws RepositoryException {
         final Query query = new Query().addSort(ArchiveDate.ARCHIVE_TIME, SortDirection.DESCENDING).setPageCount(1);
-        // TODO: Performance issue
         final List<JSONObject> ret = getList(query);
+        if (ret.isEmpty()) {
+            return ret;
+        }
+        final java.util.Map<String, Integer> countsById = archiveDateArticleRepository.getPublishedArticleCountsByArchiveDate();
         for (final JSONObject archiveDate : ret) {
             final String archiveDateId = archiveDate.optString(Keys.OBJECT_ID);
-            final int publishedArticleCount = archiveDateArticleRepository.getPublishedArticleCount(archiveDateId);
-            archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, publishedArticleCount);
+            archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, countsById.getOrDefault(archiveDateId, 0));
         }
 
         return ret;

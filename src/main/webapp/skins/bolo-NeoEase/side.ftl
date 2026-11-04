@@ -46,10 +46,10 @@
                                     <div class='recent-comments-main'>
                                         <div>
                                             <span class="left">
-                                                <#if "http://"==comment.commentURL>
+                                                <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                                                     ${comment.commentName?html}
                                                     <#else>
-                                                        <a target="_blank" href="${comment.commentURL?html}">
+                                                        <a target="_blank" href="${comment.commentURL?html}" rel="noopener noreferrer nofollow">
                                                             ${comment.commentName?html}
                                                         </a>
                                                 </#if>

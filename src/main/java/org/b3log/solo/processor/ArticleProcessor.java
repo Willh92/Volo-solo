@@ -207,6 +207,10 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/console/markdown/2html", method = HttpMethod.POST)
     public void markdown2HTML(final RequestContext context) {
+        if (org.b3log.solo.util.AdminRequests.isCrossSiteRequest(context)) {
+            context.sendError(403);
+            return;
+        }
         final JSONObject result = Solos.newSucc();
         context.renderJSON(result);
 
@@ -227,7 +231,22 @@ public class ArticleProcessor {
          */
 
         try {
-            final String html = Markdowns.toHTML(markdownText);
+            final String html;
+            if (Solos.isAdminOrAuthorLoggedIn(context)) {
+                if (markdownText.length() > 524288) {
+                    result.put(Keys.CODE, -1);
+                    result.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                    return;
+                }
+                html = Markdowns.toHTML(markdownText);
+            } else {
+                if (markdownText.length() > 2000) {
+                    result.put(Keys.CODE, -1);
+                    result.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                    return;
+                }
+                html = Markdowns.clean(Markdowns.toHTMLLocally(markdownText));
+            }
             result.put(Common.DATA, html);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
@@ -337,6 +356,18 @@ public class ArticleProcessor {
 
                     viewPwds.put(articleId, pwdTyped);
                     session.setAttribute(Common.ARTICLES_VIEW_PWD, new JSONObject(viewPwds).toString());
+                    final org.b3log.latke.http.Response response = context.getResponse();
+                    if (response != null) {
+                        response.getCookies().removeIf(existing ->
+                                Session.LATKE_SESSION_ID.equals(existing.getName()));
+                        final org.b3log.latke.http.Cookie sessionCookie =
+                                new org.b3log.latke.http.Cookie(Session.LATKE_SESSION_ID, session.getId());
+                        sessionCookie.setPath("/");
+                        sessionCookie.setHttpOnly(true);
+                        sessionCookie.setSecure("https".equalsIgnoreCase(Latkes.getServerScheme()));
+                        sessionCookie.setSameSite("Lax");
+                        response.addCookie(sessionCookie);
+                    }
                 }
 
                 context.sendRedirect(Latkes.getServePath() + article.getString(Article.ARTICLE_PERMALINK));

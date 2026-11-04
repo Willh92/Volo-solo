@@ -98,35 +98,48 @@ admin.linkList = {
                 admin.linkList.pageInfo.currentCount = links.length;
                 admin.linkList.pageInfo.pageCount = result.pagination.paginationPageCount === 0 ? 1 : result.pagination.paginationPageCount;
 
+                var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+                    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                };
+                var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+                    return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
+                };
                 for (var i = 0; i < links.length; i++) {
+                    var safeId = encodeQuote(links[i].oId);
+                    var encodedTitle = encodeQuote(links[i].linkTitle);
+                    var rawAddr = String(links[i].linkAddress == null ? '' : links[i].linkAddress).trim();
+                    var safeAddrText = escapeHtml(rawAddr);
+                    var safeHref = /^https?:\/\//i.test(rawAddr) ? safeAddrText : '#';
                     linkData[i] = {};
                     if (i === 0) {
                         if (links.length === 1) {
                             linkData[i].linkOrder = "";
                         } else {
                             linkData[i].linkOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.linkList.changeOrder(' + links[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.linkList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                         }
                     } else if (i === links.length - 1) {
                         linkData[i].linkOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.linkList.changeOrder(' + links[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.linkList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
                             </div>';
                     } else {
                         linkData[i].linkOrder = '<div class="table-center" style="width:38px">\
-                                <span onclick="admin.linkList.changeOrder(' + links[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
-                                <span onclick="admin.linkList.changeOrder(' + links[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.linkList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.linkList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                     }
                     
-                    linkData[i].linkTitle = links[i].linkTitle;
-                    linkData[i].linkAddress = "<a target='_blank' class='no-underline' href='" + links[i].linkAddress + "'>"
-                    + links[i].linkAddress + "</a>";
-                    linkData[i].linkDescription = links[i].linkDescription;
-                    linkData[i].linkIcon = links[i].linkIcon;
-                    linkData[i].expendRow = "<span><a href='" + links[i].linkAddress + "' target='_blank'>" + Label.viewLabel + "</a>  \
-                                <a href='javascript:void(0)' onclick=\"admin.linkList.get('" + links[i].oId + "')\">" + Label.updateLabel + "</a>\
-                                <a href='javascript:void(0)' onclick=\"admin.linkList.del('" + links[i].oId + "', '" + encodeURIComponent(links[i].linkTitle) + "')\">" + Label.removeLabel + "</a></span>";
+                    linkData[i].linkTitle = escapeHtml(links[i].linkTitle);
+                    linkData[i].linkAddress = "<a target='_blank' rel='noopener noreferrer' class='no-underline' href='" + safeHref + "'>"
+                    + safeAddrText + "</a>";
+                    linkData[i].linkDescription = escapeHtml(links[i].linkDescription);
+                    linkData[i].linkIcon = escapeHtml(links[i].linkIcon);
+                    linkData[i].expendRow = "<span><a href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
+                                <a href='javascript:void(0)' onclick=\"admin.linkList.get('" + safeId + "')\">" + Label.updateLabel + "</a>\
+                                <a href='javascript:void(0)' onclick=\"admin.linkList.del('" + safeId + "', '" + encodedTitle + "')\">" + Label.removeLabel + "</a></span>";
                 }
 
                 that.tablePagination.updateTablePagination(linkData, pageNum, result.pagination);
@@ -191,6 +204,8 @@ admin.linkList = {
      */
     get: function (id) {
         $("#loadMsg").text(Label.loadingLabel);
+        this.id = "";
+        $("#linkTitleUpdate,#linkAddressUpdate,#linkDescriptionUpdate,#linkIconUpdate").val("");
         $("#updateLink").dialog("open");
         
         $.ajax({
@@ -220,6 +235,9 @@ admin.linkList = {
      * 更新链接
      */
     update: function () {
+        if (!this.id) {
+            return;
+        }
         if (this.validate("Update")) {
             $("#loadMsg").text(Label.loadingLabel);
             $("#tipMsg").text("");
@@ -310,7 +328,7 @@ admin.linkList = {
         } else if ($("#linkAddress" + status).val().replace(/\s/g, "") === "") {
             $("#tipMsg").text(Label.addressEmptyLabel);
             $("#linkAddress" + status).focus().val("");
-        } else if (!/^\w+:\/\//.test($("#linkAddress" + status).val())) {
+        } else if (!/^https?:\/\//i.test($("#linkAddress" + status).val().trim())) {
             $("#tipMsg").text(Label.addressInvalidLabel);
             $("#linkAddress" + status).focus().val("");
         } else {

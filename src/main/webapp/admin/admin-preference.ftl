@@ -108,7 +108,7 @@
         <label for="faviconURL">${faviconLabel}</label>
         <input id="faviconURL" class="normalInput" type="text"/>
         <label for="githubPAT">${githubPATLabel}</label>
-        <input id="githubPAT" class="normalInput" type="text"/>
+        <input id="githubPAT" class="normalInput" type="password" autocomplete="new-password"/>
         <label for="kanbanniangSelector">${selectedKanBanNiangLabel}</label>
         <select id="kanbanniangSelector">
             <option value="" selected>${randomLabel}</option>
@@ -269,21 +269,21 @@
             <button onclick="unlock()" class="fn__left">${allowConfigPicBedLabel}</button>
         </div>
         <div id="td1" for="tc1" style="display:none"></div>
-        <input id="tc1" type="text" style="display:none" />
+        <input id="tc1" type="text" autocomplete="off" style="display:none" />
         <div id="td2" for="tc2" style="display:none"></div>
-        <input id="tc2" type="text" style="display:none" />
+        <input id="tc2" type="text" autocomplete="off" style="display:none" />
         <div id="td3" for="tc3" style="display:none"></div>
-        <input id="tc3" type="text" style="display:none" />
+        <input id="tc3" type="text" autocomplete="off" style="display:none" />
         <div id="td4" for="tc4" style="display:none"></div>
-        <input id="tc4" type="text" style="display:none" />
+        <input id="tc4" type="text" autocomplete="off" style="display:none" />
         <div id="td5" for="tc5" style="display:none"></div>
-        <input id="tc5" type="text" style="display:none" />
+        <input id="tc5" type="text" autocomplete="off" style="display:none" />
         <div id="td6" for="tc6" style="display:none"></div>
-        <input id="tc6" type="text" style="display:none" />
+        <input id="tc6" type="text" autocomplete="off" style="display:none" />
         <div id="td7" for="tc7" style="display:none"></div>
-        <input id="tc7" type="text" style="display:none" />
+        <input id="tc7" type="text" autocomplete="off" style="display:none" />
         <div id="td8" for="tc8" style="display:none"></div>
-        <input id="tc8" type="text" style="display:none" />
+        <input id="tc8" type="text" autocomplete="off" style="display:none" />
         <div class="fn__clear" id="tuChuangCfg" style="display: none">
             <button onclick="save()" class="fn__left">${saveConfigPicBedLabel}</button>
         </div>
@@ -391,6 +391,7 @@
                 }
             }
 
+            function lockPicBed() { clear(); for (var k = 1; k <= 8; k++) $('#tc' + k).val(''); $('#tuChuangCfg').hide(); $('#tcS').attr('disabled', 'disabled'); $('#changeCfgBtn').show(); }
             function unlock() {
                 $('#changeCfgBtn').hide();
                 $('#tcS').removeAttr("disabled");
@@ -430,7 +431,7 @@
             function checkImageBedConfig() {
                 let flag = false;
                 $.ajax({
-                    type: 'GET',
+                    type: 'POST',
                     url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
                     async: false,
                     success: function (res) {
@@ -443,7 +444,7 @@
 
             function checkImageBedConfigAndAlert() {
                 $.ajax({
-                    type: 'GET',
+                    type: 'POST',
                     url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
                     async: false,
                     success: function (res) {
@@ -485,7 +486,7 @@
         <h3>${serverJiangRemindLabel}</h3>
         <br>
         <label for="sendKey">${sendKeyLabel}</label>
-        <input id="sendKey" type="text"/>
+        <input id="sendKey" type="password" autocomplete="new-password"/>
         <br><br>
         <a href="https://github.com/Willh92/Volo-solo/blob/HEAD/UPGRADE.md#%E6%8F%90%E9%86%92%E8%AE%BE%E7%BD%AE" target="_blank">
             ${usageLabel}?
@@ -501,7 +502,7 @@
         <label for="hacpaiUser">${hacpaiUser1Label}</label>
         <input id="hacpaiUser" type="text"/>
         <label for="b3logKey">${b3logKey1Label}</label>
-        <input id="b3logKey" type="text">
+        <input id="b3logKey" type="password" autocomplete="new-password">
         <div>
             <div>
                 ${liandi2Label}
@@ -526,7 +527,7 @@
         <h4>${fishpi1Label}</h4>
         <br>
         <label for="fishpiKey">API KEY</label>
-        <input id="fishpiKey" type="text">
+        <input id="fishpiKey" type="password" autocomplete="new-password">
         <div>
             <div>
                 ${fishpi2Label}

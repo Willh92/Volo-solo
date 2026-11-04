@@ -161,7 +161,9 @@ public final class Solos {
 
         String cookieSecret = Latkes.getLatkeProperty("cookieSecret");
         if (StringUtils.isBlank(cookieSecret)) {
-            cookieSecret = RandomStringUtils.randomAlphanumeric(8);
+            final byte[] secretBytes = new byte[32];
+            new java.security.SecureRandom().nextBytes(secretBytes);
+            cookieSecret = java.util.HexFormat.of().formatHex(secretBytes);
         }
         COOKIE_SECRET = cookieSecret;
 
@@ -337,9 +339,24 @@ public final class Solos {
      * @param response the specified response
      * @return the current logged-in user, returns {@code null} if not found
      */
+    private static final String CURRENT_USER_ATTR = "bolo.currentUser";
+    private static final Object NO_CURRENT_USER = new Object();
+
     public static JSONObject getCurrentUser(final Request request, final Response response) {
+        if (null == request) {
+            return null;
+        }
+        final Object cached = request.getAttribute(CURRENT_USER_ATTR);
+        if (cached == NO_CURRENT_USER) {
+            return null;
+        }
+        if (cached instanceof JSONObject cachedUser) {
+            return clone(cachedUser);
+        }
+
         final Cookie[] cookies = request.getCookies().toArray(new Cookie[0]);
         if (null == cookies || 0 == cookies.length) {
+            request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
             return null;
         }
 
@@ -369,7 +386,10 @@ public final class Solos {
                 final String tokenVal = cookieJSONObject.optString(Keys.TOKEN);
                 final String token = StringUtils.substringBeforeLast(tokenVal, ":");
                 if (StringUtils.equals(b3Key, token)) {
-                    login(user, response);
+                    if (null != response) {
+                        login(user, response);
+                    }
+                    request.setAttribute(CURRENT_USER_ATTR, clone(user));
 
                     return user;
                 }
@@ -380,6 +400,7 @@ public final class Solos {
             logout(request, response);
         }
 
+        request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
         return null;
     }
 
@@ -420,6 +441,14 @@ public final class Solos {
      * @return {@code true} if succeed, otherwise returns {@code false}
      */
     public static void logout(final Request request, final Response response) {
+        if (null != request) {
+            request.setAttribute(CURRENT_USER_ATTR, NO_CURRENT_USER);
+            final Session session = request.getSession();
+            if (null != session) {
+                session.setAttribute(Common.ARTICLES_VIEW_PWD, "{}");
+                org.b3log.latke.http.Sessions.CACHE.remove(session.getId());
+            }
+        }
         if (null != response) {
             // Netty rejects null values. Remove the echoed incoming cookie before expiring it.
             response.getCookies().removeIf(existing -> COOKIE_NAME.equals(existing.getName()));
@@ -571,6 +600,22 @@ public final class Solos {
      */
     public static JSONObject clone(final JSONObject src) {
         return new JSONObject(src, CollectionUtils.jsonArrayToArray(src.names(), String[].class));
+    }
+
+    /**
+     * Returns a shallow copy of the user JSON object without credential fields so cached repository entries stay intact.
+     *
+     * @param user source user object
+     * @return sanitized copy, or {@code null} when {@code user} is {@code null}
+     */
+    public static JSONObject sanitizeUser(final JSONObject user) {
+        if (null == user) {
+            return null;
+        }
+        final JSONObject copy = clone(user);
+        copy.remove(UserExt.USER_B3_KEY);
+        copy.remove(User.USER_PASSWORD);
+        return copy;
     }
 
     /**

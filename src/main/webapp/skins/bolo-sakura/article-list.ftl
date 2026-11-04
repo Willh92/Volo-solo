@@ -23,7 +23,7 @@
 <#assign isRss = (article.isRss!false)?c == "true">
 <article class="post post-list-thumb" itemscope="" itemtype="http://schema.org/BlogPosting">
     <div class="post-thumb">
-        <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+        <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
             <img class="lazyload" referrerpolicy="origin" src="${article.articleImg1URL}" onerror="if(window.imgError) imgError(this)" data-src="${article.articleImg1URL}">
         </a>
     </div>
@@ -35,13 +35,13 @@
                 </#if>
                 <i class="fa fa-clock-o"></i>${article.articleCreateDate?string("yyyy年MM月dd日 HH:mm:ss")}
             </div>
-            <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" class="post-title">
+            <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" class="post-title">
                 <h3 class="skin-list-title" title="${(article.articleTitle)?html}">${(article.articleTitle)?html}</h3>
             </a>
             <div class="post-meta">
                 <span><i class="fa fa-eye"></i>${article.articleViewCount} 浏览</span>
                 <#if interactive == "on">
-                    <span class="comments-number"><i class="fa fa-comment-o"></i><a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">${article.articleCommentCount} 条评论</a></span>
+                    <span class="comments-number"><i class="fa fa-comment-o"></i><a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">${article.articleCommentCount} 条评论</a></span>
                 </#if>
                 <#if article.articleCategory?? && article.articleCategory != "">
                 <span><i class="fa fa-folder-o"></i><a href="${servePath}/category/${article.categoryURI}">${article.articleCategory}</a></span>
@@ -51,7 +51,7 @@
                 <p>
                     ${article.articleAbstractText}
                 <div class="post-bottom">
-                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" class="button-normal"><i class="fa fa-ellipsis-h"></i></a>
+                    <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" class="button-normal"><i class="fa fa-ellipsis-h"></i></a>
                 </div>
             </div>
         </div>

@@ -81,21 +81,45 @@ admin.draftList = {
                     return;
                 }
                 
+                var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+                    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                };
+                var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+                    return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
+                };
+                var decodeEntities = function (v) {
+                    return String(v == null ? '' : v).replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, function (m, e) {
+                        if (e === 'amp') return '&';
+                        if (e === 'lt') return '<';
+                        if (e === 'gt') return '>';
+                        if (e === 'quot') return '"';
+                        if (e === 'apos') return "'";
+                        var cp = e.charAt(1) === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+                        return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+                    });
+                };
                 var articles = result.articles,
                 articleData = [];
                 for (var i = 0; i < articles.length; i++) {
+                    var rawPermalink = String(articles[i].articlePermalink || '');
+                    var safeHref = (/^https?:\/\//i.test(rawPermalink) ? escapeHtml(rawPermalink) : escapeHtml(Label.servePath + (rawPermalink.charAt(0) === '/' ? rawPermalink : '/' + rawPermalink)));
+                    var safeTitle = escapeHtml(decodeEntities(articles[i].articleTitle));
+                    var safeId = encodeQuote(articles[i].oId);
+                    var encodedTitle = encodeQuote(articles[i].articleTitle);
                     articleData[i] = {};
-                    articleData[i].tags = articles[i].articleTags;
+                    articleData[i].tags = escapeHtml(articles[i].articleTags);
                     articleData[i].date = $.bowknot.getDate(articles[i].articleCreateTime);
-                    articleData[i].comments = articles[i].articleCommentCount;
-                    articleData[i].articleViewCount = articles[i].articleViewCount;
-                    articleData[i].author = articles[i].authorName;
-                    articleData[i].title = "<a class='no-underline console-article-title' href='" + Label.servePath +
-                    articles[i].articlePermalink + "' target='_blank'>" + 
-                    articles[i].articleTitle + "</a><span class='table-tag'>" + articles[i].articleTags + "</span>";
-                    articleData[i].expendRow = "<a href='javascript:void(0)' onclick=\"admin.article.get('" + articles[i].oId + "', false);\">" + Label.updateLabel + "</a>  \
-                                <a href='javascript:void(0)' onclick=\"admin.article.del('" + articles[i].oId + "', 'draft', '" + encodeURIComponent(articles[i].articleTitle) + "')\">" + Label.removeLabel + "</a>  \
-                                <a href='javascript:void(0)' onclick=\"admin.comment.open('" + articles[i].oId + "', 'draft')\">" + Label.commentLabel + "</a>";
+                    articleData[i].comments = escapeHtml(articles[i].articleCommentCount);
+                    articleData[i].articleViewCount = escapeHtml(articles[i].articleViewCount);
+                    articleData[i].author = escapeHtml(articles[i].authorName);
+                    articleData[i].title = "<a class='no-underline console-article-title' href='" + safeHref +
+                    "' target='_blank' rel='noopener noreferrer'>" +
+                    safeTitle + "</a><span class='table-tag'>" + escapeHtml(articles[i].articleTags) + "</span>";
+                    articleData[i].expendRow = "<a href='javascript:void(0)' onclick=\"admin.article.get('" + safeId + "', false);\">" + Label.updateLabel + "</a>  \
+                                <a href='javascript:void(0)' onclick=\"admin.article.del('" + safeId + "', 'draft', '" + encodedTitle + "')\">" + Label.removeLabel + "</a>  \
+                                <a href='javascript:void(0)' onclick=\"admin.comment.open('" + safeId + "', 'draft')\">" + Label.commentLabel + "</a>";
                 }
                     
                 that.tablePagination.updateTablePagination(articleData, pageNum, result.pagination);

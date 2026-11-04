@@ -37,16 +37,18 @@ public final class BackgroundEvents {
     private BackgroundEvents() { }
 
     private static ThreadPoolExecutor worker(final String name) {
-        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(64), task -> {
+        final ThreadPoolExecutor pool = new ThreadPoolExecutor(1, 1, 60L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(64), task -> {
             final Thread thread = new Thread(task, name);
             thread.setDaemon(true);
             return thread;
         }, (task, executor) -> LOGGER.log(Level.WARN, "Background event queue is full or stopped: {0}", name));
+        pool.allowCoreThreadTimeOut(true);
+        return pool;
     }
 
     public static void follow(final Runnable task) { FOLLOWS.execute(() -> run(task)); }
 
-    static void community(final JSONObject data, final Consumer<JSONObject> action) {
+    public static void community(final JSONObject data, final Consumer<JSONObject> action) {
         final JSONObject snapshot = new JSONObject(data.toString());
         COMMUNITY.execute(() -> run(() -> action.accept(snapshot)));
     }

@@ -66,7 +66,7 @@
                                 </span>
                             </#if>
                         </#if><span><a class="nexmoefont iconfont solo-tag -link"
-                                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag}</a></span>
+                                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag?html}</a></span>
                     </#list>
 
                 </div>
@@ -106,7 +106,7 @@
         page.loadRandomArticles('<h3>RECOMMEND POSTS</h3>');
     </#if>
     <#if 0 != relevantArticlesDisplayCount>
-        page.loadRelevantArticles('${article.oId}', '<h3>RELEVANT POSTS</h3>');
+        page.loadRelevantArticles('${article.oId?js_string}', '<h3>RELEVANT POSTS</h3>');
     </#if>
     Skin.initArticle()
 </@comment_script>

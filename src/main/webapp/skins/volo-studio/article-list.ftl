@@ -18,7 +18,7 @@
 
 -->
 
-<div class="studio-posts"><#list articles as article><#assign isRss=(article.isRss!false)?c=="true"><#assign articleURL=isRss?then(article.articlePermalink, servePath + article.articlePermalink)>
+<div class="studio-posts"><#list articles as article><#assign isRss=(article.isRss!false)?c=="true"><#assign articleURL=isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink)>
 <article class="article__item"><#assign coverURL=article.articleCoverURL!""><a class="studio-post-cover<#if !coverURL?has_content> studio-post-cover--empty</#if>" href="${articleURL?html}" tabindex="-1" aria-hidden="true"><#if coverURL?has_content><img src="${coverURL?html}" alt="" loading="lazy" decoding="async"/></#if><#include "cover-art.ftl"></a><div class="studio-post-meta"><time datetime="${article.articleCreateDate?string('yyyy-MM-dd')}">${article.articleCreateDate?string('yyyy.MM.dd')}</time><#if article.articlePutTop><span class="studio-badge">置顶</span></#if></div>
 <h2 class="article__title"><a class="skin-list-title" rel="bookmark" href="${articleURL?html}" title="${(article.articleTitle)?html}">${article.articleTitle?html}</a></h2><div class="vditor-reset article__content studio-abstract">${article.articleAbstract}</div>
 <div class="studio-post-foot"><span><#list article.articleTags?split(',') as tag><#if tag_index lt 2><a href="${servePath}/tags/${tag?url('UTF-8')}"># ${tag?html}</a></#if></#list></span><a class="article__more" href="${articleURL?html}" aria-label="阅读 ${article.articleTitle?html}">阅读 <span aria-hidden="true">↗</span></a></div></article>

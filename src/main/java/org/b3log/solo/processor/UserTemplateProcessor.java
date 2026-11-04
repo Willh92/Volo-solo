@@ -186,6 +186,19 @@ public class UserTemplateProcessor {
                     "usiteLinkedIn", "usiteSteam", "oId", "usiteInstagram", "usiteCodePen", "usiteWYMusic",
                     "usiteWeChat", "usiteZhiHu", "usiteBehance", "usiteTelegram", "usiteFacebook");
             for (String i : usiteList) {
+                if (usiteObject.has(i)) {
+                    final String val = usiteObject.optString(i).trim();
+                    if (!val.isEmpty() && !java.util.Set.of("usiteUserId", "oId", "usiteQQ", "usiteWeChat").contains(i)) {
+                        final boolean ok = "usiteResume".equals(i)
+                                ? org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(val)
+                                : org.b3log.solo.util.OutboundUrls.isHttpOrHttps(val);
+                        if (!ok) {
+                            org.b3log.solo.web.JsonResponses.json(context).renderCode(400);
+                            org.b3log.solo.web.JsonResponses.json(context).renderMsg("社交链接地址不合法。");
+                            return;
+                        }
+                    }
+                }
                 if (!usiteObject.has(i)) {
                     LOGGER.log(Level.ERROR, "Updates usite option failed: Invalid JSON Object.");
                     org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
@@ -217,6 +230,7 @@ public class UserTemplateProcessor {
 
     @RequestProcessing(value = "/admin/usite/get", method = HttpMethod.GET)
     public void getUsite(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         if (!Solos.isAdminLoggedIn(context)) {
             context.sendError(401);
 

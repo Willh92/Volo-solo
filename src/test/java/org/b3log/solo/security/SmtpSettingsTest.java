@@ -2,6 +2,7 @@
 package org.b3log.solo.security;
 
 import org.b3log.solo.bolo.prop.SmtpSettings;
+import org.b3log.solo.model.Option;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -35,7 +36,14 @@ public class SmtpSettingsTest {
     }
     @Test public void readingPreferencesRedactsTheResponseWithoutChangingCachedMailCredentials() throws Exception {
         LatkeTestSupport.configure();
-        final JSONObject stored = new JSONObject().put("mailBox", "QQ").put("mailUsername", "sender@example.test").put("mailPassword", "secret");
+        final JSONObject stored = new JSONObject()
+                .put("mailBox", "QQ")
+                .put("mailUsername", "sender@example.test")
+                .put("mailPassword", "secret")
+                .put(Option.ID_C_GITHUB_PAT, "ghp_secretToken")
+                .put(Option.ID_C_B3LOG_KEY, "custom-b3-key")
+                .put(Option.ID_C_FISH_KEY, "fish-secret")
+                .put(Option.ID_C_SEND_KEY, "SCT-secret");
         final var processor = new org.b3log.solo.processor.console.PreferenceConsole();
         final var options = processor.getClass().getDeclaredField("optionQueryService");
         options.setAccessible(true);
@@ -53,8 +61,20 @@ public class SmtpSettingsTest {
             final JSONObject data = ((org.b3log.latke.http.renderer.JsonRenderer) context.getRenderer()).getJSONObject().getJSONObject("preference");
             Assert.assertEquals(data.getString("mailPassword"), "");
             Assert.assertTrue(data.getBoolean("smtpPasswordSet"));
+            Assert.assertEquals(data.getString(Option.ID_C_GITHUB_PAT), "");
+            Assert.assertTrue(data.getBoolean("githubPATSet"));
+            Assert.assertEquals(data.getString(Option.ID_C_B3LOG_KEY), "");
+            Assert.assertTrue(data.getBoolean("b3logKeySet"));
+            Assert.assertEquals(data.getString(Option.ID_C_FISH_KEY), "");
+            Assert.assertTrue(data.getBoolean("fishKeySet"));
+            Assert.assertEquals(data.getString(Option.ID_C_SEND_KEY), "");
+            Assert.assertTrue(data.getBoolean("sendKeySet"));
             Assert.assertEquals(data.getString("smtpHost"), "smtp.qq.com");
             Assert.assertEquals(stored.getString("mailPassword"), "secret");
+            Assert.assertEquals(stored.getString(Option.ID_C_GITHUB_PAT), "ghp_secretToken");
+            Assert.assertEquals(stored.getString(Option.ID_C_B3LOG_KEY), "custom-b3-key");
+            Assert.assertEquals(stored.getString(Option.ID_C_FISH_KEY), "fish-secret");
+            Assert.assertEquals(stored.getString(Option.ID_C_SEND_KEY), "SCT-secret");
             Assert.assertFalse(stored.has("smtpHost"), "Read-time legacy conversion must not mutate cached settings");
         } finally { request.release(); response.release(); }
     }

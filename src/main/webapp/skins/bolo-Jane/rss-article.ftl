@@ -134,7 +134,7 @@
                                 page.loadRandomArticles();
                             </#if>
                             <#if 0 !=relevantArticlesDisplayCount>
-                                page.loadRelevantArticles('${article.oId}', '<h4>
+                                page.loadRelevantArticles('${article.oId?js_string}', '<h4>
                                     ${relevantArticles1Label}
                                 </h4>');
                             </#if>

@@ -228,6 +228,16 @@ public class FollowService {
 
         try {
             final JSONObject follow = requestJSONObject.getJSONObject(Follow.FOLLOW);
+            final String followAddress = follow.optString(Follow.FOLLOW_ADDRESS).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isHttpOrHttps(followAddress)) {
+                throw new ServiceException("订阅地址必须以 http:// 或 https:// 开头。");
+            }
+            follow.put(Follow.FOLLOW_ADDRESS, followAddress);
+            final String followIcon = follow.optString(Follow.FOLLOW_ICON).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(followIcon)) {
+                throw new ServiceException("订阅图标地址不合法。");
+            }
+            follow.put(Follow.FOLLOW_ICON, followIcon);
             final String followId = follow.getString(Keys.OBJECT_ID);
             final JSONObject oldfollow = followRepository.get(followId);
 
@@ -321,6 +331,16 @@ public class FollowService {
 
         try {
             final JSONObject follow = requestJSONObject.getJSONObject(Follow.FOLLOW);
+            final String followAddress = follow.optString(Follow.FOLLOW_ADDRESS).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isHttpOrHttps(followAddress)) {
+                throw new ServiceException("订阅地址必须以 http:// 或 https:// 开头。");
+            }
+            follow.put(Follow.FOLLOW_ADDRESS, followAddress);
+            final String followIcon = follow.optString(Follow.FOLLOW_ICON).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(followIcon)) {
+                throw new ServiceException("订阅图标地址不合法。");
+            }
+            follow.put(Follow.FOLLOW_ICON, followIcon);
             final int maxOrder = followRepository.getMaxOrder();
 
             follow.put(Follow.FOLLOW_ORDER, maxOrder + 1);

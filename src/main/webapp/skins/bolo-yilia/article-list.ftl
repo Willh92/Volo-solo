@@ -22,7 +22,7 @@
         <article>
             <header class="fn__flex">
                 <h2 class="fn__flex-1">
-                    <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                    <a class="skin-list-title" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                         ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
@@ -32,7 +32,7 @@
                     </#if>
                     <#if article.hasUpdated>
                         <sup>
-                            <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                            <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                 ${updatedLabel}
                             </a>
                         </sup>
@@ -43,11 +43,11 @@
                 </time>
             </header>
             <#if article.articleAbstractText==''>
-                <a class="abstract" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                <a class="abstract" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                     <img src="${article.articleImg1URL}" />
                 </a>
                 <#else>
-                    <a class="abstract vditor-reset" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                    <a class="abstract vditor-reset" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                         ${article.articleAbstractText}
                     </a>
             </#if>
@@ -66,7 +66,7 @@
                 </div>
                 <#if interactive=="on">
                     <#if article.articleCommentCount !=0>
-                        <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments"
+                        <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments"
                             class="vditor-tooltipped__n vditor-tooltipped link fn__flex-center"
                             aria-label="${commentLabel}">
                             ${article.articleCommentCount}
@@ -76,7 +76,7 @@
                 </#if>
                 <#if article.articleViewCount !=0>
                     <a class="vditor-tooltipped__n vditor-tooltipped link fn__flex-center"
-                        href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
+                        href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                         aria-label="${viewLabel}">
                         ${article.articleViewCount}
                         <span class="icon-views"></span>

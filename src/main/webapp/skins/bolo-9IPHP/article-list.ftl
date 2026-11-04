@@ -23,7 +23,7 @@
     <article class="post">
         <header>
             <h2>
-                <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                <a class="skin-list-title" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                     ${(article.articleTitle)?html}
                 </a>
                 <#if article.articlePutTop>
@@ -33,7 +33,7 @@
                 </#if>
                 <#if article.hasUpdated>
                     <sup>
-                        <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                        <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                             ${updatedLabel}
                         </a>
                     </sup>
@@ -74,7 +74,7 @@
                 <a class="tag" rel="tag" href="${servePath}/tags/${articleTag?url('UTF-8')}">
                     ${articleTag}</a>
             </#list>
-            <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#more" rel="contents" class="fn-right">
+            <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#more" rel="contents" class="fn-right">
                 ${readLabel} &raquo;
             </a>
         </footer>

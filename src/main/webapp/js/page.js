@@ -140,7 +140,11 @@ $.extend(Page.prototype, {
             trigger.readOnly = true;
             trigger.setAttribute('autocomplete', 'off');
         }
-        function restored () {
+        function restored (event) {
+            if (event && event.persisted && !document.getElementById('soloEditor')?.classList.contains('is-open')) {
+                that.guestProfile = null;
+                that.prepareCommentIdentity(that.commentLoggedIn, true);
+            }
             reset();
             if (frame) cancelAnimationFrame(frame);
             frame = requestAnimationFrame(function () { frame = 0; reset(); });
@@ -183,7 +187,7 @@ $.extend(Page.prototype, {
         delete this.commentCaptcha;
         if (!this.commentDisposed) this.commentCaptchaWidget?.refresh();
     },
-    prepareCommentIdentity: function (loggedIn) {
+    prepareCommentIdentity: function (loggedIn, forceSync) {
         this.commentLoggedIn = loggedIn === true || loggedIn === 'true';
         var host = document.getElementById('soloEditorIdentity');
         if (!host) return;
@@ -198,16 +202,18 @@ $.extend(Page.prototype, {
         fields.forEach(function (field) {
             var input = document.getElementById(field[0]), slot = document.getElementById(field[1]);
             if (!input || !slot) return;
-            if (input.parentElement !== slot) {
+            input.setAttribute?.('autocomplete', 'off');
+            if (input.parentElement !== slot || forceSync) {
                 input.removeAttribute('style');
                 slot.appendChild(input);
                 var key = field[0] === 'boloUser' ? 'name' : 'site';
-                if (!input.value) input.value = typeof profile[key] === 'string' ? profile[key] : (typeof $.cookie === 'function' ? ($.cookie(field[2]) || '') : '');
+                input.value = typeof profile[key] === 'string' ? profile[key] : (typeof $.cookie === 'function' ? ($.cookie(field[2]) || '') : '');
                 input.maxLength = field[0] === 'boloUser' ? 20 : 255;
             }
         });
         var email = document.getElementById('soloEditorEmail');
-        if (email && !email.dataset.restored) {
+        if (email && (!email.dataset.restored || forceSync)) {
+            email.setAttribute?.('autocomplete', 'off');
             email.value = typeof profile.email === 'string' ? profile.email : (typeof $.cookie === 'function' ? ($.cookie('my_email') || '') : '');
             email.dataset.restored = 'true';
         }
@@ -650,7 +656,7 @@ $.extend(Page.prototype, {
                     var article = articles[i];
                     list.append($('<li>').append($('<a>', {
                         rel: 'nofollow', title: article.articleTitle,
-                        href: Label.servePath + article.articlePermalink,
+                        href: /^https?:\/\//i.test(article.articlePermalink || '') ? article.articlePermalink : (String(article.articlePermalink || '').startsWith('/') ? Label.servePath + article.articlePermalink : '#'),
                     }).text(article.articleTitle)))
                 }
 

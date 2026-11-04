@@ -60,6 +60,7 @@ public class StatisticMgmtService {
      * </p>
      */
     public static final Map<String, Long> ONLINE_VISITORS = new ConcurrentHashMap<>();
+    public static final int MAX_ONLINE_VISITORS = 10_000;
 
     /**
      * Logger.
@@ -262,7 +263,13 @@ public class StatisticMgmtService {
             return;
         }
 
-        final String remoteAddr = Requests.getRemoteAddr(request);
+        final String remoteAddr = org.b3log.solo.util.LoginThrottle.clientAddress(request);
+        if (!ONLINE_VISITORS.containsKey(remoteAddr) && ONLINE_VISITORS.size() >= MAX_ONLINE_VISITORS) {
+            removeExpiredOnlineVisitor();
+            if (ONLINE_VISITORS.size() >= MAX_ONLINE_VISITORS) {
+                return;
+            }
+        }
         LOGGER.log(Level.DEBUG, "Current request [IP={0}]", remoteAddr);
         ONLINE_VISITORS.put(remoteAddr, System.currentTimeMillis());
         LOGGER.log(Level.DEBUG, "Current online visitor count [{0}]", ONLINE_VISITORS.size());

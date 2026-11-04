@@ -23,10 +23,31 @@
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  */
 
+Util.escapeHtml = function (value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+Util.encodeSingleQuote = function (value) {
+    return encodeURIComponent(String(value == null ? '' : value)).replace(/'/g, '%27')
+}
+
 Util.htmlDecode = function (code) {
-    var div = document.createElement('div')
-    div.innerHTML = decodeURIComponent(code)
-    return div.innerText
+    var text = String(code == null ? '' : code)
+    try { text = decodeURIComponent(text) } catch (ignored) {}
+    return text.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, function (match, entity) {
+        if (entity === 'amp') return '&'
+        if (entity === 'lt') return '<'
+        if (entity === 'gt') return '>'
+        if (entity === 'quot') return '"'
+        if (entity === 'apos') return "'"
+        var cp = entity.charAt(1) === 'x' ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10)
+        return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : match
+    })
 }
 
 var Admin = function () {
@@ -336,7 +357,13 @@ $.extend(Admin.prototype, {
             $('#loadMsg').text('')
             admin.handleRequestError(xhr, exc)
         })
-        if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole') })
+        if (window.addEventListener) {
+            var onPageShow = function (event) { if (event && event.persisted && window.location && window.location.reload) window.location.reload() }
+            window.addEventListener('pageshow', onPageShow)
+            if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole'); if (window.removeEventListener) window.removeEventListener('pageshow', onPageShow) })
+        } else if (window.BoloNavigation) {
+            window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole') })
+        }
     },
     /**
      * @description tools and article collapse

@@ -86,37 +86,42 @@ admin.pageList = {
                 admin.pageList.pageInfo.currentCount = pages.length;
                 admin.pageList.pageInfo.pageCount = result.pagination.paginationPageCount === 0 ? 1 : result.pagination.paginationPageCount;
                 for (var i = 0; i < pages.length; i++) {
+                    var safeId = encodeURIComponent(pages[i].oId).replace(/'/g, '%27');
                     pageData[i] = {};
                     if (i === 0) {
                         if (pages.length === 1) {
                             pageData[i].pageOrder = "";
                         } else {
                             pageData[i].pageOrder = '<div class="table-center" style="width:14px">\
-                                        <span onclick="admin.pageList.changeOrder(' + pages[i].oId + ', ' + i + ', \'down\');" \
+                                        <span onclick="admin.pageList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" \
                                         class="icon-move-down"></span></div>';
                         }
                     } else if (i === pages.length - 1) {
                         pageData[i].pageOrder = '<div class="table-center" style="width:14px">\
-                                    <span onclick="admin.pageList.changeOrder(' + pages[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                    <span onclick="admin.pageList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
                                     </div>';
                     } else {
                         pageData[i].pageOrder = '<div class="table-center" style="width:38px">\
-                                    <span onclick="admin.pageList.changeOrder(' + pages[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
-                                    <span onclick="admin.pageList.changeOrder(' + pages[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                    <span onclick="admin.pageList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                    <span onclick="admin.pageList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                                     </div>';
                     }
 
                     var pageIcon = '';
-                    var title = escape(pages[i].pageTitle), address = escape(pages[i].pagePermalink);
-                    var safeId = encodeURIComponent(pages[i].oId).replace(/'/g, '%27');
+                    var rawAddr = String(pages[i].pagePermalink == null ? '' : pages[i].pagePermalink).trim();
+                    var title = escape(pages[i].pageTitle), address = escape(rawAddr);
+                    var safeHref = (/^https?:\/\//i.test(rawAddr) || rawAddr.indexOf('/') === 0) ? address : '#';
                     var encodedTitle = encodeURIComponent(pages[i].pageTitle).replace(/'/g, '%27');
                     if (pages[i].pageIcon !== '') {
-                      pageIcon = "<img class='navigation-icon' src='" + escape(pages[i].pageIcon) + "' alt=''/> ";
+                      var rawIcon = String(pages[i].pageIcon).trim();
+                      if (/^https?:\/\//i.test(rawIcon) || rawIcon.indexOf('/') === 0) {
+                        pageIcon = "<img class='navigation-icon' src='" + escape(rawIcon) + "' alt=''/> ";
+                      }
                     }
-                    pageData[i].pageTitle = pageIcon + "<a class='no-underline' href='" + address + "' target='_blank' rel='noopener noreferrer'>" + title + "</a>";
-                    pageData[i].pagePermalink = "<a class='no-underline' href='" + address + "' target='_blank' rel='noopener noreferrer'>" + address + "</a>";
+                    pageData[i].pageTitle = pageIcon + "<a class='no-underline' href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + title + "</a>";
+                    pageData[i].pagePermalink = "<a class='no-underline' href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + address + "</a>";
                     pageData[i].pageTarget = escape(pages[i].pageOpenTarget);
-                    pageData[i].expendRow = "<span><a href='" + address + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
+                    pageData[i].expendRow = "<span><a href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
                                 <a href='javascript:void(0)' onclick=\"admin.pageList.get('" + safeId + "')\">" + Label.updateLabel + "</a>\
                                 <a href='javascript:void(0)' onclick=\"admin.pageList.del('" + safeId + "', '" + encodedTitle + "')\">" + Label.removeLabel + "</a></span>";
                 }
@@ -361,5 +366,8 @@ admin.pageList = {
 admin.register["page-list"] = {
     "obj": admin.pageList,
     "init": admin.pageList.init,
-    "refresh": admin.pageList.getList
+    "refresh": function (page) {
+        this.cancelEdit();
+        this.getList(page);
+    }
 }

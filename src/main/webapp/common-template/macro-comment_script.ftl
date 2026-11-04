@@ -30,7 +30,7 @@
             <div id="soloEditorIdentity" class="comment-composer__identity" hidden>
                 <label for="boloUser">昵称<span id="soloEditorNameSlot"></span></label>
                 <label for="boloSite">个人主页（选填）<span id="soloEditorSiteSlot"></span></label>
-                <label for="soloEditorEmail">通知邮箱（选填）<input id="soloEditorEmail" type="email" maxlength="254" autocomplete="email" placeholder="仅用于回复通知，不公开展示"/></label>
+                <label for="soloEditorEmail">通知邮箱（选填）<input id="soloEditorEmail" type="email" maxlength="254" autocomplete="off" placeholder="仅用于回复通知，不公开展示"/></label>
             </div>
             <div id="soloEditorComment"></div>
             <div id="soloEditorCaptcha" class="comment-composer__captcha" hidden></div>
@@ -51,11 +51,11 @@
 <script type="text/javascript">
     Util.addScript('${staticServePath}/js/page.js?${staticResourceVersion}', 'soloPageScript')
     var page = new Page({
-        "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel}",
-        "oId": "${oId}",
+        "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel?js_string}",
+        "oId": "${oId?js_string}",
         "commentAdministrator": ${(isAdminLoggedIn!false)?c},
-        "blogHost": "${blogHost}",
-        "randomArticles1Label": "${randomArticles1Label}",
+        "blogHost": "${blogHost?js_string}",
+        "randomArticles1Label": "${randomArticles1Label?js_string}",
     });
     $(document).ready(function () {
         page.load();

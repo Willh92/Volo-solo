@@ -96,7 +96,7 @@
       button.setAttribute('aria-label', name || '选择选项')
     }
     else button.setAttribute('aria-label', '选择选项')
-    select.before(button); select.classList.add('console-native-select'); select.tabIndex = -1; select.setAttribute('aria-hidden', 'true')
+    select.before(button); select.classList.add('console-native-select'); select.tabIndex = -1; select.setAttribute('aria-hidden', 'true'); select.setAttribute('autocomplete', 'off')
     var control = {select: select, button: button, label: label, popup: popup, items: [], index: -1, text: '', typedAt: 0}
     controls.set(select, control); sync(control)
     button.addEventListener('click', function () { if (active === control) close(); else open(control) })
@@ -142,17 +142,31 @@
   function setValue(select, value) { var result = previousSet.call(this, select, value); if (controls.has(select)) sync(controls.get(select)); return result }
   if (previousSet) jQuery.valHooks.select.set = setValue
   if (window.jQuery) jQuery(document).on('ajaxComplete.voloSelect', schedule)
+  function isSelectMutation(record) {
+    if (!record || !record.target) return true
+    var target = record.target
+    if (record.type === 'childList') {
+      if (target.tagName === 'SELECT' || target.tagName === 'OPTGROUP') return true
+      var nodes = [].concat(Array.from(record.addedNodes || []), Array.from(record.removedNodes || []))
+      return !nodes.length || nodes.some(function (n) {
+        return n && (n.tagName === 'SELECT' || n.tagName === 'OPTION' || n.tagName === 'OPTGROUP' ||
+          (typeof n.querySelector === 'function' && !!n.querySelector('select')))
+      })
+    }
+    if (target.tagName === 'SELECT' || target.tagName === 'OPTION' || target.tagName === 'OPTGROUP') return true
+    return typeof target.querySelector === 'function' && !!target.querySelector('select')
+  }
   var observer = new MutationObserver(function (records) {
     if (active && records.some(function (record) { return active.select.contains(record.target) })) close()
-    schedule()
+    if (!records.length || records.some(isSelectMutation)) schedule()
   })
   observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['disabled','selected','hidden','style','class','required']})
   document.addEventListener('click', outside); document.addEventListener('scroll', scroll, true)
-  window.addEventListener('resize', close); window.addEventListener('hashchange', close)
+  window.addEventListener('resize', close); window.addEventListener('hashchange', close); window.addEventListener('pageshow', refresh)
   refresh()
   if (window.BoloNavigation) window.BoloNavigation.onLeave(function () {
     disposed = true; close(); observer.disconnect(); document.removeEventListener('click', outside); document.removeEventListener('scroll', scroll, true)
-    window.removeEventListener('resize', close); window.removeEventListener('hashchange', close)
+    window.removeEventListener('resize', close); window.removeEventListener('hashchange', close); window.removeEventListener('pageshow', refresh)
     if (previousSet && jQuery.valHooks.select.set === setValue) jQuery.valHooks.select.set = previousSet
     if (window.jQuery) jQuery(document).off('ajaxComplete.voloSelect', schedule)
     controls.clear()

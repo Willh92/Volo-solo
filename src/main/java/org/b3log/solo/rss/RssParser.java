@@ -26,13 +26,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.OutboundUrls;
+import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.safety.Safelist;
 
 import com.rometools.rome.feed.synd.SyndEnclosure;
 import com.rometools.rome.feed.synd.SyndEntry;
@@ -41,57 +47,105 @@ import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 
 public class RssParser {
+    private static final int MAX_FEED_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_ITEMS_PER_FEED = 50;
     private String rssUrl;
     private String userIcon;
     private String userName;
+    private boolean allowLoopback;
 
-    public RssParser(String rssUrl, String userIcon, String userName) {
+    public RssParser(final String rssUrl, final String userIcon, final String userName) {
+        this(rssUrl, userIcon, userName, false);
+    }
+
+    public RssParser(final String rssUrl, final String userIcon, final String userName, final boolean allowLoopback) {
         this.rssUrl = rssUrl;
-        this.userIcon = userIcon;
-        this.userName = userName;
+        this.userIcon = OutboundUrls.isOptionalSafeIconOrAvatar(userIcon) ? StringUtils.trimToEmpty(userIcon) : "";
+        this.userName = plainText(userName);
+        this.allowLoopback = allowLoopback;
     }
 
     private RssParser() {
     }
 
+    private static String plainText(final String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return Jsoup.clean(value, Safelist.none()).trim();
+    }
+
+    private static String sanitizeHtml(final String html) {
+        if (html == null || html.isBlank()) {
+            return "";
+        }
+        return Markdowns.clean(html);
+    }
+
     public List<JSONObject> parse2Article() {
-        SyndFeedInput input = new SyndFeedInput();
+        try {
+            final byte[] feedBytes = OutboundUrls.fetchBytes(
+                    this.rssUrl,
+                    3000,
+                    5000,
+                    MAX_FEED_BYTES,
+                    "application/rss+xml, application/atom+xml, application/xml, text/xml",
+                    Solos.USER_AGENT,
+                    this.allowLoopback);
+            return parseFeedBytes(feedBytes);
+        } catch (final Exception e) {
+            throw new IllegalStateException("Unable to read RSS/Atom feed: " + e.getMessage(), e);
+        }
+    }
+
+    public List<JSONObject> parseFeedBytes(final byte[] feedBytes) throws Exception {
+        final SyndFeedInput input = new SyndFeedInput();
+        input.setAllowDoctypes(false);
         final List<JSONObject> articles = new ArrayList<>();
-        try (XmlReader reader = new XmlReader(new ByteArrayInputStream(Jsoup.connect(this.rssUrl)
-                .ignoreContentType(true).timeout(5000).maxBodySize(2 * 1024 * 1024)
-                .header("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml")
-                .execute().bodyAsBytes()))) {
-            SyndFeed feed = input.build(reader);
-            final String feedTitle = feed.getTitle() == null ? userName : feed.getTitle();
-            String feedDesc = feed.getDescription();
-            if (feedDesc == null || feedDesc.isEmpty()) {
+        try (XmlReader reader = new XmlReader(new ByteArrayInputStream(feedBytes))) {
+            final SyndFeed feed = input.build(reader);
+            final String rawFeedTitle = plainText(feed.getTitle());
+            final String feedTitle = rawFeedTitle.isEmpty() ? this.userName : rawFeedTitle;
+            String feedDesc = plainText(feed.getDescription());
+            if (feedDesc.isEmpty()) {
                 feedDesc = feedTitle;
             }
             Instant now = Instant.now();
-            for (SyndEntry entry : feed.getEntries()) {
-                final String title = entry.getTitle() == null ? entry.getLink() : entry.getTitle();
-                if (title == null || title.isBlank()) continue;
-                final String author = entry.getAuthor() == null || entry.getAuthor().isBlank() ? userName : entry.getAuthor();
+            for (final SyndEntry entry : feed.getEntries()) {
+                if (articles.size() >= MAX_ITEMS_PER_FEED) {
+                    break;
+                }
+                final String rawTitle = entry.getTitle() == null ? entry.getLink() : entry.getTitle();
+                final String title = plainText(rawTitle);
+                if (title.isBlank()) {
+                    continue;
+                }
+                final String parsedAuthor = plainText(entry.getAuthor());
+                final String author = parsedAuthor.isEmpty() ? this.userName : parsedAuthor;
                 final String description = entry.getDescription() == null || entry.getDescription().getValue() == null
-                        ? "" : entry.getDescription().getValue();
+                        ? "" : sanitizeHtml(entry.getDescription().getValue());
+                final String entryLink = OutboundUrls.isHttpOrHttps(entry.getLink()) ? entry.getLink().trim() : "";
+                final String safeObjectId = "rss-" + DigestUtils.sha256Hex(
+                        StringUtils.defaultString(this.rssUrl) + "|" + entryLink + "|" + title).substring(0, 24);
                 final JSONObject article = new JSONObject();
                 article.put(Option.ID_C_BLOG_TITLE, feedTitle);
                 article.put(Option.ID_C_BLOG_SUBTITLE, feedDesc);
                 article.put(Common.AUTHOR_ID, "");
                 article.put(Article.ARTICLE_T_TOC, (Object) Collections.emptyList());
-                article.put(Article.ARTICLE_AUTHOR_ID, userName);
-                article.put(Keys.OBJECT_ID, author);
+                article.put(Article.ARTICLE_AUTHOR_ID, this.userName);
+                article.put(Keys.OBJECT_ID, safeObjectId);
                 article.put(Common.AUTHOR_NAME, author);
                 article.put(Article.ARTICLE_TITLE, title);
                 article.put(Article.ARTICLE_PUT_TOP, false);
                 article.put(Option.ID_C_COMMENTABLE, false);
                 article.put(Common.ARTICLE_SIGN, new JSONObject().put("signHTML", ""));
                 article.put(Article.ARTICLE_TAGS_REF, entry.getCategories().stream()
-                        .map(category -> category.getName())
+                        .map(category -> plainText(category.getName()))
+                        .filter(name -> !name.isEmpty())
                         .reduce((a, b) -> a + "," + b).orElse(""));
                 article.put(Common.HAS_UPDATED, false);
-                if (Objects.nonNull(feed.getImage())) {
-                    article.put(Common.AUTHOR_THUMBNAIL_URL, feed.getImage().getUrl());
+                if (Objects.nonNull(feed.getImage()) && OutboundUrls.isOptionalSafeIconOrAvatar(feed.getImage().getUrl())) {
+                    article.put(Common.AUTHOR_THUMBNAIL_URL, feed.getImage().getUrl().trim());
                 } else {
                     article.put(Common.AUTHOR_THUMBNAIL_URL, this.userIcon);
                 }
@@ -102,16 +156,15 @@ public class RssParser {
                     article.put(Article.ARTICLE_CONTENT, description);
                     article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(description));
                     article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
-                    if (!isRichContent(description) && entry.getLink() != null && !entry.getLink().isBlank()) {
+                    if (!isRichContent(description) && !entryLink.isEmpty()) {
                         article.put("isRss", true);
-                        article.put(Article.ARTICLE_PERMALINK, entry.getLink());
+                        article.put(Article.ARTICLE_PERMALINK, entryLink);
                     }
                 } else {
-                    // Use the first content if available
-                    article.put(Article.ARTICLE_CONTENT, entry.getContents().get(0).getValue());
+                    final String safeContent = sanitizeHtml(entry.getContents().get(0).getValue());
+                    article.put(Article.ARTICLE_CONTENT, safeContent);
                     if (entry.getDescription() == null || entry.getDescription().getValue() == null) {
-                        article.put(Article.ARTICLE_ABSTRACT,
-                                Article.getAbstractText(article.getString(Article.ARTICLE_CONTENT)));
+                        article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(safeContent));
                         article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
                     } else {
                         article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(article));
@@ -129,13 +182,14 @@ public class RssParser {
                     now = now.minusSeconds(600);
                 }
                 // 设置文章封面
-                Optional<SyndEnclosure> optionalEnclosure = entry.getEnclosures().stream()
-                        .filter(enclosure -> enclosure.getType() != null && enclosure.getType().startsWith("image/"))
+                final Optional<SyndEnclosure> optionalEnclosure = entry.getEnclosures().stream()
+                        .filter(enclosure -> enclosure.getType() != null
+                                && enclosure.getType().startsWith("image/")
+                                && OutboundUrls.isOptionalSafeIconOrAvatar(enclosure.getUrl()))
                         .findFirst();
                 if (optionalEnclosure.isPresent()) {
-                    article.put(Article.ARTICLE_IMG1_URL, optionalEnclosure.get().getUrl());
+                    article.put(Article.ARTICLE_IMG1_URL, optionalEnclosure.get().getUrl().trim());
                 } else {
-                    // 如果没有设置封面，则使用内容中的第一张图片, 还没有则使用用户头像
                     final String contentFirstImageUrl = Article.getArticleImg1URLWithoutSetSize(article);
                     final String articleCoverUrl = contentFirstImageUrl == null ? this.userIcon : contentFirstImageUrl;
                     article.put(Article.ARTICLE_IMG1_URL, articleCoverUrl);
@@ -154,8 +208,6 @@ public class RssParser {
                 article.put("articleCategory", "");
                 articles.add(article);
             }
-        } catch (Exception e) {
-            throw new IllegalStateException("Unable to read RSS/Atom feed: " + e.getMessage(), e);
         }
         return articles;
     }
@@ -163,19 +215,19 @@ public class RssParser {
     /**
      * 判断是否是“富内容”，即内容是否像是正文而不是摘要
      */
-    public static boolean isRichContent(String html) {
+    public static boolean isRichContent(final String html) {
         if (html == null || html.trim().isEmpty()) {
             return false;
         }
 
-        Document doc = Jsoup.parse(html);
-        String text = doc.text();
-        int textLength = text.length();
+        final Document doc = Jsoup.parse(html);
+        final String text = doc.text();
+        final int textLength = text.length();
 
-        boolean hasLongText = textLength > 200;
-        boolean hasParagraphs = doc.select("p").size() >= 3;
-        boolean hasImages = doc.select("img").size() > 1;
-        boolean hasHeaders = doc.select("h1,h2,h3").size() > 0;
+        final boolean hasLongText = textLength > 200;
+        final boolean hasParagraphs = doc.select("p").size() >= 3;
+        final boolean hasImages = doc.select("img").size() > 1;
+        final boolean hasHeaders = doc.select("h1,h2,h3").size() > 0;
 
         return hasLongText && (hasParagraphs || hasImages || hasHeaders);
     }

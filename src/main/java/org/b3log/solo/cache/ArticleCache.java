@@ -23,8 +23,9 @@ import org.b3log.solo.model.Article;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Article cache.
@@ -37,14 +38,29 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ArticleCache {
 
     /**
-     * Article id cache.
+     * Maximum number of cached articles in memory.
      */
-    private final Map<String, JSONObject> idCache = new ConcurrentHashMap<>();
+    public static final int MAX_ENTRIES = 256;
 
     /**
-     * Article permalink cache.
+     * Permalink -> article id index (deduplicating cached JSONObjects).
      */
-    private final Map<String, JSONObject> permalinkCache = new ConcurrentHashMap<>();
+    private final Map<String, String> permalinkIndex = new HashMap<>();
+
+    /**
+     * Bounded LRU article id cache.
+     */
+    private final Map<String, JSONObject> idCache = new LinkedHashMap<>(128, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(final Map.Entry<String, JSONObject> eldest) {
+            if (size() <= MAX_ENTRIES) {
+                return false;
+            }
+            final String evictedPermalink = eldest.getValue().optString(Article.ARTICLE_PERMALINK);
+            permalinkIndex.remove(evictedPermalink, eldest.getKey());
+            return true;
+        }
+    };
 
     /**
      * Gets an article by the specified article id.
@@ -52,13 +68,12 @@ public class ArticleCache {
      * @param id the specified article id
      * @return article, returns {@code null} if not found
      */
-    public JSONObject getArticle(final String id) {
-        final JSONObject article = idCache.get(id);
-        if (null == article) {
+    public synchronized JSONObject getArticle(final String id) {
+        if (id == null) {
             return null;
         }
-
-        return Solos.clone(article);
+        final JSONObject article = idCache.get(id);
+        return null == article ? null : Solos.clone(article);
     }
 
     /**
@@ -67,12 +82,19 @@ public class ArticleCache {
      * @param permalink the specified article permalink
      * @return article, returns {@code null} if not found
      */
-    public JSONObject getArticleByPermalink(final String permalink) {
-        final JSONObject article = permalinkCache.get(permalink);
-        if (null == article) {
+    public synchronized JSONObject getArticleByPermalink(final String permalink) {
+        if (permalink == null) {
             return null;
         }
-
+        final String id = permalinkIndex.get(permalink);
+        if (null == id) {
+            return null;
+        }
+        final JSONObject article = idCache.get(id);
+        if (null == article) {
+            permalinkIndex.remove(permalink, id);
+            return null;
+        }
         return Solos.clone(article);
     }
 
@@ -81,9 +103,22 @@ public class ArticleCache {
      *
      * @param article the specified article
      */
-    public void putArticle(final JSONObject article) {
-        idCache.put(article.optString(Keys.OBJECT_ID), Solos.clone(article));
-        permalinkCache.put(article.optString(Article.ARTICLE_PERMALINK), Solos.clone(article));
+    public synchronized void putArticle(final JSONObject article) {
+        if (null == article) {
+            return;
+        }
+        final String id = article.optString(Keys.OBJECT_ID);
+        final String permalink = article.optString(Article.ARTICLE_PERMALINK);
+        final JSONObject previous = idCache.put(id, Solos.clone(article));
+        if (null != previous) {
+            final String oldPermalink = previous.optString(Article.ARTICLE_PERMALINK);
+            if (!oldPermalink.equals(permalink)) {
+                permalinkIndex.remove(oldPermalink, id);
+            }
+        }
+        if (!permalink.isEmpty()) {
+            permalinkIndex.put(permalink, id);
+        }
     }
 
     /**
@@ -91,21 +126,30 @@ public class ArticleCache {
      *
      * @param id the specified article id
      */
-    public void removeArticle(final String id) {
-        final JSONObject article = idCache.get(id);
+    public synchronized void removeArticle(final String id) {
+        if (null == id) {
+            return;
+        }
+        final JSONObject article = idCache.remove(id);
         if (null == article) {
             return;
         }
         final String permalink = article.optString(Article.ARTICLE_PERMALINK);
-        idCache.remove(id);
-        permalinkCache.remove(permalink);
+        permalinkIndex.remove(permalink, id);
+    }
+
+    /**
+     * Returns current number of cached articles.
+     */
+    public synchronized int size() {
+        return idCache.size();
     }
 
     /**
      * Clears all cached data.
      */
-    public void clear() {
+    public synchronized void clear() {
         idCache.clear();
-        permalinkCache.clear();
+        permalinkIndex.clear();
     }
 }

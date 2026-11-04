@@ -23,7 +23,7 @@
         <article class="post-item">
             <header>
                 <h2>
-                    <a class="skin-list-title post-title-link" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                    <a class="skin-list-title post-title-link" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                         ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
@@ -33,7 +33,7 @@
                     </#if>
                     <#if article.hasUpdated>
                         <sup>
-                            <a class="post__sup" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                            <a class="post__sup" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                 ${updatedLabel}
                             </a>
                         </sup>
@@ -54,7 +54,7 @@
                     <span>
                         <#if interactive == "on">
                     &nbsp; | &nbsp;
-                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">
+                    <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                         ${article.articleCommentCount} ${cmtLabel}</a>
                 </span>
                 </#if>
@@ -65,7 +65,7 @@
                 ${article.articleAbstract}
             </div>
             <div class="post-more-link">
-                <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#more" rel="contents">
+                <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#more" rel="contents">
                     ${readLabel} &raquo;
                 </a>
             </div>

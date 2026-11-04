@@ -38,6 +38,7 @@ admin.usite = {
     $.ajax({
       url: Label.servePath + '/admin/usite/get',
       type: 'GET',
+      cache: false,
       timeout: 30000,
       success: function (data) {
         if (data.code !== 200) { admin.showNotice('无法读取联系方式，请重试。', 'error'); return; }
@@ -131,5 +132,6 @@ admin.register['usite'] = {
   'init': admin.usite.init,
   'refresh': function () {
     admin.clearTip()
+    this.init()
   },
 }

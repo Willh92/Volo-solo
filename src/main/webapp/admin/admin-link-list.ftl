@@ -25,25 +25,25 @@
 <div class="form form__no-table">
 ${addLinkLabel}
     <label>${linkTitle1Label}</label>
-    <input id="linkTitle" type="text"/>
+    <input id="linkTitle" type="text" autocomplete="off"/>
     <label>${url1Label}</label>
-    <input id="linkAddress" type="text"/>
+    <input id="linkAddress" type="text" autocomplete="off"/>
     <label>${linkDescription1Label}</label>
-    <input id="linkDescription" type="text"/>
+    <input id="linkDescription" type="text" autocomplete="off"/>
     <label>${linkIcon1Label}</label>
-    <input id="linkIcon" type="text"/><br><br>
+    <input id="linkIcon" type="text" autocomplete="off"/><br><br>
     <button onclick="admin.linkList.add();" class="fn__right">${saveLabel}</button>
     <div class="fn__clear"></div>
 </div>
 <div id="updateLink" class="fn__none form form__no-table" data-title="${updateLinkLabel}">
     <label>${linkTitle1Label}</label>
-    <input id="linkTitleUpdate" type="text"/>
+    <input id="linkTitleUpdate" type="text" autocomplete="off"/>
     <label>${url1Label}</label>
-    <input id="linkAddressUpdate" type="text"/>
+    <input id="linkAddressUpdate" type="text" autocomplete="off"/>
     <label>${linkDescription1Label}</label>
-    <input id="linkDescriptionUpdate" type="text"/>
+    <input id="linkDescriptionUpdate" type="text" autocomplete="off"/>
     <label>${linkIcon1Label}</label>
-    <input id="linkIconUpdate" type="text"/>
+    <input id="linkIconUpdate" type="text" autocomplete="off"/>
         <div class="console-form-actions"><button onclick="admin.linkList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>

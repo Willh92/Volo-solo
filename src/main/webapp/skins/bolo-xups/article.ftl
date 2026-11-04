@@ -83,7 +83,7 @@
         page.loadRandomArticles('<h3>${randomArticlesLabel}</h3>');
     </#if>
     <#if 0 != relevantArticlesDisplayCount>
-        page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel}</h3>');
+        page.loadRelevantArticles('${article.oId?js_string}', '<h3>${relevantArticlesLabel}</h3>');
     </#if>
     Skin.initArticle()
 </@comment_script>

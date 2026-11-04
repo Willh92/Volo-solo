@@ -72,7 +72,7 @@ public class SkinConsole {
         final java.net.URI publicUrl = java.net.URI.create(Latkes.getServePath());
         final String expectedOrigin = publicUrl.getScheme() + "://" + publicUrl.getRawAuthority();
         if (!"XMLHttpRequest".equals(context.header("X-Requested-With"))
-                || (origin != null && !expectedOrigin.equals(origin))) {
+                || (origin != null && !expectedOrigin.equals(origin)) || "cross-site".equalsIgnoreCase(context.header("Sec-Fetch-Site"))) {
             context.setStatus(403);
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "请求来源不正确。"));
             return;

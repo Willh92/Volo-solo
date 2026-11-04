@@ -84,7 +84,9 @@ public class CommentConsole {
      * @param context the specified request context
      */
     public void removeArticleComment(final RequestContext context) {
-        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
+        context.setHeader("Cache-Control", "no-store");
+        if (!Solos.isAdminOrAuthorLoggedIn(context)) { org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。"); return; }
+        if (!org.b3log.solo.util.AdminRequests.verifySameOriginWrite(context)) return;
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();

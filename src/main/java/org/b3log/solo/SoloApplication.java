@@ -121,13 +121,23 @@ public final class SoloApplication {
         Latkes.setScanPath("org.b3log.solo");
         Latkes.init();
         org.b3log.latke.http.Dispatcher.startRequestHandler = context -> {
-            // Incoming browser cookies have no Path/expiry/security attributes. Do not echo them back.
-            // Keep Latke's intentionally issued session cookie; application handlers issue all other updates.
+            final Request req = context.getRequest();
+            final org.b3log.latke.http.Session session = req.getSession();
+            final String rawCookies = req.getHeader("Cookie");
+            final boolean hadIncomingSession = session != null && rawCookies != null
+                    && rawCookies.contains(org.b3log.latke.http.Session.LATKE_SESSION_ID + "=" + session.getId());
+            req.setAttribute("bolo.hadIncomingSession", hadIncomingSession);
+            // Incoming browser cookies have no Path/expiry/security attributes. Do not echo them back,
+            // and do not attach transient anonymous session cookies unless an existing session was presented.
             context.getResponse().getCookies().removeIf(cookie ->
-                    !org.b3log.latke.http.Session.LATKE_SESSION_ID.equals(cookie.getName()));
-            requestInitialized(context.getRequest());
+                    !hadIncomingSession || !org.b3log.latke.http.Session.LATKE_SESSION_ID.equals(cookie.getName()));
+            requestInitialized(req);
         };
-        org.b3log.latke.http.Dispatcher.endRequestHandler = context -> requestDestroyed(context.getRequest());
+        org.b3log.latke.http.Dispatcher.endRequestHandler = context -> {
+            final Request req = context.getRequest();
+            evictTransientSession(req);
+            requestDestroyed(req);
+        };
         Routes.HANDLERS.removeIf(handler -> handler instanceof org.b3log.latke.http.handler.StaticResourceHandler);
         Routes.HANDLERS.add(0, new org.b3log.solo.web.PublicResourceHandler());
         Routes.HANDLERS.add(0, new InitCheckHandler());
@@ -190,7 +200,9 @@ public final class SoloApplication {
         System.out.println("");
 
         Stopwatchs.end();
-        LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+        }
 
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
         cronMgmtService.start();
@@ -211,17 +223,36 @@ public final class SoloApplication {
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
         cronMgmtService.stop();
         org.b3log.solo.event.BackgroundEvents.shutdown();
+        org.b3log.solo.improve.SharedExecutorPool.shutdown();
         org.b3log.solo.util.IpGeo.close();
         Latkes.shutdown();
 
         LOGGER.info("Destroyed the context");
     }
+    public static void evictTransientSession(final Request request) {
+        if (request == null) return;
+        final org.b3log.latke.http.Session session = request.getSession();
+        if (session != null && Boolean.FALSE.equals(request.getAttribute("bolo.hadIncomingSession"))) {
+            final String viewPwds = session.getAttribute(org.b3log.solo.model.Common.ARTICLES_VIEW_PWD);
+            if (viewPwds == null || viewPwds.isBlank() || "{}".equals(viewPwds)) {
+                org.b3log.latke.http.Sessions.CACHE.remove(session.getId());
+            }
+        }
+        if (org.b3log.latke.http.Sessions.CACHE.size() > 4096) {
+            org.b3log.latke.http.Sessions.CACHE.clear();
+        }
+    }
     public void requestInitialized(final Request httpServletRequest) {
         httpServletRequest.setAttribute(Keys.HttpRequest.START_TIME_MILLIS, System.currentTimeMillis());
-        Requests.log(httpServletRequest, Level.DEBUG, LOGGER.unwrap());
+        if (LOGGER.isDebugEnabled()) {
+            Requests.log(httpServletRequest, Level.DEBUG, LOGGER.unwrap());
+        }
 
         final String requestURI = httpServletRequest.getRequestURI();
         Stopwatchs.start("Request Initialized [requestURI=" + requestURI + "]");
+        if (org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)) {
+            return;
+        }
         fillBotAttrs(httpServletRequest);
         if (!Solos.isBot(httpServletRequest)) {
             final StatisticMgmtService statisticMgmtService = beanManager.getReference(StatisticMgmtService.class);
@@ -233,7 +264,9 @@ public final class SoloApplication {
     public void requestDestroyed(final Request request) {
         Stopwatchs.end();
 
-        LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+        }
         Stopwatchs.release();
     }
 
@@ -420,7 +453,7 @@ public final class SoloApplication {
         Routes.get("/console/export/hexo", adminConsole::exportHexo);
 
         final ArticleConsole articleConsole = beanManager.getReference(ArticleConsole.class);
-        Routes.get("/console/article/push2rhy", articleConsole::pushArticleToCommunity);
+        Routes.post("/console/article/push2rhy", articleConsole::pushArticleToCommunity);
         Routes.get("/console/thumbs", articleConsole::getArticleThumbs);
         Routes.get("/console/article/{id}", articleConsole::getArticle);
         Routes.get("/console/articles/status/{status}/{page}/{pageSize}/{windowSize}",
@@ -485,7 +518,7 @@ public final class SoloApplication {
         Routes.put("/console/skin", skinConsole::updateSkin);
 
         final RepairConsole repairConsole = beanManager.getReference(RepairConsole.class);
-        Routes.get("/fix/restore-signs", repairConsole::restoreSigns);
+        Routes.post("/fix/restore-signs", repairConsole::restoreSigns);
 
         final TagConsole tagConsole = beanManager.getReference(TagConsole.class);
         Routes.get("/console/tags", tagConsole::getTags);

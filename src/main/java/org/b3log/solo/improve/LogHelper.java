@@ -38,6 +38,8 @@ public class LogHelper implements Runnable {
 
     // 提交反馈服务器地址
     private static final String helperHost = "http://report.stackoverflow.wiki:4399/Log";
+    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+            .setConnectTimeout(2000).setConnectionRequestTimeout(1000).setSocketTimeout(2000).build();
     private final List<Map<String, Object>> logs;
 
     public LogHelper(final List<Map<String, Object>> logs) {
@@ -71,18 +73,13 @@ public class LogHelper implements Runnable {
 
             statisticsObject.put("data", statisticsDataObject);
 
-            CloseableHttpClient uploadSiteStatisticsHttpClient = new PassSSL().createSSLClientDefault();
-            HttpPost httpPost = new HttpPost(helperHost);
-            String params = statisticsObject.toString();
-            StringEntity httpEntity = new StringEntity(params, "utf-8");
-            RequestConfig config = RequestConfig.custom().setConnectTimeout(2000).setConnectionRequestTimeout(1000).setSocketTimeout(2000).build();
-            httpPost.setConfig(config);
+            final HttpPost httpPost = new HttpPost(helperHost);
+            httpPost.setConfig(REQUEST_CONFIG);
             httpPost.setHeader("Content-Type", "application/json");
-            httpPost.setEntity(httpEntity);
+            httpPost.setEntity(new StringEntity(statisticsObject.toString(), "utf-8"));
 
-            try {
-                CloseableHttpResponse response = uploadSiteStatisticsHttpClient.execute(httpPost);
-                response.close();
+            try (CloseableHttpClient client = new PassSSL().createSSLClientDefault();
+                 CloseableHttpResponse ignored = client.execute(httpPost)) {
             } catch (IOException ignored) {
             }
         }

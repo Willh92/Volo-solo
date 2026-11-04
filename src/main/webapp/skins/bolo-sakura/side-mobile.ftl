@@ -31,7 +31,7 @@
 
     <div class="m-search">
         <form class="m-search-form" method="get" action="${servePath}/search" role="search">
-            <input class="m-search-input" type="search" name="keyword" placeholder="搜索..." required>
+            <input autocomplete="off" class="m-search-input" type="search" name="keyword" placeholder="搜索..." required>
         </form>
     </div>
 
@@ -52,7 +52,7 @@
             <li><a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}"><span
                             class="faa-parent animated-hover">
                                             <#if page.pageIcon?contains("/")>
-                                                <img class="icon faa-horizontal" aria-hidden="true" style="height: 16px; width: 16px;"
+                                                <img class="icon faa-horizontal" aria-hidden="true" style="height: 16px; width: 16px; vertical-align: -2px; object-fit: contain;"
                                                      src="${page.pageIcon?html}">
                                             <#else>
                                                 <i class="fa fa-${page.pageIcon?html} faa-horizontal" aria-hidden="true"></i>

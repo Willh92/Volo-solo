@@ -18,13 +18,13 @@
 
 -->
 <#setting locale="en_US">
-<li id="${comment.oId}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li id="${comment.oId?html}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="user-comment">
         <div class="user-comment-header thread-comment-header">
             <span class="comment-author">
-            <a class="post-name" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'><span class="post-name">${comment.commentName?html}</span><#else><a class="post-name" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a></#if>
             <#if comment.isReply>
-                @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"><span class="post-name">${comment.commentOriginalCommentName?html}</span></a>
+                @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"><span class="post-name">${comment.commentOriginalCommentName?html}</span></a>
             </#if>
             </span>
             <span class="post-time comment-details"><time datetime="${comment.commentDate2?string('yyyy-MM-dd')}">${comment.commentDate2?string["MMM d, yyyy"]}</time>

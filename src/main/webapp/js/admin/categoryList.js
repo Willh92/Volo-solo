@@ -86,35 +86,45 @@ admin.categoryList = {
                 admin.categoryList.pageInfo.currentCount = categories.length;
                 admin.categoryList.pageInfo.pageCount = result.pagination.paginationPageCount === 0 ? 1 : result.pagination.paginationPageCount;
 
+                var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+                    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                };
+                var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+                    return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
+                };
                 for (var i = 0; i < categories.length; i++) {
+                    var safeId = encodeQuote(categories[i].oId);
+                    var encodedTitle = encodeQuote(categories[i].categoryTitle);
                     categoryData[i] = {};
                     if (i === 0) {
                         if (categories.length === 1) {
                             categoryData[i].linkOrder = "";
                         } else {
                             categoryData[i].linkOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.categoryList.changeOrder(' + categories[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.categoryList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                         }
                     } else if (i === categories.length - 1) {
                         categoryData[i].linkOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.categoryList.changeOrder(' + categories[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.categoryList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
                             </div>';
                     } else {
                         categoryData[i].linkOrder = '<div class="table-center" style="width:38px">\
-                                <span onclick="admin.categoryList.changeOrder(' + categories[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
-                                <span onclick="admin.categoryList.changeOrder(' + categories[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.categoryList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.categoryList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                     }
 
-                    categoryData[i].categoryTitle = categories[i].categoryTitle;
-                    categoryData[i].categoryURI = categories[i].categoryURI;
-                    categoryData[i].categoryDesc = categories[i].categoryDescription;
+                    categoryData[i].categoryTitle = escapeHtml(categories[i].categoryTitle);
+                    categoryData[i].categoryURI = escapeHtml(categories[i].categoryURI);
+                    categoryData[i].categoryDesc = escapeHtml(categories[i].categoryDescription);
 
                     categoryData[i].expendRow = "<a href='javascript:void(0)' onclick=\"admin.categoryList.get('" +
-                            categories[i].oId + "')\">" + Label.updateLabel + "</a>\
-                            <a href='javascript:void(0)' onclick=\"admin.categoryList.del('" + categories[i].oId + "', '" +
-                            encodeURIComponent(categories[i].categoryTitle) + "')\">" + Label.removeLabel + "</a> ";
+                            safeId + "')\">" + Label.updateLabel + "</a>\
+                            <a href='javascript:void(0)' onclick=\"admin.categoryList.del('" + safeId + "', '" +
+                            encodedTitle + "')\">" + Label.removeLabel + "</a> ";
 
                 }
                 that.tablePagination.updateTablePagination(categoryData, pageNum, result.pagination);
@@ -310,5 +320,8 @@ admin.categoryList = {
 admin.register["category-list"] = {
     "obj": admin.categoryList,
     "init": admin.categoryList.init,
-    "refresh": admin.categoryList.getList
+    "refresh": function (page) {
+        this.cancelEdit();
+        this.getList(page);
+    }
 }

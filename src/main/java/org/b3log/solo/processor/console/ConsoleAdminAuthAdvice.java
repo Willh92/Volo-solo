@@ -23,8 +23,6 @@ import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import org.b3log.latke.http.Response;
-
 /**
  * The common auth check before advice for admin console.
  *
@@ -46,6 +44,12 @@ public class ConsoleAdminAuthAdvice implements org.b3log.latke.http.function.Han
 
             context.setStatus(exception401.getInt(org.b3log.solo.model.Common.STATUS_CODE));
             context.renderJSON(exception401);
+            context.abort();
+            return;
+        }
+        final String method = context.method();
+        if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method) && !"OPTIONS".equalsIgnoreCase(method)
+                && !org.b3log.solo.util.AdminRequests.verifySameOriginWrite(context)) {
             context.abort();
             return;
         }

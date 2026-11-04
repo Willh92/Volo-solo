@@ -32,7 +32,11 @@
         if (!disposed && current === revision) { message.textContent = error.name === 'AbortError' ? '验证码获取超时，点击图片重试。' : error.message; state() }
       } finally { clearTimeout(timeout); if (current === revision) host.removeAttribute('aria-busy') }
     }
+    function onPageShow (event) { if (event && event.persisted && !disposed) reload() }
+    function onVisibilityChange () { if (!document.hidden && !disposed && ready && required && expiresAt <= Date.now()) reload() }
     refresh.addEventListener('click', reload)
+    if (window.addEventListener) window.addEventListener('pageshow', onPageShow)
+    if (document.addEventListener) document.addEventListener('visibilitychange', onVisibilityChange)
     var initial = reload()
     return {ready:initial, refresh:reload, payload:function () { return !required ? {} : {captchaId:id,captchaAnswer:answer.value.trim()} },
       valid:function () {
@@ -41,7 +45,12 @@
         return !required || answer.reportValidity()
       }, focus:function () { answer.focus() },
       ensureFresh:function () { if (ready && required && expiresAt <= Date.now()) reload() },
-      isRequired:function () { return required }, destroy:function () { disposed = true; ++revision; request?.abort() }}
+      isRequired:function () { return required },
+      destroy:function () {
+        disposed = true; ++revision; request?.abort()
+        if (window.removeEventListener) window.removeEventListener('pageshow', onPageShow)
+        if (document.removeEventListener) document.removeEventListener('visibilitychange', onVisibilityChange)
+      }}
   }
   window.VoloCaptcha = {mount:mount}
 })()

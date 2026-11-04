@@ -51,13 +51,13 @@
                     </a>
                 </li>
                 </#list>
-                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" itemClass="menu-item" panelIcon="icon-setting" exitIcon="icon-logout" loginIcon="icon-login"/>
+                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" itemClass="menu-item"/>
             </ul>
 
 
             <div class="site-search">
                 <form action="${servePath}/search">
-                    <input placeholder="${searchLabel}" id="search" type="text" name="keyword"/>
+                    <input autocomplete="off" placeholder="${searchLabel}" id="search" type="text" name="keyword"/>
                     <input type="submit" value="" class="fn-none" />
                 </form>
             </div>

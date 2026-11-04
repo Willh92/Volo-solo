@@ -42,7 +42,7 @@ import org.json.JSONObject;
  * @since 0.3.1
  */
 @Singleton
-@Before(ConsoleAuthAdvice.class)
+@Before(ConsoleAdminAuthAdvice.class)
 public class RepairConsole {
 
     /**
@@ -98,6 +98,9 @@ public class RepairConsole {
      * @param context the specified context
      */
     public void restoreSigns(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) {
+            return;
+        }
         final TextHtmlRenderer renderer = new TextHtmlRenderer();
         context.setRenderer(renderer);
 
@@ -110,7 +113,7 @@ public class RepairConsole {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            renderer.setContent("Restores signs failed, error msg [" + e.getMessage() + "]");
+            renderer.setContent("Restores signs failed.");
         }
     }
 }

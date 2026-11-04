@@ -52,7 +52,7 @@
         </button>
         <main class="header__menu fn__none">
             <ul>
-                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li" panelIcon="icon__setting" exitIcon="icon__logout" loginIcon="icon__login"/>
+                <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="li"/>
                 <#list pageNavigations as page>
                     <li>
                         <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}" rel="section">

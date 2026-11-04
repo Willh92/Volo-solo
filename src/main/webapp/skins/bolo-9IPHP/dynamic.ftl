@@ -33,14 +33,14 @@
                     <#if 0 < recentComments?size>
                         <ul class="comments" id="comments">
                             <#list recentComments as comment>
-                                <li id="${comment.oId}">
+                                <li id="${comment.oId?html}">
                                     <div>
                                         <main>
                                             <div class="fn-clear">
-                                                <#if "http://" == comment.commentURL>
+                                                <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                                                     ${comment.commentName?html}
                                                     <#else>
-                                                        <a class="user-name" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+                                                        <a class="user-name" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
                                                 </#if>
                                                 <time class="ft-gray">${comment.commentDate?string("yyyy-MM-dd HH:mm")}</time>
                                                 <a class="reply-btn" href="${servePath}${comment.commentSharpURL}">${viewLabel}»</a>

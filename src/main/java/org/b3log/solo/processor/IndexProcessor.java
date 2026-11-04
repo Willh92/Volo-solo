@@ -18,6 +18,7 @@
 package org.b3log.solo.processor;
 
 import org.b3log.solo.util.AdminPaths;
+import org.b3log.solo.util.AdminRequests;
 
 import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
@@ -34,7 +35,6 @@ import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.web.annotation.RequestProcessing;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.SoloApplication;
@@ -48,8 +48,10 @@ import org.json.JSONObject;
 
 import org.b3log.latke.http.Request;
 import org.b3log.latke.http.Response;
+import java.net.URI;
 import java.util.Calendar;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Index processor.
@@ -102,7 +104,6 @@ public class IndexProcessor {
      * Shows index with the specified context.
      *
      * @param context the specified context
-     * @throws Exception exception
      */
     @RequestProcessing(value = {"", "/"}, method = HttpMethod.GET)
     public void showIndex(final RequestContext context) {
@@ -155,6 +156,7 @@ public class IndexProcessor {
      */
     @RequestProcessing(value = "/start", method = HttpMethod.GET)
     public void showStart(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
 
@@ -171,10 +173,9 @@ public class IndexProcessor {
         AdminPaths.fill(dataModel);
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         dataModel.putAll(langs);
-        // 登录失败提示
         final BeanManager beanManager = BeanManager.getInstance();
         final InitService initService = beanManager.getReference(InitService.class);
-        String status = context.getRequest().getParameter("status");
+        final String status = context.getRequest().getParameter("status");
         if (status != null && status.equals("error")) {
             dataModel.put(Common.DATA, 0);
         } else if (!initService.isInited()) {
@@ -210,14 +211,11 @@ public class IndexProcessor {
     @RequestProcessing(value = "/root", method = HttpMethod.GET)
     @Deprecated
     public void showRoot(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
         if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
-
-            return;
         } else {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.login());
-
-            return;
         }
     }
 
@@ -228,6 +226,11 @@ public class IndexProcessor {
      */
     @RequestProcessing(value = "/logout", method = HttpMethod.GET)
     public void logout(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (AdminRequests.isCrossSiteRequest(context)) {
+            context.sendError(403);
+            return;
+        }
         final Request httpServletRequest = context.getRequest();
 
         Solos.logout(httpServletRequest, context.getResponse());
@@ -263,14 +266,42 @@ public class IndexProcessor {
     }
 
     /**
-     * Preventing unvalidated redirects and forwards. See more at:
-     * <a href="https://www.owasp.org/index.php/Unvalidated_Redirects_and_Forwards_Cheat_Sheet">https://www.owasp.org/index.php/
-     * Unvalidated_Redirects_and_Forwards_Cheat_Sheet</a>.
+     * Preventing unvalidated redirects and forwards.
      *
-     * @return whether the destinationURL is an internal link
+     * @return whether the destinationURL is an internal link on the configured serve origin
      */
     private boolean isInternalLinks(final String destinationURL) {
-        return destinationURL.startsWith(Latkes.getServePath());
+        if (StringUtils.isBlank(destinationURL)) {
+            return false;
+        }
+        try {
+            final URI serve = URI.create(Latkes.getServePath());
+            final URI target = URI.create(destinationURL.trim());
+            if (target.getUserInfo() != null) {
+                return false;
+            }
+            final boolean sameOrigin = serve.getScheme() != null
+                    && serve.getScheme().equalsIgnoreCase(target.getScheme())
+                    && Objects.equals(serve.getHost() == null ? null : serve.getHost().toLowerCase(),
+                            target.getHost() == null ? null : target.getHost().toLowerCase())
+                    && effectivePort(serve) == effectivePort(target);
+            if (!sameOrigin) {
+                return false;
+            }
+            final String basePath = StringUtils.defaultString(serve.getPath());
+            final String targetPath = StringUtils.defaultString(target.getPath());
+            return basePath.isEmpty() || "/".equals(basePath)
+                    || targetPath.equals(basePath) || targetPath.startsWith(basePath + "/");
+        } catch (final Exception e) {
+            return false;
+        }
+    }
+
+    private static int effectivePort(final URI uri) {
+        if (uri.getPort() != -1) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 
     /**
@@ -299,7 +330,7 @@ public class IndexProcessor {
                 if (current < 1 || pageSize < 1 || pageSize > 100 || through < 1) throw new IllegalArgumentException();
                 jsonObject = RamAppender.page(current, pageSize, through);
             }
-        } catch (IllegalArgumentException invalid) {
+        } catch (final IllegalArgumentException invalid) {
             context.getResponse().setStatus(400);
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "日志页码或每页条数无效。"));
             return;

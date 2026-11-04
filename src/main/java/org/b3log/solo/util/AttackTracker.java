@@ -13,6 +13,12 @@ import java.util.function.LongSupplier;
 public final class AttackTracker {
     public record Trigger(String code, String reason) { }
     private static final long WINDOW = 120_000;
+    private static final java.util.regex.Pattern SENSITIVE_PATH_PATTERN = java.util.regex.Pattern.compile(
+            ".*(?:^|/)(?:\\.env(?:[./].*)?|\\.git(?:/.*)?|web-inf(?:/.*)?|meta-inf(?:/.*)?|etc/passwd|actuator/(?:env|heapdump)|wp-config\\.php|vendor/phpunit/.*|phpmyadmin(?:/.*)?)$");
+    private static final java.util.regex.Pattern SCRIPT_PATH_PATTERN = java.util.regex.Pattern.compile(
+            ".*\\.(?:php[0-9]?|asp|aspx|jsp|cgi)(?:/.*)?$");
+    private static final java.util.regex.Pattern ASSET_PATH_PATTERN = java.util.regex.Pattern.compile(
+            ".*\\.(?:css|js|map|png|jpg|jpeg|webp|gif|svg|ico|woff2?|ttf|otf)$");
     private final LongSupplier clock;
     private final LinkedHashMap<String, Window> clients = new LinkedHashMap<>(128, .75f, true);
     private static final class Window {
@@ -49,9 +55,9 @@ public final class AttackTracker {
         path = path.toLowerCase(Locale.ROOT).replace('\\', '/');
         if (path.startsWith("/error/")) return null;
         final boolean traversal = path.contains("../") || path.indexOf('\0') >= 0;
-        final boolean sensitive = path.matches(".*(?:^|/)(?:\\.env(?:[./].*)?|\\.git(?:/.*)?|web-inf(?:/.*)?|meta-inf(?:/.*)?|etc/passwd|actuator/(?:env|heapdump)|wp-config\\.php|vendor/phpunit/.*|phpmyadmin(?:/.*)?)$");
-        final boolean script = path.matches(".*\\.(?:php[0-9]?|asp|aspx|jsp|cgi)(?:/.*)?$") || path.startsWith("/wp-admin/") || path.startsWith("/wp-includes/");
-        final boolean asset = path.matches(".*\\.(?:css|js|map|png|jpg|jpeg|webp|gif|svg|ico|woff2?|ttf|otf)$");
+        final boolean sensitive = SENSITIVE_PATH_PATTERN.matcher(path).matches();
+        final boolean script = SCRIPT_PATH_PATTERN.matcher(path).matches() || path.startsWith("/wp-admin/") || path.startsWith("/wp-includes/");
+        final boolean asset = ASSET_PATH_PATTERN.matcher(path).matches();
         // Assets, repeated one-off broken links and successful requests do not count as failed probes.
         if (asset && !traversal && !sensitive && !script) return null;
         final long now = clock.getAsLong();

@@ -18,19 +18,19 @@
 
 -->
 <#setting locale="en_US">
-<li id="${comment.oId}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li id="${comment.oId?html}" class="item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="fn__clear">
         <div class="item__name">
-            <#if "http://" == comment.commentURL>
+            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                 <span class="ft__fade">${comment.commentName?html}</span>
             <#else>
-            <a class="ft__link" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+            <a class="ft__link" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
             </#if>
 
             <#if comment.isReply>
-            @ <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-                 onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 6);"
-                 onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+            @ <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+                 onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 6);"
+                 onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
             >${comment.commentOriginalCommentName?html}</a>
             </#if>
         </div>

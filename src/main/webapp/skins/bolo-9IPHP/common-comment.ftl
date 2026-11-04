@@ -17,20 +17,20 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li id="${comment.oId?html}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div>
         <main>
             <div class="fn-clear comment-meta">
                 <span class="comment-author">
-                <#if "http://" == comment.commentURL>
+                <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                 ${comment.commentName?html}
                 <#else>
-                <a class="user-name" href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+                <a class="user-name" href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
                 </#if>
                 <#if comment.isReply>
-                @<a class="user-name" href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-                   onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 23);"
-                   onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+                @<a class="user-name" href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+                   onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 23);"
+                   onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
                 >${comment.commentOriginalCommentName?html}</a>
                 </#if>
                 </span>

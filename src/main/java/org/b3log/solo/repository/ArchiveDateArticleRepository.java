@@ -67,6 +67,25 @@ public class ArchiveDateArticleRepository extends AbstractRepository {
         return getPublishedArticleCount(Collections.singletonList(archiveDateId));
     }
 
+    /** Batch-counts published articles grouped by archiveDate_oId in a single SQL query. */
+    public java.util.Map<String, Integer> getPublishedArticleCountsByArchiveDate() throws RepositoryException {
+        final java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        final List<JSONObject> rows = select(
+                "SELECT r.archiveDate_oId, COUNT(DISTINCT a.oId) AS C FROM " + getName()
+                        + " AS r INNER JOIN " + articleRepository.getName()
+                        + " AS a ON a.oId = r.article_oId WHERE a.articleStatus = ? GROUP BY r.archiveDate_oId",
+                Article.ARTICLE_STATUS_C_PUBLISHED);
+        if (rows != null) {
+            for (final JSONObject row : rows) {
+                final String archiveDateId = row.optString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID);
+                if (!archiveDateId.isEmpty()) {
+                    counts.put(archiveDateId, row.optInt("C"));
+                }
+            }
+        }
+        return counts;
+    }
+
     /** Counts each published article once across duplicate records for the same month. */
     public int getPublishedArticleCount(final List<String> archiveDateIds) {
         if (archiveDateIds.isEmpty()) return 0;

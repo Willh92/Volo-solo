@@ -280,6 +280,19 @@ public class UserQueryService {
         return b3pass;
     }
 
+    public String getConfiguredB3Key() {
+        try {
+            final org.json.JSONObject opt = optionRepository.get(Option.ID_C_B3LOG_KEY);
+            final String b3pass = opt == null ? "" : opt.optString(Option.OPTION_VALUE).trim();
+            if (b3pass.isEmpty() || Option.DefaultPreference.DEFAULT_B3LOG_PASSWORD.equals(b3pass)) {
+                return "";
+            }
+            return b3pass;
+        } catch (final Exception e) {
+            return "";
+        }
+    }
+
     public String getFishKey() {
         String fishKey = "";
         try {

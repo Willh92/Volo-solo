@@ -87,26 +87,42 @@ admin.pluginList = {
                     return;
                 }
 
+                var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+                    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                };
+                var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+                    return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
+                };
                 admin.pluginList.pageInfo.currentPage = pageNum;
-                var datas = result.plugins;
+                var datas = result.plugins, rows = [];
                 for (var i = 0; i < datas.length; i++) {
-                    datas[i].expendRow = "<a href='javascript:void(0)' onclick=\"admin.pluginList.changeStatus('" +
-                            datas[i].oId + "', '" + datas[i].status + "')\">";
+                    var safeId = encodeQuote(datas[i].oId);
+                    var safeStatus = encodeQuote(datas[i].status);
+                    var row = {
+                        name: escapeHtml(datas[i].name),
+                        author: escapeHtml(datas[i].author),
+                        version: escapeHtml(datas[i].version)
+                    };
+                    row.expendRow = "<a href='javascript:void(0)' onclick=\"admin.pluginList.changeStatus('" +
+                            safeId + "', '" + safeStatus + "')\">";
                     if (datas[i].status === "ENABLED") {
-                        datas[i].status = Label.enabledLabel;
-                        datas[i].expendRow += Label.disableLabel;
+                        row.status = Label.enabledLabel;
+                        row.expendRow += Label.disableLabel;
                     } else {
-                        datas[i].status = Label.disabledLabel;
-                        datas[i].expendRow += Label.enableLabel;
+                        row.status = Label.disabledLabel;
+                        row.expendRow += Label.enableLabel;
                     }
-                    datas[i].expendRow += "</a>  ";
+                    row.expendRow += "</a>  ";
 
                     if (datas[i].setting != "{}") {
-                        datas[i].expendRow += "<a href='javascript:void(0)' onclick=\"admin.pluginList.toSetting('" + datas[i].oId + "')\"> " + Label.settingLabel + " </a>  ";
+                        row.expendRow += "<a href='javascript:void(0)' onclick=\"admin.pluginList.toSetting('" + safeId + "')\"> " + Label.settingLabel + " </a>  ";
                     }
+                    rows.push(row);
                 }
 
-                that.tablePagination.updateTablePagination(result.plugins, pageNum, result.pagination);
+                that.tablePagination.updateTablePagination(rows, pageNum, result.pagination);
 
                 $("#loadMsg").text("");
             }

@@ -190,10 +190,11 @@ public class UploadUtil {
                 PutObjectRequest aliyunPutObjectRequest = new PutObjectRequest(aliyunBucketName, aliyunFilename, file);
                 try {
                     aliyunOSSClient.putObject(aliyunPutObjectRequest);
-                    aliyunOSSClient.shutdown();
                     result = aliyunTreaty + "://" + aliyunBucketDomain + "/" + aliyunFilename;
                 } catch (OSSException | ClientException e) {
                     throw new NullPointerException();
+                } finally {
+                    aliyunOSSClient.shutdown();
                 }
                 break;
             case "upyun":
@@ -233,9 +234,13 @@ public class UploadUtil {
                 com.qcloud.cos.region.Region tencentRegion = new com.qcloud.cos.region.Region(tencentCosRegion);
                 ClientConfig tencentClientConfig = new ClientConfig(tencentRegion);
                 COSClient tencentCosClient = new COSClient(tencentCosCred, tencentClientConfig);
-                com.qcloud.cos.model.PutObjectRequest tencentPutObjectRequest = new com.qcloud.cos.model.PutObjectRequest(tencentCosBucketName, tencentCosKey, file);
-                PutObjectResult tencentPutObjectResult = tencentCosClient.putObject(tencentPutObjectRequest);
-                result = tencentCosDomain + "/" + tencentCosKey;
+                try {
+                    com.qcloud.cos.model.PutObjectRequest tencentPutObjectRequest = new com.qcloud.cos.model.PutObjectRequest(tencentCosBucketName, tencentCosKey, file);
+                    PutObjectResult tencentPutObjectResult = tencentCosClient.putObject(tencentPutObjectRequest);
+                    result = tencentCosDomain + "/" + tencentCosKey;
+                } finally {
+                    tencentCosClient.shutdown();
+                }
                 break;
         }
         file.delete();

@@ -58,7 +58,7 @@
                 /
                 <#list article.articleTags?split(",") as articleTag>
                     <a class="tag" rel="tag"
-                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag}</a> &nbsp;
+                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag?html}</a> &nbsp;
                 </#list>
             </div>
             <h2 class="item__title">
@@ -70,7 +70,7 @@
                 </#if>
             </h2>
         </div>
-        <div class="item__cover" style="background-image: url(${article.articleImg1URL})"></div>
+        <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
         <div class="wrapper">
             <section class="item__content item__content--article vditor-reset">
                 ${article.articleContent}
@@ -110,7 +110,7 @@
         page.loadRandomArticles('<h3>${randomArticlesLabel}</h3>');
     </#if>
     <#if 0 != relevantArticlesDisplayCount>
-        page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel}</h3>');
+        page.loadRelevantArticles('${article.oId?js_string}', '<h3>${relevantArticlesLabel}</h3>');
     </#if>
     Skin.initArticle()
 </@comment_script>

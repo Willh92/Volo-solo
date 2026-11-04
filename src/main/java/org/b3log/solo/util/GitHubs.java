@@ -116,19 +116,19 @@ public final class GitHubs {
                 if (result.length() < 100) break;
             }
             // 排序
-            ArrayList<String> tempResultList = new ArrayList<>();
+            final ArrayList<JSONObject> tempResultList = new ArrayList<>(compatibleResult.length());
             for (int i = 0; i < compatibleResult.length(); i++) {
-                JSONObject compatibleObject = compatibleResult.optJSONObject(i);
-                tempResultList.add(compatibleObject.toString());
+                final JSONObject compatibleObject = compatibleResult.optJSONObject(i);
+                if (compatibleObject != null) {
+                    tempResultList.add(compatibleObject);
+                }
             }
-            tempResultList.sort((o1, o2) -> {
-                int o1star = new JSONObject(o1).optInt("githubrepoStargazersCount");
-                int o2star = new JSONObject(o2).optInt("githubrepoStargazersCount");
-                return Integer.compare(o2star, o1star);
-            });
-            JSONArray sortedCompatibleResult = new JSONArray();
-            for (String json : tempResultList) {
-                sortedCompatibleResult.put(new JSONObject(json));
+            tempResultList.sort((o1, o2) -> Long.compare(
+                    o2.optLong("githubrepoStargazersCount"),
+                    o1.optLong("githubrepoStargazersCount")));
+            final JSONArray sortedCompatibleResult = new JSONArray();
+            for (final JSONObject repo : tempResultList) {
+                sortedCompatibleResult.put(repo);
             }
 
             return sortedCompatibleResult;

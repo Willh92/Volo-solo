@@ -32,9 +32,12 @@ admin.preference = {
    * 初始化
    */
   init: function () {
+    $('#tabPreference').tabs()
+    this.load()
+  },
+  load: function () {
     this.loaded = false
     $('#tabPreferencePanel .console-form-actions button').prop('disabled', true)
-    $('#tabPreference').tabs()
 
     $.ajax({
       url: Label.servePath + '/console/preference/',
@@ -57,6 +60,7 @@ admin.preference = {
         $.ajax({
           url: Label.servePath + '/plugins/kanbanniang/assets/list',
           type: 'GET',
+          cache: false,
           timeout: 30000,
           success: function (res) {
             if (!res || res.sc === false || typeof res.msg !== 'string') return;
@@ -84,14 +88,14 @@ admin.preference = {
           $("#adminActiveSentToMailbox").val(preference.adminActiveSentToMailbox)
         }
 
-        $('#sendKey').val(preference.sendKey)
+        $('#sendKey').attr('placeholder', preference.sendKeySet ? '已设置，留空保留原密钥' : '').val(preference.sendKey)
         $('#replyRemind').val(preference.replyRemind)
         $('#sourceTC').text(preference.tuChuangConfig)
         sltd = $('#sourceTC').text().split('<<>>')[0]
         $('#tcS').val(sltd)
         $('#hacpaiUser').val(preference.hacpaiUser)
-        $('#b3logKey').val(preference.b3logKey)
-        $('#fishpiKey').val(preference.fishKey)
+        $('#b3logKey').attr('placeholder', preference.b3logKeySet ? '已设置，留空保留原密钥' : '').val(preference.b3logKey)
+        $('#fishpiKey').attr('placeholder', preference.fishKeySet ? '已设置，留空保留原密钥' : '').val(preference.fishKey)
         ;['smtpHost','smtpPort','smtpSecurity','smtpAuth','smtpFrom'].forEach(function (key) { $('#' + key).val(preference[key]) })
         $('#mailPassword').attr('placeholder', preference.smtpPasswordSet ? '已设置，留空保留原密码' : '密码或授权码')
         $('#mailUsername').val(preference.mailUsername)
@@ -120,7 +124,7 @@ admin.preference = {
         $('#randomArticlesDisplayCount').
           val(preference.randomArticlesDisplayCount)
         $('#customVars').val(preference.customVars)
-        $('#githubPAT').val(preference.githubPAT)
+        $('#githubPAT').attr('placeholder', preference.githubPATSet ? '已设置，留空保留原 Token' : '').val(preference.githubPAT)
         $('#maxArchive').val(preference.maxArchive)
         $('#myGitHubID').val(preference.myGitHubID)
         admin.githubRepositories.init()
@@ -345,5 +349,7 @@ admin.register['preference'] = {
   'init': admin.preference.init,
   'refresh': function () {
     admin.clearTip()
+    if (typeof lockPicBed === 'function') lockPicBed()
+    this.load()
   },
 }

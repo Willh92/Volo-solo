@@ -235,7 +235,7 @@ public class CommentMgmtService {
             }
             final String commentURL = requestJSONObject.optString(Comment.COMMENT_URL);
 
-            if (!Strings.isURL(commentURL) || StringUtils.contains(commentURL, "<")) {
+            if (!org.b3log.solo.util.OutboundUrls.isHttpOrHttps(commentURL)) {
                 requestJSONObject.put(Comment.COMMENT_URL, "");
             }
 

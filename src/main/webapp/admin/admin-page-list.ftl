@@ -28,15 +28,15 @@
     <h3 id="pageEditorTitle" data-create-label="${addPageLabel!'添加导航'}">${addPageLabel!'添加导航'}</h3>
     <div>
         <label>${title1Label}</label>
-        <input id="pageTitle" type="text"/>
+        <input id="pageTitle" type="text" autocomplete="off"/>
     </div>
     <div>
         <label>${permalink1Label}</label>
-        <input id="pagePermalink" type="text"/>
+        <input id="pagePermalink" type="text" autocomplete="off"/>
     </div>
     <div>
         <label>${icon1Label}</label>
-        <input id="pageIcon" type="text"/>
+        <input id="pageIcon" type="text" autocomplete="off"/>
     </div>
     <div>
         <label>${openMethod1Label}</label>

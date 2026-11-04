@@ -205,10 +205,16 @@ public class UserMgmtService {
             }
             oldUser.put(User.USER_ROLE, userRole);
 
-            final String userURL = requestJSONObject.optString(User.USER_URL);
+            final String userURL = requestJSONObject.optString(User.USER_URL).trim();
+            if (!userURL.isEmpty() && !org.b3log.solo.util.OutboundUrls.isHttpOrHttps(userURL)) {
+                throw new ServiceException("用户主页地址必须以 http:// 或 https:// 开头。");
+            }
             oldUser.put(User.USER_URL, userURL);
 
-            final String userAvatar = requestJSONObject.optString(UserExt.USER_AVATAR);
+            final String userAvatar = requestJSONObject.optString(UserExt.USER_AVATAR).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(userAvatar)) {
+                throw new ServiceException("用户头像地址不合法。");
+            }
             oldUser.put(UserExt.USER_AVATAR, userAvatar);
 
             if (changePassword) {
@@ -310,7 +316,7 @@ public class UserMgmtService {
             if (StringUtils.isBlank(userURL)) {
                 userURL = Latkes.getServePath();
             }
-            if (!Strings.isURL(userURL)) {
+            if (!org.b3log.solo.util.OutboundUrls.isHttpOrHttps(userURL)) {
                 throw new ServiceException(langPropsService.get("urlInvalidLabel"));
             }
             user.put(User.USER_URL, userURL);
@@ -318,7 +324,10 @@ public class UserMgmtService {
             final String roleName = requestJSONObject.optString(User.USER_ROLE, Role.DEFAULT_ROLE);
             user.put(User.USER_ROLE, roleName);
 
-            final String userAvatar = requestJSONObject.optString(UserExt.USER_AVATAR);
+            final String userAvatar = requestJSONObject.optString(UserExt.USER_AVATAR).trim();
+            if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(userAvatar)) {
+                throw new ServiceException("用户头像地址不合法。");
+            }
             user.put(UserExt.USER_AVATAR, userAvatar);
 
             final String userGitHubId = requestJSONObject.optString(UserExt.USER_GITHUB_ID);

@@ -21,7 +21,7 @@
     <#list articles as article>
         <#assign isRss=(article.isRss!false)?c=="true">
             <div class="nexmoe-post">
-                <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html} - ${blogTitle}">
+                <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html} - ${blogTitle}">
                     <div class="nexmoe-post-cover mdui-ripple">
                         <#if article.articlePutTop>
                             <i class="top iconfont solo-top"></i>

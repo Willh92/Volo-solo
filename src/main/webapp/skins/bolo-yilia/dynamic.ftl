@@ -36,10 +36,10 @@
                     <div class="content" style="margin-left: 0px;">
                         <div class="fn-clear post-meta">
                             <span class="fn-left">
-                                <#if "http://" == comment.commentURL>
+                                <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                                 <span>${comment.commentName?html}</span>
                                 <#else>
-                                <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+                                <a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
                                 </#if>
                                 <time>${comment.commentDate?string("yy-MM-dd HH")}</time> 
                             </span>

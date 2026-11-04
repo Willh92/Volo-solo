@@ -100,24 +100,35 @@ admin.userList = {
         }
         $('#tipMsg').text(Label.uploadMsg)
 
+        var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+          return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
+          })
+        }
+        var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+          return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27')
+        }
         for (var i = 0; i < users.length; i++) {
+          var safeId = encodeQuote(users[i].oId)
+          var safeRole = encodeQuote(users[i].userRole)
+          var encodedName = encodeQuote(users[i].userName)
           userData[i] = {}
-          userData[i].userName = users[i].userName
+          userData[i].userName = escapeHtml(users[i].userName)
 
           if ('adminRole' === users[i].userRole) {
             userData[i].isAdmin = '&nbsp;' + Label.administratorLabel
             userData[i].actions = '<a class=\'console-row-action\' href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
-              users[i].oId + '\', \'' + users[i].userRole + '\')">' +
+              safeId + '\', \'' + safeRole + '\')">' +
               Label.updateLabel + '</a>'
           } else {
             userData[i].actions = '<a class=\'console-row-action\' href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
-              users[i].oId + '\', \'' + users[i].userRole + '\')">' +
+              safeId + '\', \'' + safeRole + '\')">' +
               Label.updateLabel + '</a>\
                                 <a href=\'javascript:void(0)\' onclick="admin.userList.del(\'' +
-              users[i].oId + '\', \'' + encodeURIComponent(users[i].userName) +
+              safeId + '\', \'' + encodedName +
               '\')">' + Label.removeLabel + '</a> ' +
               '<a href=\'javascript:void(0)\' onclick="admin.userList.changeRole(\'' +
-              users[i].oId + '\')">' + Label.changeRoleLabel + '</a>'
+              safeId + '\')">' + Label.changeRoleLabel + '</a>'
             if ('defaultRole' === users[i].userRole) {
               userData[i].isAdmin = Label.commonUserLabel
             } else {
@@ -138,6 +149,8 @@ admin.userList = {
   get: function (id, userRole) {
     $('#loadMsg').text(Label.loadingLabel)
     $('#tipMsg').text('')
+    $('#userNameUpdate,#userURLUpdate,#userAvatarUpdate,#userB3KeyUpdate').val('')
+    $('#userNameUpdate').data('userInfo', null)
     $('#userUpdate').dialog('open')
 
     $.ajax({
@@ -173,6 +186,10 @@ admin.userList = {
       $('#tipMsg').text('')
 
       var userInfo = $('#userNameUpdate').data('userInfo')
+      if (!userInfo || !userInfo.oId) {
+        $('#loadMsg').text('')
+        return
+      }
       var requestJSONObject = {
         'userName': $('#userNameUpdate').val(),
         'oId': userInfo.oId,

@@ -80,6 +80,7 @@ $.extend(SoloEditor.prototype, {
         max: 50 * 1024 * 1024,
         url: Label.uploadURL,
         token: Label.uploadToken,
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
         filename: function (name) {
           return name.replace(/[^(a-zA-Z0-9\u4e00-\u9fa5\.)]/g, '').
           replace(/[\?\\/:|<>\*\[\]\(\)\$%\{\}@~]/g, '').

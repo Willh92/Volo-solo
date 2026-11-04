@@ -18,10 +18,12 @@
 package org.b3log.solo.cache;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.b3log.latke.ioc.Singleton;
+import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
 /**
@@ -36,19 +38,33 @@ public class FollowArticleCache {
     private final Map<String, Map<String, JSONObject>> followArticleCache = new ConcurrentHashMap<>();
 
     public Map<String, JSONObject> getFollowArticles(final String followName) {
-        final Map<String, JSONObject> articles = followArticleCache.get(followName);
-        if (null == articles) {
+        if (null == followName) {
             return Collections.emptyMap();
         }
-        return articles;
+        final Map<String, JSONObject> articles = followArticleCache.get(followName);
+        if (null == articles || articles.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        final Map<String, JSONObject> copy = new LinkedHashMap<>(articles.size());
+        for (final Map.Entry<String, JSONObject> entry : articles.entrySet()) {
+            copy.put(entry.getKey(), Solos.clone(entry.getValue()));
+        }
+        return copy;
     }
 
     public Map<String, JSONObject> removeFollowArticles(final String followName) {
-        return followArticleCache.remove(followName);
+        return null == followName ? null : followArticleCache.remove(followName);
     }
 
     public void putArticles(final String followName, final Map<String, JSONObject> articles) {
-        followArticleCache.put(followName, articles);
+        if (null == followName || null == articles) {
+            return;
+        }
+        final Map<String, JSONObject> snapshot = new LinkedHashMap<>(articles.size());
+        for (final Map.Entry<String, JSONObject> entry : articles.entrySet()) {
+            snapshot.put(entry.getKey(), Solos.clone(entry.getValue()));
+        }
+        followArticleCache.put(followName, Collections.unmodifiableMap(snapshot));
     }
 
     public void clear() {

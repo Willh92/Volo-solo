@@ -39,8 +39,8 @@
     <#if pjax><!---- pjax {#pjax} start ----></#if>
     <#include "macro-header.ftl">
     <@header type="article"></@header>
-    <div class="article__top" style="background-image: url(${article.articleImg1URL})">
-        <div style="background-image: url(${article.articleImg1URL})"></div>
+    <div class="article__top" style="background-image: url('${(article.articleImg1URL!'')?html}')">
+        <div style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
         <canvas id="articleTop"></canvas>
     </div>
     <div class="article">
@@ -52,7 +52,7 @@
                 /
                 <#list article.articleTags?split(",") as articleTag>
                     <a rel="tag"
-                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag}</a> &nbsp;
+                       href="${servePath}/tags/${articleTag?url('UTF-8')}">${articleTag?html}</a> &nbsp;
                 </#list>
             </div>
             <h2 class="article__title">
@@ -108,7 +108,7 @@
         page.loadRandomArticles('<h3>${randomArticlesLabel}</h3>');
     </#if>
     <#if 0 != relevantArticlesDisplayCount>
-        page.loadRelevantArticles('${article.oId}', '<h3>${relevantArticlesLabel}</h3>');
+        page.loadRelevantArticles('${article.oId?js_string}', '<h3>${relevantArticlesLabel}</h3>');
     </#if>
     Skin.initArticle()
 </@comment_script>

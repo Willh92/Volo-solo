@@ -17,18 +17,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<div id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<div id="${comment.oId?html}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comment-panel">
         <div class="left">
-        <#if "http://" == comment.commentURL>
+        <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
         ${comment.commentName?html}
         <#else>
-            <a href="${comment.commentURL?html}" target="_blank">${comment.commentName?html}</a>
+            <a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
         </#if>
         <#if comment.isReply>&nbsp;@
-            <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-               onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 20);"
-               onmouseout="page.hideComment('${comment.commentOriginalCommentId}')">${comment.commentOriginalCommentName?html}</a>
+            <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+               onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 20);"
+               onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')">${comment.commentOriginalCommentName?html}</a>
         </#if>
         </div>
     <#if article.commentable>

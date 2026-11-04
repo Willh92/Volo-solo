@@ -98,35 +98,48 @@ admin.followList = {
                 admin.followList.pageInfo.currentCount = follows.length;
                 admin.followList.pageInfo.pageCount = result.pagination.paginationPageCount === 0 ? 1 : result.pagination.paginationPageCount;
 
+                var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+                    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                        return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                };
+                var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+                    return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
+                };
                 for (var i = 0; i < follows.length; i++) {
+                    var safeId = encodeQuote(follows[i].oId);
+                    var encodedTitle = encodeQuote(follows[i].followTitle);
+                    var rawAddr = String(follows[i].followAddress == null ? '' : follows[i].followAddress).trim();
+                    var safeAddrText = escapeHtml(rawAddr);
+                    var safeHref = /^https?:\/\//i.test(rawAddr) ? safeAddrText : '#';
                     followData[i] = {};
                     if (i === 0) {
                         if (follows.length === 1) {
                             followData[i].followOrder = "";
                         } else {
                             followData[i].followOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.followList.changeOrder(' + follows[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.followList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                         }
                     } else if (i === follows.length - 1) {
                         followData[i].followOrder = '<div class="table-center" style="width:14px">\
-                                <span onclick="admin.followList.changeOrder(' + follows[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.followList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
                             </div>';
                     } else {
                         followData[i].followOrder = '<div class="table-center" style="width:38px">\
-                                <span onclick="admin.followList.changeOrder(' + follows[i].oId + ', ' + i + ', \'up\');" class="icon-move-up"></span>\
-                                <span onclick="admin.followList.changeOrder(' + follows[i].oId + ', ' + i + ', \'down\');" class="icon-move-down"></span>\
+                                <span onclick="admin.followList.changeOrder(\'' + safeId + '\', ' + i + ', \'up\');" class="icon-move-up"></span>\
+                                <span onclick="admin.followList.changeOrder(\'' + safeId + '\', ' + i + ', \'down\');" class="icon-move-down"></span>\
                             </div>';
                     }
 
-                    followData[i].followTitle = follows[i].followTitle;
-                    followData[i].followAddress = "<a target='_blank' class='no-underline' href='" + follows[i].followAddress + "'>"
-                        + follows[i].followAddress + "</a>";
-                    followData[i].followDescription = follows[i].followDescription;
-                    followData[i].followIcon = follows[i].followIcon;
-                    followData[i].expendRow = "<span><a href='" + follows[i].followAddress + "' target='_blank'>" + Label.viewLabel + "</a>  \
-                                <a href='javascript:void(0)' onclick=\"admin.followList.get('" + follows[i].oId + "')\">" + Label.updateLabel + "</a>\
-                                <a href='javascript:void(0)' onclick=\"admin.followList.del('" + follows[i].oId + "', '" + encodeURIComponent(follows[i].followTitle) + "')\">" + Label.removeLabel + "</a></span>";
+                    followData[i].followTitle = escapeHtml(follows[i].followTitle);
+                    followData[i].followAddress = "<a target='_blank' rel='noopener noreferrer' class='no-underline' href='" + safeHref + "'>"
+                        + safeAddrText + "</a>";
+                    followData[i].followDescription = escapeHtml(follows[i].followDescription);
+                    followData[i].followIcon = escapeHtml(follows[i].followIcon);
+                    followData[i].expendRow = "<span><a href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
+                                <a href='javascript:void(0)' onclick=\"admin.followList.get('" + safeId + "')\">" + Label.updateLabel + "</a>\
+                                <a href='javascript:void(0)' onclick=\"admin.followList.del('" + safeId + "', '" + encodedTitle + "')\">" + Label.removeLabel + "</a></span>";
                 }
 
                 that.tablePagination.updateTablePagination(followData, pageNum, result.pagination);
@@ -191,6 +204,8 @@ admin.followList = {
      */
     get: function (id) {
         $("#loadMsg").text(Label.loadingLabel);
+        this.id = "";
+        $("#followTitleUpdate,#followAddressUpdate,#followDescriptionUpdate,#followIconUpdate").val("");
         $("#updateFollow").dialog("open");
 
         $.ajax({
@@ -220,6 +235,9 @@ admin.followList = {
      * 更新链接
      */
     update: function () {
+        if (!this.id) {
+            return;
+        }
         if (this.validate("Update")) {
             $("#loadMsg").text(Label.loadingLabel);
             $("#tipMsg").text("");
@@ -310,7 +328,7 @@ admin.followList = {
         } else if ($("#followAddress" + status).val().replace(/\s/g, "") === "") {
             $("#tipMsg").text(Label.addressEmptyLabel);
             $("#followAddress" + status).focus().val("");
-        } else if (!/^\w+:\/\//.test($("#followAddress" + status).val())) {
+        } else if (!/^https?:\/\//i.test($("#followAddress" + status).val().trim())) {
             $("#tipMsg").text(Label.addressInvalidLabel);
             $("#followAddress" + status).focus().val("");
         } else {

@@ -21,7 +21,7 @@
     <#assign isRss=(article.isRss!false)?c=="true">
         <article class="article__item">
             <h2 class="article__title">
-                <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                <a class="skin-list-title" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                     ${(article.articleTitle)?html}
                 </a>
                 <#if article.articlePutTop>
@@ -31,7 +31,7 @@
                 </#if>
                 <#if article.hasUpdated>
                     <sup>
-                        <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                        <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                             ${updatedLabel}
                         </a>
                     </sup>
@@ -59,7 +59,7 @@
                 </span>
                 <div class="fn__right">
                     <#if interactive=="on">
-                        <a class="ft__red" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">
+                        <a class="ft__red" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                             <#if article.articleCommentCount gt 0>
                                 ${article.articleCommentCount}
                             </#if>
@@ -67,7 +67,7 @@
                         </a>
                         •
                     </#if>
-                    <a class="ft__red" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                    <a class="ft__red" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                         ${article.articleViewCount} ${viewLabel}
                     </a>
                 </div>
@@ -75,7 +75,7 @@
             <div class="vditor-reset article__content">
                 ${article.articleAbstract}
             </div>
-            <a class="article__more" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">More...</a>
+            <a class="article__more" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">More...</a>
         </article>
 </#list>
 <#if 0 !=paginationPageCount>

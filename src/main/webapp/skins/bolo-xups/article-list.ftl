@@ -52,7 +52,7 @@
                                 </#if>
                                 <!-- 文章标题 -->
                                 <h3 class="post-title">
-                                    <a class="skin-list-title" title="${(article.articleTitle!)?html}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                    <a class="skin-list-title" title="${(article.articleTitle!)?html}" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                         ${(article.articleTitle!)?html}
                                     </a>
                                 </h3>
@@ -80,7 +80,7 @@
                                 </div>
                                 <div class="post-thumbnail" data-img="">
                                     <a
-                                        href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
+                                        href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                                         title="${(article.articleTitle!)?html}">
                                         <img class="thumbnail" src="${article.articleImg1URL}" />
                                     </a>

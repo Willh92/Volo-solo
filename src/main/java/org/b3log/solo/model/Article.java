@@ -230,7 +230,8 @@ public final class Article {
      */
     public static String getArticleImg1URL(final JSONObject article) {
         final String summary = article.optString(Article.ARTICLE_ABSTRACT);
-        String content = article.optString(Article.ARTICLE_CONTENT);
+        String content = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+                ? "" : article.optString(Article.ARTICLE_CONTENT);
         content = summary + "\n\n" + content;
         final String html = Markdowns.toHTML(content);
         final String[] imgs = StringUtils.substringsBetween(html, "<img", ">");
@@ -263,7 +264,8 @@ public final class Article {
      */
     public static String getArticleImg1URLWithoutSetSize(final JSONObject article) {
         final String summary = article.optString(Article.ARTICLE_ABSTRACT);
-        String content = article.optString(Article.ARTICLE_CONTENT);
+        String content = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+                ? "" : article.optString(Article.ARTICLE_CONTENT);
         content = summary + "\n\n" + content;
         final String html = content;
         final String[] imgs = StringUtils.substringsBetween(html, "<img", ">");

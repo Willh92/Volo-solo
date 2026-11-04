@@ -51,7 +51,10 @@ admin.others = {
     admin.logs.page = 1; admin.logs.through = null;
     admin.others.getLog();
     clearInterval(this.pollTimer);
-    const pollTimer = setInterval(function () { if (admin.logs.page === 1) admin.others.getLog(); }, 15000);
+    const pollTimer = setInterval(function () {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (admin.logs.page === 1) admin.others.getLog();
+    }, 15000);
     this.pollTimer = pollTimer;
     if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(pollTimer); });
   },

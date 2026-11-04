@@ -18,10 +18,24 @@ import org.json.JSONObject;
 
 /** Reads only the bundled, allowlisted Live2D models. No remote bootstrap is needed. */
 public final class KanbanModels {
+    private static final java.util.regex.Pattern MODEL_NAME_PATTERN =
+            java.util.regex.Pattern.compile("[A-Za-z0-9_-]+/[A-Za-z0-9_-]+");
+    private static final java.util.Set<String> RESOURCE_KEYS =
+            java.util.Set.of("model", "textures", "physics", "pose", "file", "sound");
     private final Path root;
+    private volatile Path realRoot;
 
     public KanbanModels(final WebResources resources) {
         root = resources.resolve("/plugins/kanbanniang/assets");
+    }
+
+    private Path realRoot() throws IOException {
+        Path cached = realRoot;
+        if (cached == null) {
+            cached = root.toRealPath();
+            realRoot = cached;
+        }
+        return cached;
     }
 
     public List<String> names() throws IOException {
@@ -29,7 +43,7 @@ public final class KanbanModels {
         final List<String> names = new ArrayList<>();
         for (int i = 0; i < manifest.length(); i++) {
             final String name = manifest.getString(i);
-            if (!name.matches("[A-Za-z0-9_-]+/[A-Za-z0-9_-]+")) throw new IOException("Invalid model name");
+            if (!MODEL_NAME_PATTERN.matcher(name).matches()) throw new IOException("Invalid model name");
             if (!names.contains(name)) names.add(name);
         }
         if (names.isEmpty()) throw new IOException("No bundled models");
@@ -59,7 +73,7 @@ public final class KanbanModels {
             for (String child : object.keySet()) validate(object.get(child), child);
         } else if (value instanceof JSONArray array) {
             for (Object child : array) validate(child, key);
-        } else if (List.of("model", "textures", "physics", "pose", "file", "sound").contains(key)) {
+        } else if (RESOURCE_KEYS.contains(key)) {
             if (!(value instanceof String resource) || resource.isBlank()) throw new IOException("Invalid model resource");
             resolveResource(resource);
         }
@@ -75,7 +89,7 @@ public final class KanbanModels {
                 || List.of(name.split("/")).contains("..")) throw new IOException("Non-local model resource");
         final Path file = root.resolve(name).normalize();
         if (!file.startsWith(root) || !Files.isRegularFile(file)
-                || !file.toRealPath().startsWith(root.toRealPath())) throw new IOException("Missing bundled model resource");
+                || !file.toRealPath().startsWith(realRoot())) throw new IOException("Missing bundled model resource");
         return file;
     }
 }

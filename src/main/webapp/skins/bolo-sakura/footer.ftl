@@ -23,7 +23,7 @@
             <p class="micro mb-">
                 想要找点什么呢？
             </p>
-            <i class="fa fa-search"></i><input class="text-input" type="search" name="keyword"
+            <i class="fa fa-search"></i><input autocomplete="off" class="text-input" type="search" name="keyword"
                                                        placeholder="Search" required>
         </div>
     </div>

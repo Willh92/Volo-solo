@@ -45,7 +45,7 @@
                             </#if>
                             <div class="post wrapper wrapper--miner">
                                 <h2 class="item__title">
-                                    <a rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                    <a rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                         ${(article.articleTitle)?html}
                                     </a>
                                     <#if article.articlePutTop>
@@ -123,7 +123,7 @@
                                             data-type="wechat"
                                             data-title="${(article.articleTitle)?html}"
                                             data-blogtitle="${blogTitle}"
-                                            data-url="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
+                                            data-url="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                                             data-avatar="${article.authorThumbnailURL}">WeChat</span>
                                     </span>
                                     <span class="post__arrow">
@@ -159,7 +159,7 @@
                                     page.loadRandomArticles('<h3>RECOMMEND POSTS</h3>');
                                 </#if>
                                 <#if 0 !=relevantArticlesDisplayCount>
-                                    page.loadRelevantArticles('${article.oId}', '<h3>RELEVANT POSTS</h3>');
+                                    page.loadRelevantArticles('${article.oId?js_string}', '<h3>RELEVANT POSTS</h3>');
                                 </#if>
                                 Skin.initArticle()
                             </@comment_script>

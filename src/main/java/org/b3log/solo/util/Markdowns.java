@@ -34,7 +34,6 @@ import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.util.Callstacks;
 import org.b3log.latke.util.Stopwatchs;
-import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -50,6 +49,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * <a href="http://en.wikipedia.org/wiki/Markdown">Markdown</a> utilities.
@@ -69,10 +69,36 @@ public final class Markdowns {
      */
     private static final Logger LOGGER = Logger.getLogger(Markdowns.class);
 
+    private static final int MAX_MD_CACHE_ENTRIES = 512;
+    private static final int MAX_CACHEABLE_MD_LENGTH = 65536;
+
     /**
-     * Markdown cache.
+     * Bounded LRU Markdown cache.
      */
-    private static final Map<String, JSONObject> MD_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, String> MD_CACHE = Collections.synchronizedMap(
+            new LinkedHashMap<>(MAX_MD_CACHE_ENTRIES, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, String> eldest) {
+                    return size() > MAX_MD_CACHE_ENTRIES;
+                }
+            });
+
+    /**
+     * Shared bounded daemon pool for Markdown rendering.
+     */
+    private static final AtomicInteger RENDER_THREAD_SEQ = new AtomicInteger(1);
+    private static final ExecutorService RENDER_POOL = new ThreadPoolExecutor(
+            2,
+            Math.max(4, Math.min(8, Runtime.getRuntime().availableProcessors())),
+            60L,
+            TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(64),
+            runnable -> {
+                final Thread thread = new Thread(runnable, "volo-md-render-" + RENDER_THREAD_SEQ.getAndIncrement());
+                thread.setDaemon(true);
+                return thread;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
     /**
      * Markdown to HTML timeout.
@@ -176,12 +202,7 @@ public final class Markdowns {
 
         final LangPropsService langPropsService = BeanManager.getInstance().getReference(LangPropsService.class);
 
-        final ExecutorService pool = Executors.newSingleThreadExecutor();
-        final long[] threadId = new long[1];
-
         final Callable<String> call = () -> {
-            threadId[0] = Thread.currentThread().getId();
-
             String html = null;
             if (LUTE_AVAILABLE) {
                 try {
@@ -210,15 +231,15 @@ public final class Markdowns {
                 final String src = a.attr("href");
                 if (!StringUtils.startsWithIgnoreCase(src, Latkes.getServePath()) && !StringUtils.startsWithIgnoreCase(src, "#")) {
                     a.attr("target", "_blank");
+                    a.attr("rel", "noopener noreferrer");
                 }
                 a.removeAttr("id");
             });
 
-
             final List<Node> toRemove = new ArrayList<>();
             doc.traverse(new NodeVisitor() {
                 @Override
-                public void head(final org.jsoup.nodes.Node node, int depth) {
+                public void head(final org.jsoup.nodes.Node node, final int depth) {
                     if (node instanceof org.jsoup.nodes.TextNode) {
                         final org.jsoup.nodes.TextNode textNode = (org.jsoup.nodes.TextNode) node;
                         final org.jsoup.nodes.Node parent = textNode.parent();
@@ -248,7 +269,7 @@ public final class Markdowns {
                 }
 
                 @Override
-                public void tail(org.jsoup.nodes.Node node, int depth) {
+                public void tail(final org.jsoup.nodes.Node node, final int depth) {
                 }
             });
 
@@ -260,34 +281,26 @@ public final class Markdowns {
             ret = StringUtils.trim(ret);
             ret = Images.qiniuImgProcessing(ret);
 
-            // cache it
             putHTML(markdownText, ret);
 
             return ret;
         };
 
         Stopwatchs.start("Md to HTML");
+        Future<String> future = null;
         try {
-            final Future<String> future = pool.submit(call);
+            future = RENDER_POOL.submit(call);
 
             return future.get(MD_TIMEOUT, TimeUnit.MILLISECONDS);
         } catch (final TimeoutException e) {
-            LOGGER.log(Level.ERROR, "Markdown timeout [md=" + markdownText + "]");
-            Callstacks.printCallstack(Level.ERROR, new String[]{"org.b3log"}, null);
-
-            final Set<Thread> threads = Thread.getAllStackTraces().keySet();
-            for (final Thread thread : threads) {
-                if (thread.getId() == threadId[0]) {
-                    thread.stop();
-
-                    break;
-                }
+            if (null != future) {
+                future.cancel(true);
             }
+            LOGGER.log(Level.ERROR, "Markdown timeout [length=" + markdownText.length() + "]");
+            Callstacks.printCallstack(Level.ERROR, new String[]{"org.b3log"}, null);
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Markdown failed [md=" + markdownText + "]", e);
+            LOGGER.log(Level.ERROR, "Markdown failed [length=" + markdownText.length() + "]", e);
         } finally {
-            pool.shutdownNow();
-
             Stopwatchs.end();
         }
 
@@ -295,8 +308,12 @@ public final class Markdowns {
     }
 
     public static String toHtmlByLute(final String markdownText) throws Exception {
+        if (!OutboundUrls.isHttpOrHttps(LUTE_ENGINE_URL)) {
+            throw new IllegalArgumentException("Invalid Lute service URL");
+        }
         final URL url = new URL(LUTE_ENGINE_URL);
         final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setInstanceFollowRedirects(false);
         conn.setRequestProperty("X-CodeSyntaxHighlightLineNum", String.valueOf(Markdowns.SHOW_CODE_BLOCK_LN));
         conn.setRequestProperty("X-Footnotes", String.valueOf(Markdowns.FOOTNOTES));
         conn.setRequestProperty("X-ToC", String.valueOf(Markdowns.SHOW_TOC));
@@ -310,17 +327,21 @@ public final class Markdowns {
         conn.setReadTimeout(3000);
         conn.setDoOutput(true);
 
-        try (final OutputStream outputStream = conn.getOutputStream()) {
-            IOUtils.write(markdownText, outputStream, "UTF-8");
-        }
+        try {
+            try (final OutputStream outputStream = conn.getOutputStream()) {
+                IOUtils.write(markdownText, outputStream, StandardCharsets.UTF_8);
+            }
 
-        String ret;
-        try (final InputStream inputStream = conn.getInputStream()) {
-            ret = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+            try (final InputStream inputStream = conn.getInputStream()) {
+                final byte[] bytes = inputStream.readNBytes(4 * 1024 * 1024 + 1);
+                if (bytes.length > 4 * 1024 * 1024) {
+                    throw new IllegalStateException("Lute HTML response exceeds 4 MiB");
+                }
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+        } finally {
+            conn.disconnect();
         }
-
-        conn.disconnect();
-        return ret;
     }
 
     /** Render locally for security checks without calling a configured Lute service or populating its cache. */
@@ -329,7 +350,7 @@ public final class Markdowns {
     }
 
     private static String toHtmlByFlexmark(final String markdownText) {
-        com.vladsch.flexmark.util.ast.Node document = PARSER.parse(markdownText);
+        final com.vladsch.flexmark.util.ast.Node document = PARSER.parse(markdownText);
 
         return RENDERER.render(document);
     }
@@ -341,13 +362,11 @@ public final class Markdowns {
      * @return HTML
      */
     private static String getHTML(final String markdownText) {
-        final String hash = DigestUtils.md5Hex(markdownText);
-        final JSONObject value = MD_CACHE.get(hash);
-        if (null == value) {
+        if (markdownText.length() > MAX_CACHEABLE_MD_LENGTH) {
             return null;
         }
-
-        return value.optString("data");
+        final String hash = DigestUtils.sha256Hex(markdownText);
+        return MD_CACHE.get(hash);
     }
 
     /**
@@ -357,9 +376,10 @@ public final class Markdowns {
      * @param html         the specified HTML
      */
     private static void putHTML(final String markdownText, final String html) {
-        final String hash = DigestUtils.md5Hex(markdownText);
-        final JSONObject value = new JSONObject();
-        value.put("data", html);
-        MD_CACHE.put(hash, value);
+        if (markdownText.length() > MAX_CACHEABLE_MD_LENGTH || html.length() > MAX_CACHEABLE_MD_LENGTH * 4) {
+            return;
+        }
+        final String hash = DigestUtils.sha256Hex(markdownText);
+        MD_CACHE.put(hash, html);
     }
 }

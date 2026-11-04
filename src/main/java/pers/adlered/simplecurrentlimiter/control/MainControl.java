@@ -28,35 +28,43 @@ import pers.adlered.simplecurrentlimiter.cache.pair.CachePair;
  * @date : 2019-10-10 22:55
  **/
 public class MainControl extends MainCache {
+    public static final int MAX_CACHE_ENTRIES = 10_000;
+
     public boolean write(String str) {
-        boolean isOK = true;
-        // 先读取查看是否已经存在
-        long frequency = -1l;
-        long timeStamp = -1l;
-        long currentTimeStamp = System.currentTimeMillis();
-        CachePair verifyPair = this.cachePairMap.get(str);
-        if (verifyPair == null) {
-            frequency = 1l;
-            timeStamp = currentTimeStamp;
-        } else {
-            frequency = verifyPair.getFrequency() + 1l;
-            timeStamp = verifyPair.getTimeStamp();
-            // 超时刷新
-            if (this.expireTime != -1) {
-                if ((currentTimeStamp - timeStamp) > this.expireTime) {
-                    frequency = 1l;
+        if (str == null) {
+            return true;
+        }
+        final long currentTimeStamp = System.currentTimeMillis();
+        if (!this.cachePairMap.containsKey(str) && this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
+            final long expire = this.expireTime;
+            if (expire != -1) {
+                this.cachePairMap.entrySet().removeIf(entry ->
+                        (currentTimeStamp - entry.getValue().getTimeStamp()) > expire);
+            }
+            if (this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
+                this.cachePairMap.clear();
+            }
+        }
+        final CachePair updated = this.cachePairMap.compute(str, (key, verifyPair) -> {
+            long frequency;
+            long timeStamp;
+            if (verifyPair == null) {
+                frequency = 1L;
+                timeStamp = currentTimeStamp;
+            } else {
+                frequency = verifyPair.getFrequency() + 1L;
+                timeStamp = verifyPair.getTimeStamp();
+                if (this.expireTime != -1 && (currentTimeStamp - timeStamp) > this.expireTime) {
+                    frequency = 1L;
                     timeStamp = currentTimeStamp;
                 }
             }
-        }
-        if (frequency > this.frequencyTime) {
-            isOK = false;
-        }
-        CachePair newPair = new CachePair();
-        newPair.setFrequency(frequency);
-        newPair.setTimeStamp(timeStamp);
-        this.cachePairMap.put(str, newPair);
-        return isOK;
+            final CachePair next = new CachePair();
+            next.setFrequency(frequency);
+            next.setTimeStamp(timeStamp);
+            return next;
+        });
+        return updated.getFrequency() <= this.frequencyTime;
     }
 
     public void setFrequencyTime(long frequencyTime) {

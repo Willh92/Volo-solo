@@ -22,9 +22,9 @@
         <#assign isRss=(article.isRss!false)?c=="true">
             <article class="item">
                 <div class="item__container">
-                    <div class="item__cover" style="background-image: url(${article.articleImg1URL})"></div>
+                    <div class="item__cover" style="background-image: url('${(article.articleImg1URL!'')?html}')"></div>
                     <div rel="bookmark" class="item__abstract">
-                        <a pjax-title="${(article.articleTitle)?html}" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                        <a pjax-title="${(article.articleTitle)?html}" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                             ${article.articleAbstractText}
                         </a>
                     </div>
@@ -44,7 +44,7 @@
                             </#if>
                         </span>
                         <h2 class="item__title">
-                            <a class="skin-list-title" rel="bookmark" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                            <a class="skin-list-title" rel="bookmark" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                                 ${(article.articleTitle)?html}
                             </a>
                         </h2>

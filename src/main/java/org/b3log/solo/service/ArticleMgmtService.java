@@ -371,14 +371,14 @@ public class ArticleMgmtService {
             article.put(Common.POST_TO_COMMUNITY, true);
 
             final JSONObject data = new JSONObject().put(ARTICLE, article);
-            new Thread(() -> {
+            org.b3log.solo.event.BackgroundEvents.community(data, snapshot -> {
                 if (PluginUtil.b3logPluginEnabled()) {
-                    B3ArticleSender.pushArticleToRhy(data);
+                    B3ArticleSender.pushArticleToRhy(snapshot);
                 }
                 if (PluginUtil.fishpiPluginEnabled()) {
-                    FishPiArticleSender.pushArticleToFishPi(data);
+                    FishPiArticleSender.pushArticleToFishPi(snapshot);
                 }
-            }).start();
+            });
 
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Pushes an article [id=" + articleId + "] to community failed", e);

@@ -27,6 +27,55 @@ import java.util.*;
 /** Public static files only; application configuration and template sources stay private. */
 public final class PublicResourceHandler implements Handler {
     private static final Set<String> EXTENSIONS = Set.of("css","js","png","jpg","jpeg","gif","svg","ico","webp","avif","woff","woff2","ttf","eot","otf","json","mp3","mp4","webm","ogg","moc","mtn","txt");
+    private static final List<String> PUBLIC_PREFIXES = List.of("/scss/", "/js/", "/skins/", "/plugins/", "/images/");
+    private static final Set<String> PUBLIC_EXACT_PATHS = Set.of("/favicon.ico", "/robots.txt", "/sw.js", "/service-worker.js");
+    private static final Set<String> ALLOWED_METHODS = Set.of("GET", "HEAD");
+    private static final Set<String> NO_CACHE_PATHS = Set.of("/sw.js", "/service-worker.js");
+    private static final Set<String> GZIPPABLE_EXTENSIONS = Set.of("js", "css", "svg", "json");
+
+    public static boolean isPublicAssetUri(final String rawUri) {
+        if (rawUri == null || rawUri.isEmpty()) return false;
+        String uri = rawUri;
+        final int q = uri.indexOf('?');
+        if (q >= 0) uri = uri.substring(0, q);
+        final String ctx = Latkes.getContextPath();
+        if (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) uri = uri.substring(ctx.length());
+        if (PUBLIC_EXACT_PATHS.contains(uri)) return true;
+        boolean prefixMatched = false;
+        for (int i = 0; i < PUBLIC_PREFIXES.size(); i++) {
+            if (uri.startsWith(PUBLIC_PREFIXES.get(i))) { prefixMatched = true; break; }
+        }
+        if (!prefixMatched) return false;
+        final int dot = uri.lastIndexOf('.');
+        return dot >= 0 && EXTENSIONS.contains(uri.substring(dot + 1).toLowerCase(Locale.ROOT));
+    }
+
+    private static String contentTypeForExtension(final String extension, final Path file) throws java.io.IOException {
+        return switch (extension) {
+            case "js" -> "application/javascript";
+            case "css" -> "text/css";
+            case "svg" -> "image/svg+xml";
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "avif" -> "image/avif";
+            case "ico" -> "image/x-icon";
+            case "woff2" -> "font/woff2";
+            case "woff" -> "font/woff";
+            case "ttf" -> "font/ttf";
+            case "otf" -> "font/otf";
+            case "eot" -> "application/vnd.ms-fontobject";
+            case "json" -> "application/json";
+            case "txt" -> "text/plain; charset=UTF-8";
+            case "ogg" -> "audio/ogg";
+            case "mp3" -> "audio/mpeg";
+            case "mp4" -> "video/mp4";
+            case "webm" -> "video/webm";
+            default -> Files.probeContentType(file);
+        };
+    }
+
     @Override public void handle(final RequestContext context) {
         try {
             String uri = context.requestURI();
@@ -36,31 +85,34 @@ public final class PublicResourceHandler implements Handler {
             if (uri.contains("\\") || lower.contains("/web-inf") || lower.contains("/meta-inf") || lower.contains("/.git") || lower.contains("/.idea")) {
                 context.sendError(404); context.abort(); return;
             }
-            final boolean publicPath = List.of("/scss/","/js/","/skins/","/plugins/","/images/").stream().anyMatch(uri::startsWith)
-                    || Set.of("/favicon.ico","/robots.txt","/sw.js","/service-worker.js").contains(uri);
+            boolean publicPath = PUBLIC_EXACT_PATHS.contains(uri);
+            if (!publicPath) {
+                for (int i = 0; i < PUBLIC_PREFIXES.size(); i++) {
+                    if (uri.startsWith(PUBLIC_PREFIXES.get(i))) { publicPath = true; break; }
+                }
+            }
             final int dot = uri.lastIndexOf('.');
             final String extension = dot >= 0 ? lower.substring(dot + 1) : "";
             if (!publicPath || !EXTENSIONS.contains(extension)) { context.handle(); return; }
-            if (!Set.of("GET","HEAD").contains(context.method())) { context.sendError(405); context.abort(); return; }
+            if (!ALLOWED_METHODS.contains(context.method())) { context.sendError(405); context.abort(); return; }
             final WebResources resources = SoloApplication.getWebResources();
+            final Path realRoot = resources.realRoot();
             final Path file = resources.resolve(uri);
-            if (!Files.isRegularFile(file) || !file.toRealPath().startsWith(resources.root().toRealPath())) { context.sendError(404); context.abort(); return; }
+            if (!Files.isRegularFile(file) || !file.toRealPath().startsWith(realRoot)) { context.sendError(404); context.abort(); return; }
             Path representation = file;
-            final Path gzipFile = file.resolveSibling(file.getFileName() + ".gz");
-            if (extension.equals("js") && Files.isRegularFile(gzipFile)
-                    && gzipFile.toRealPath().startsWith(resources.root().toRealPath())
-                    && Files.getLastModifiedTime(gzipFile).toMillis() >= Files.getLastModifiedTime(file).toMillis()) {
-                context.setHeader("Vary", "Accept-Encoding");
-                if (acceptsGzip(context.header("Accept-Encoding"))) {
-                    representation = gzipFile;
-                    context.setHeader("Content-Encoding", "gzip");
+            if (GZIPPABLE_EXTENSIONS.contains(extension)) {
+                final Path gzipFile = file.resolveSibling(file.getFileName() + ".gz");
+                if (Files.isRegularFile(gzipFile)
+                        && gzipFile.toRealPath().startsWith(realRoot)
+                        && Files.getLastModifiedTime(gzipFile).toMillis() >= Files.getLastModifiedTime(file).toMillis()) {
+                    context.setHeader("Vary", "Accept-Encoding");
+                    if (acceptsGzip(context.header("Accept-Encoding"))) {
+                        representation = gzipFile;
+                        context.setHeader("Content-Encoding", "gzip");
+                    }
                 }
             }
-            String type = Files.probeContentType(file);
-            if (extension.equals("js")) type = "application/javascript";
-            if (extension.equals("css")) type = "text/css";
-            if (extension.equals("svg")) type = "image/svg+xml";
-            if (extension.equals("ogg")) type = "audio/ogg";
+            final String type = contentTypeForExtension(extension, file);
             context.getResponse().setContentType(type == null ? "application/octet-stream" : type);
             context.setHeader("X-Content-Type-Options", "nosniff");
             final long modified = Files.getLastModifiedTime(file).toMillis();
@@ -69,7 +121,7 @@ public final class PublicResourceHandler implements Handler {
             context.setHeader("ETag", etag);
             context.setHeader("Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
                     .format(java.time.Instant.ofEpochMilli(modified).atZone(java.time.ZoneOffset.UTC)));
-            context.setHeader("Cache-Control", Set.of("/sw.js", "/service-worker.js").contains(uri)
+            context.setHeader("Cache-Control", NO_CACHE_PATHS.contains(uri)
                     ? "no-cache" : "public, max-age=3600");
             final String condition = context.getRequest().getHeader("If-None-Match");
             boolean notModified = false;

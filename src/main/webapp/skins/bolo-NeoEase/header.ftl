@@ -30,7 +30,7 @@
         <div class="skin-theme-slot" data-bolo-theme-slot></div>
 
         <form class="right" action="${servePath}/search">
-            <input id="search" type="search" name="keyword" placeholder="${searchLabel}" aria-label="${searchLabel}" />
+            <input autocomplete="off" id="search" type="search" name="keyword" placeholder="${searchLabel}" aria-label="${searchLabel}" />
             <button class="neoease-search-submit" type="submit" aria-label="${searchLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></svg></button>
         </form>
 

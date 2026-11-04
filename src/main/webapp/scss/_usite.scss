@@ -22,7 +22,28 @@
  */
 
 .user__site {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 1;
+  svg {
+    display: block;
+    flex: none;
+  }
   &:hover {
     text-decoration: none;
+  }
+}
+
+.user__site--account > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  list-style: none;
+  cursor: pointer;
+  &::-webkit-details-marker {
+    display: none;
   }
 }

@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-/* SPDX-License-Identifier: AGPL-3.0-or-later */
 package org.b3log.solo.security;
 
 import com.sun.net.httpserver.HttpServer;
@@ -35,6 +34,42 @@ import java.util.concurrent.TimeUnit;
 public class RssParserTest {
     @BeforeClass public void configure() throws Exception { LatkeTestSupport.configure(); }
 
+    @Test public void feedBytesSanitizeMarkupProtocolsDoctypesAndPrivateAddresses() throws Exception {
+        Assert.expectThrows(IllegalStateException.class,
+                () -> new RssParser("http://127.0.0.1:8080/rss", "", "Feed author").parse2Article());
+        Assert.expectThrows(IllegalStateException.class,
+                () -> new RssParser("file:///etc/passwd", "", "Feed author").parse2Article());
+        final StringBuilder items = new StringBuilder();
+        items.append("<item><title>Without description</title><link>https://example.test/one</link>")
+                .append("<enclosure url='https://example.test/file' length='1'/></item>")
+                .append("<item><title>Second post</title><description>Readable summary</description></item>")
+                .append("<item><title>&lt;img src=x onerror=alert(1)&gt;Safe title</title>")
+                .append("<link>javascript:alert(1)</link>")
+                .append("<description>&lt;script&gt;alert(1)&lt;/script&gt;&lt;p&gt;Clean body&lt;/p&gt;</description></item>");
+        for (int i = 0; i < 60; i++) {
+            items.append("<item><title>Extra ").append(i).append("</title><description>Body</description></item>");
+        }
+        final byte[] xml = ("<?xml version='1.0'?><rss version='2.0'><channel><title>&lt;b&gt;Feed&lt;/b&gt;</title>"
+                + "<link>https://example.test/</link><description>Feed description</description>"
+                + items + "</channel></rss>").getBytes(StandardCharsets.UTF_8);
+        final var articles = new RssParser("https://example.test/rss", "javascript:alert(1)", "<b>Feed author</b>")
+                .parseFeedBytes(xml);
+        Assert.assertEquals(articles.size(), 50);
+        Assert.assertEquals(articles.get(0).getString(Article.ARTICLE_CONTENT), "");
+        Assert.assertEquals(articles.get(0).getString("authorThumbnailURL"), "");
+        Assert.assertEquals(articles.get(0).getString("authorName"), "Feed author");
+        Assert.assertEquals(articles.get(1).getString(Article.ARTICLE_CONTENT), "Readable summary");
+        Assert.assertEquals(articles.get(2).getString(Article.ARTICLE_TITLE), "Safe title");
+        Assert.assertFalse(articles.get(2).getString(Article.ARTICLE_CONTENT).contains("<script"));
+        Assert.assertTrue(articles.get(2).getString(Article.ARTICLE_CONTENT).contains("Clean body"));
+        Assert.assertFalse(articles.get(2).getString(Article.ARTICLE_PERMALINK).startsWith("javascript:"));
+
+        final byte[] xxeXml = ("<?xml version='1.0'?><!DOCTYPE rss [<!ENTITY xxe 'boom'>]>"
+                + "<rss version='2.0'><channel><title>Feed</title></channel></rss>").getBytes(StandardCharsets.UTF_8);
+        Assert.expectThrows(Exception.class,
+                () -> new RssParser("https://example.test/rss", "", "Feed").parseFeedBytes(xxeXml));
+    }
+
     @Test public void optionalFeedFieldsDoNotDiscardTheFeed() throws Exception {
         final var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/rss", exchange -> {
@@ -43,6 +78,9 @@ public class RssParserTest {
                     + "<item><title>Without description</title><link>https://example.test/one</link>"
                     + "<enclosure url='https://example.test/file' length='1'/></item>"
                     + "<item><title>Second post</title><description>Readable summary</description></item>"
+                    + "<item><title>&lt;img src=x onerror=alert(1)&gt;Safe title</title>"
+                    + "<link>javascript:alert(1)</link>"
+                    + "<description>&lt;script&gt;alert(1)&lt;/script&gt;&lt;p&gt;Clean body&lt;/p&gt;</description></item>"
                     + "</channel></rss>").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/rss+xml; charset=UTF-8");
             exchange.sendResponseHeaders(200, xml.length);
@@ -55,11 +93,18 @@ public class RssParserTest {
         server.start();
         try {
             final String base = "http://127.0.0.1:" + server.getAddress().getPort();
-            final var articles = new RssParser(base + "/rss", "", "Feed author").parse2Article();
-            Assert.assertEquals(articles.size(), 2);
+            Assert.expectThrows(IllegalStateException.class,
+                    () -> new RssParser(base + "/rss", "", "Feed author").parse2Article());
+            final var articles = new RssParser(base + "/rss", "javascript:alert(1)", "Feed author", true).parse2Article();
+            Assert.assertEquals(articles.size(), 3);
             Assert.assertEquals(articles.get(0).getString(Article.ARTICLE_CONTENT), "");
             Assert.assertEquals(articles.get(1).getString(Article.ARTICLE_CONTENT), "Readable summary");
-            Assert.expectThrows(IllegalStateException.class, () -> new RssParser(base + "/not-a-feed", "", "Feed").parse2Article());
+            Assert.assertEquals(articles.get(2).getString(Article.ARTICLE_TITLE), "Safe title");
+            Assert.assertFalse(articles.get(2).getString(Article.ARTICLE_CONTENT).contains("<script"));
+            Assert.assertTrue(articles.get(2).getString(Article.ARTICLE_CONTENT).contains("Clean body"));
+            Assert.assertFalse(articles.get(2).getString(Article.ARTICLE_PERMALINK).startsWith("javascript:"));
+            Assert.expectThrows(IllegalStateException.class,
+                    () -> new RssParser(base + "/not-a-feed", "", "Feed", true).parse2Article());
         } finally { server.stop(0); }
     }
 
@@ -73,7 +118,7 @@ public class RssParserTest {
             });
             final long start = System.nanoTime();
             Assert.expectThrows(IllegalStateException.class, () -> new RssParser(
-                    "http://localhost:" + socket.getLocalPort() + "/stalled.xml", "", "Feed").parse2Article());
+                    "http://127.0.0.1:" + socket.getLocalPort() + "/stalled.xml", "", "Feed", true).parse2Article());
             Assert.assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 9000);
         } finally {
             release.countDown();

@@ -25,8 +25,17 @@ import java.util.*;
 /** Filesystem resources rooted in the deployed public directory. */
 public final class WebResources {
     private final Path root;
+    private volatile Path realRoot;
     public WebResources(final Path root) { this.root = root.toAbsolutePath().normalize(); }
     public Path root() { return root; }
+    public Path realRoot() {
+        Path cached = realRoot;
+        if (cached != null) return cached;
+        try { cached = root.toRealPath(); }
+        catch (IOException ignored) { cached = root; }
+        realRoot = cached;
+        return cached;
+    }
     public Path resolve(final String name) {
         final Path file = root.resolve(name.replaceFirst("^/+", "")).normalize();
         if (!file.startsWith(root)) throw new IllegalArgumentException("Resource escapes public directory");

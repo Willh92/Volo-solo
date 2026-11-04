@@ -22,8 +22,9 @@ import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Comment cache.
@@ -36,9 +37,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CommentCache {
 
     /**
-     * Comment cache.
+     * Maximum number of cached comments in memory.
      */
-    private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
+    public static final int MAX_ENTRIES = 512;
+
+    /**
+     * Bounded LRU comment cache.
+     */
+    private final Map<String, JSONObject> cache = Collections.synchronizedMap(new LinkedHashMap<>(128, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(final Map.Entry<String, JSONObject> eldest) {
+            return size() > MAX_ENTRIES;
+        }
+    });
 
     /**
      * Gets a comment by the specified comment id.
@@ -76,6 +87,10 @@ public class CommentCache {
     /**
      * Clears all cached data.
      */
+    public int size() {
+        return cache.size();
+    }
+
     public void clear() {
         cache.clear();
     }

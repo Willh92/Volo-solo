@@ -24,7 +24,6 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;
 import javax.imageio.ImageIO;
@@ -74,15 +73,8 @@ public final class Favicons {
             if (!Files.isRegularFile(file) || !file.toRealPath().startsWith(resources.root().toRealPath()) || Files.size(file) > MAX_BYTES) return null;
             bytes = Files.readAllBytes(file);
         } else {
-            if (!("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme())) || uri.getUserInfo() != null) return null;
-            final HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(2000); connection.setReadTimeout(3000);
-            try {
-                if (connection.getResponseCode() != 200 || connection.getContentLengthLong() > MAX_BYTES) return null;
-                try (var input = connection.getInputStream()) { bytes = input.readNBytes(MAX_BYTES + 1); }
-                if (bytes.length > MAX_BYTES) return null;
-            } finally { connection.disconnect(); }
+            if (!OutboundUrls.isHttpOrHttps(source)) return null;
+            bytes = OutboundUrls.fetchBytes(source, 2000, 3000, MAX_BYTES, "image/*", Solos.USER_AGENT, false);
         }
         try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
             final var readers = ImageIO.getImageReaders(input);

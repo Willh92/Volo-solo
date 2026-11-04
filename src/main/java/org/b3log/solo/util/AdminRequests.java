@@ -28,16 +28,52 @@ public final class AdminRequests {
             reject(context, 401, "请先登录管理后台。");
             return false;
         }
-        final URI publicUrl = URI.create(Latkes.getServePath());
-        final String expectedOrigin = publicUrl.getScheme() + "://" + publicUrl.getRawAuthority();
+        return verifySameOriginWrite(context);
+    }
+
+    /** Verifies same-origin XHR headers for an already-authenticated console write request. */
+    public static boolean verifySameOriginWrite(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        final String expectedOrigin = expectedOrigin();
         final String origin = context.header("Origin");
         if (!"XMLHttpRequest".equals(context.header("X-Requested-With"))
                 || (origin != null && !expectedOrigin.equals(origin))
-                || "cross-site".equals(context.header("Sec-Fetch-Site"))) {
+                || "cross-site".equalsIgnoreCase(context.header("Sec-Fetch-Site"))) {
             reject(context, 403, "请求来源不正确，请从管理后台重试。");
             return false;
         }
         return true;
+    }
+
+    /** Verifies same-origin browser state for multipart/editor endpoints where custom headers may be optional. */
+    public static boolean allowEditorWrite(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        final String expectedOrigin = expectedOrigin();
+        final String origin = context.header("Origin");
+        final String secFetchSite = context.header("Sec-Fetch-Site");
+        final boolean hasXhr = "XMLHttpRequest".equals(context.header("X-Requested-With"));
+        final boolean sameFetchSite = "same-origin".equalsIgnoreCase(secFetchSite);
+        if ("cross-site".equalsIgnoreCase(secFetchSite)
+                || (origin != null && !expectedOrigin.equals(origin))
+                || (origin == null && !hasXhr && !sameFetchSite)) {
+            reject(context, 403, "请求来源不正确，请从管理后台重试。");
+            return false;
+        }
+        return true;
+    }
+
+    public static boolean isCrossSiteRequest(final RequestContext context) {
+        final String secFetchSite = context.header("Sec-Fetch-Site");
+        if ("cross-site".equalsIgnoreCase(secFetchSite)) {
+            return true;
+        }
+        final String origin = context.header("Origin");
+        return origin != null && !"null".equals(origin) && !expectedOrigin().equals(origin);
+    }
+
+    private static String expectedOrigin() {
+        final URI publicUrl = URI.create(Latkes.getServePath());
+        return publicUrl.getScheme() + "://" + publicUrl.getRawAuthority();
     }
 
     public static void reject(final RequestContext context, final int status, final String message) {

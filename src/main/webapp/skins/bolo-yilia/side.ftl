@@ -88,7 +88,6 @@
                 ${noticeBoard}
             </div>
         </#if>
-         &nbsp; &nbsp;
         <a rel="alternate" href="${servePath}/rss.xml" title="${subscribeLabel}" class="icon-rss"></a>
         <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" title="后台管理" aria-label="后台管理" class="icon-setting" data-management-link="panel"></a><a href="${logoutURL?html}" title="退出登录" aria-label="退出登录" class="icon-logout" data-management-link="logout"></a><#elseif showLoginEntry!false><a href="${adminLoginURL?html}" title="管理员登录" aria-label="管理员登录" class="icon-login" data-management-link="login"></a></#if>
     </footer>

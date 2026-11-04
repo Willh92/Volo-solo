@@ -46,32 +46,45 @@ admin.themeList = {
         var skins = JSON.parse(result.skin.skins)
         var skinsHTML = ''
 
+        var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+          return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
+          })
+        }
+        var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+          return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27')
+        }
         for (var i = 0; i < skins.length; i++) {
+          var rawDir = String(skins[i].skinDirName || '')
+          var safeDir = escapeHtml(rawDir)
+          var safeDisplayDir = escapeHtml(rawDir.replace(/^bolo-/, ''))
+          var safeSkinName = escapeHtml(skins[i].skinName)
+          var encodedDir = encodeQuote(rawDir)
           var selectedClass = ''
-          if (skins[i].skinDirName === result.skin.skinDirName) {
+          if (rawDir === result.skin.skinDirName) {
             selectedClass = ' selected'
           }
 
           skinsHTML += '<div class="fn__left skinItem' + selectedClass +
-            '"><div class="ft__center">' + skins[i].skinDirName.replace(/^bolo-/, '')
-            + '<p class="skinDesc">' + skins[i].skinName + '</p></div><img class="skinPreview" src="'
-            + Label.staticServePath + '/skins/' + skins[i].skinDirName
-            + (skins[i].skinDirName === 'volo-studio' ? '/preview.svg' : '/preview.png') + '"/><div>'
+            '"><div class="ft__center">' + safeDisplayDir
+            + '<p class="skinDesc">' + safeSkinName + '</p></div><img class="skinPreview" src="'
+            + Label.staticServePath + '/skins/' + encodeURIComponent(rawDir)
+            + (rawDir === 'volo-studio' ? '/preview.svg' : '/preview.png') + '"/><div>'
 
-          if (skins[i].skinDirName !== result.skin.skinDirName) {
+          if (rawDir !== result.skin.skinDirName) {
             skinsHTML += '<button class="small update fn__left" data-name="' +
-              skins[i].skinDirName + '">' + Label.enableLabel +
+              safeDir + '">' + Label.enableLabel +
               '</button>'
           }
 
-          if (skins[i].skinDirName !== result.skin.mobileSkinDirName) {
+          if (rawDir !== result.skin.mobileSkinDirName) {
             skinsHTML += '<button class="small mobile fn__left" data-name="' +
-              skins[i].skinDirName + '">' +
+              safeDir + '">' +
               Label.setMobileLabel + '</button>'
           }
 
           skinsHTML += '<button class="small fn__right" onclick="window.open(\'' +
-            Label.servePath + '?skin=' + skins[i].skinDirName + '\')">'
+            Label.servePath + '?skin=' + encodedDir + '\')">'
             + Label.previewLabel + '</button></div></div>'
         }
         $('#skinMain').html(skinsHTML + '<div class=\'fn__clear\'></div>')

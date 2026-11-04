@@ -33,13 +33,13 @@
         </div>
         <ul class="menu hidden" id="JELON__menu">
             <li class="item current">
-                <a href="${servePath}/" title="首页" class="fa fa-home">&nbsp;首页</a>
+                <a href="${servePath}/" title="首页"><i class="fa fa-home" aria-hidden="true"></i> 首页</a>
             </li>
             <#list pageNavigations as page>
                 <li class="item current">
                     <a href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">
                         <#if page.pageIcon != ''>
-                            <img src="${page.pageIcon?html}" width="15px" height="16px">
+                            <img src="${page.pageIcon?html}" width="16" height="16" alt="" style="vertical-align: -2px; object-fit: contain;">
                         </#if>
                         ${page.pageTitle?html}
                     </a>

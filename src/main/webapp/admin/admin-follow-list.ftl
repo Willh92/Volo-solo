@@ -25,25 +25,25 @@
 <div class="form form__no-table">
 ${addFollowLabel}
     <label>${linkTitle1Label}</label>
-    <input id="followTitle" type="text"/>
+    <input id="followTitle" type="text" autocomplete="off"/>
     <label>${url1Label}</label>
-    <input id="followAddress" type="text"/>
+    <input id="followAddress" type="text" autocomplete="off"/>
     <label>${linkDescription1Label}</label>
-    <input id="followDescription" type="text"/>
+    <input id="followDescription" type="text" autocomplete="off"/>
     <label>${linkIcon1Label}</label>
-    <input id="followIcon" type="text"/><br><br>
+    <input id="followIcon" type="text" autocomplete="off"/><br><br>
     <button onclick="admin.followList.add();" class="fn__right">${saveLabel}</button>
     <div class="fn__clear"></div>
 </div>
 <div id="updateFollow" class="fn__none form form__no-table" data-title="${updateFollowLabel}">
     <label>${linkTitle1Label}</label>
-    <input id="followTitleUpdate" type="text"/>
+    <input id="followTitleUpdate" type="text" autocomplete="off"/>
     <label>${url1Label}</label>
-    <input id="followAddressUpdate" type="text"/>
+    <input id="followAddressUpdate" type="text" autocomplete="off"/>
     <label>${linkDescription1Label}</label>
-    <input id="followDescriptionUpdate" type="text"/>
+    <input id="followDescriptionUpdate" type="text" autocomplete="off"/>
     <label>${linkIcon1Label}</label>
-    <input id="followIconUpdate" type="text"/>
+    <input id="followIconUpdate" type="text" autocomplete="off"/>
         <div class="console-form-actions"><button onclick="admin.followList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>

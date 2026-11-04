@@ -20,7 +20,7 @@
 <div class="form">
     <div>
         <label>${title1Label}</label>
-        <input id="title" type="text"/>
+            <input id="title" type="text" autocomplete="off"/>
     </div>
     <div>
         <label>${content1Label}</label>
@@ -62,7 +62,7 @@
         <select id="categorySelector">
             <option value="">无分类</option>
             <#list categories as category>
-                <option value="${category.oId}">${category.categoryTitle} (${category.categoryPublishedArticleCount})</option>
+                <option value="${category.oId?html}">${category.categoryTitle?html} (${category.categoryPublishedArticleCount})</option>
             </#list>
         </select>
     </div>
@@ -83,7 +83,7 @@
         </div>
         <div class="fn__right viewpwd__panel">
             <label for="viewPwd">${articleViewPwd1Label}</label>
-            <input id="viewPwd" type="text" style="width: 156px" />
+            <input id="viewPwd" type="text" autocomplete="off" style="width: 156px" />
         </div>
     </div>
     <div>

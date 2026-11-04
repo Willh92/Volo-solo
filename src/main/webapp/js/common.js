@@ -212,7 +212,6 @@ var Util = {
         },
         callback: function () {
           Util.parseMarkdown()
-          Util.parseLanguage()
           cb && cb()
         },
       })
@@ -230,7 +229,11 @@ var Util = {
    * 图片预览
    */
   previewImg: function () {
-    $('body').on('click', '.vditor-reset img', function () {
+    var $body = $('body')
+    if (typeof $body.off === 'function') {
+      $body.off('click.boloPreviewImg', '.vditor-reset img')
+    }
+    $body.on('click.boloPreviewImg', '.vditor-reset img', function () {
       if ($(this).hasClass('prevent') || this.closest('a[href]')) {
         return
       }
@@ -332,6 +335,10 @@ var Util = {
    * @returns {undefined}
    */
   parseMarkdown: function () {
+    if (typeof document !== 'undefined' && typeof document.querySelector === 'function' &&
+      !document.querySelector('.vditor-reset, pre code, [class*="language-"]')) {
+      return
+    }
     if (typeof Vditor !== 'function') {
       Util.addScript(
           Label.servePath + '/js/lib/vditor/dist/method.min.js',
@@ -441,7 +448,6 @@ var Util = {
   init: function () {
     Util.killIE()
     Util.parseMarkdown()
-    Util.parseLanguage()
     Util.initSW()
     Util.previewImg()
     Util.initDebugInfo()

@@ -22,7 +22,7 @@
         <div class="article">
             <h2>
                 <span class="left">
-                    <a rel="bookmark" class="skin-list-title article-title" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}" title="${(article.articleTitle)?html}">
+                    <a rel="bookmark" class="skin-list-title article-title" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}" title="${(article.articleTitle)?html}">
                         ${(article.articleTitle)?html}
                     </a>
                     <#if article.articlePutTop>
@@ -32,7 +32,7 @@
                     </#if>
                     <#if article.hasUpdated>
                         <sup>
-                            <a class="tip tip__sup" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                            <a class="tip tip__sup" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                 ${updatedLabel}
                             </a>
                         </sup>
@@ -64,11 +64,11 @@
             </div>
             <div class="right article-element">
                 <#if interactive=="on">
-                    <a rel="nofollow" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}#comments">
+                    <a rel="nofollow" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                         ${article.articleCommentCount}&nbsp;&nbsp;${commentLabel}
                     </a>&nbsp;&nbsp;
                 </#if>
-                <a rel="nofollow" href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                <a rel="nofollow" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                     ${article.articleViewCount}&nbsp;&nbsp;${viewLabel}
                 </a>
             </div>

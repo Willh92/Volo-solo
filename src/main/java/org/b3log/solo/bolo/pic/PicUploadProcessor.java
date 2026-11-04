@@ -27,6 +27,7 @@ import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.bolo.pic.util.UploadUtil;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.OptionRepository;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Solos;
 import org.b3log.solo.util.Uploads;
@@ -34,15 +35,14 @@ import org.apache.commons.io.FileUtils;
 
 import org.b3log.latke.http.Response;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.OutputStream;
-import java.net.URLEncoder;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * <h3>bolo-solo</h3>
@@ -54,34 +54,32 @@ import java.util.Map;
 @Singleton
 public class PicUploadProcessor {
 
-    /**
-     * Logger.
-     */
     private static final Logger LOGGER = Logger.getLogger(PicUploadProcessor.class);
 
-    /**
-     * Option repository.
-     */
+    private static final Pattern SAFE_IMAGE_NAME = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$");
+    private static final long MAX_LOCAL_IMAGE_BYTES = 50L * 1024L * 1024L;
+
     @Inject
     private OptionRepository optionRepository;
 
     /**
      * 自定义图床上传目录
-     *
-     * @param context RT
      */
     @RequestProcessing(value = "/pic/upload", method = {HttpMethod.POST})
     public void uploadPicture(final RequestContext context) {
         synchronized (this) {
+            context.setHeader("Cache-Control", "no-store");
             if (!Solos.isAdminOrAuthorLoggedIn(context)) {
                 context.sendError(401);
-
+                return;
+            }
+            if (!AdminRequests.allowEditorWrite(context)) {
                 return;
             }
 
-            java.nio.file.Path directory = null;
+            Path directory = null;
             List<FileUpload> itemList = java.util.Collections.emptyList();
-            Map okPic = new HashMap();
+            Map<String, String> okPic = new HashMap<>();
             List<String> errFiles = new ArrayList<>();
             try {
                 directory = Files.createTempDirectory("bolo-image-");
@@ -109,7 +107,6 @@ public class PicUploadProcessor {
                         value = "10";
                     }
                     try {
-
                         String url = UploadUtil.upload(config, Images.compressImage(file, Float.parseFloat(value)));
                         if (url.isEmpty()) {
                             url = "接口调用错误，请检查偏好设置-自定义图床配置，清除浏览器缓存并重启服务端。";
@@ -126,7 +123,7 @@ public class PicUploadProcessor {
             } finally {
                 FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
             }
-            Map map = new HashMap();
+            Map<String, Object> map = new HashMap<>();
             map.put("succMap", okPic);
             map.put("errFiles", errFiles);
             org.b3log.solo.web.JsonResponses.json(context).renderData(map);
@@ -137,81 +134,139 @@ public class PicUploadProcessor {
 
     /**
      * 检查本地图床是否符合规则
-     *
-     * @param context RT
      */
-    @RequestProcessing(value = "/pic/local/check", method = {HttpMethod.GET})
+    @RequestProcessing(value = "/pic/local/check", method = {HttpMethod.POST})
     public void checkLocalImageBedAvailable(final RequestContext context) {
-        if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(401);
-
+        if (!AdminRequests.allowWrite(context)) {
             return;
         }
 
-        String path = context.param("path");
-        if (path == null || "undefined".equals(path)) {
+        final String path = context.param("path");
+        if (path == null || path.isBlank() || "undefined".equals(path) || path.indexOf('\0') >= 0) {
             org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目录格式错误。");
-
             return;
         }
-        File pathFile = new File(path);
-        // 检查目录是否存在，如果不存在则创建
-        if (!pathFile.exists()) {
-            if (!pathFile.mkdirs()) {
+        try {
+            final Path normalized = Path.of(path.strip()).toAbsolutePath().normalize();
+            final Path appRoot = Path.of("").toAbsolutePath().normalize();
+            if (normalized.equals(appRoot) || normalized.getParent() == null) {
                 org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
-                org.b3log.solo.web.JsonResponses.json(context).renderMsg("创建目录失败！目录格式错误或没有权限。");
-
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！不允许直接使用程序根目录或磁盘根目录作为图床目录。");
                 return;
             }
-        }
-        // 判断目录是否可写
-        try {
-            File tmpFile = new File(pathFile.getAbsolutePath() + "/" + "temp_bolo_solo.tmp");
-            tmpFile.createNewFile();
-            tmpFile.delete();
-
+            if (!Files.exists(normalized)) {
+                final Path parent = normalized.getParent();
+                if (parent == null || !Files.isDirectory(parent) || !Files.isWritable(parent)) {
+                    org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+                    org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！上级目录不存在或没有写入权限。");
+                    return;
+                }
+                Files.createDirectory(normalized);
+            } else if (!Files.isDirectory(normalized) || Files.isSymbolicLink(normalized)) {
+                org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目标路径不是有效目录。");
+                return;
+            }
+            final Path probe = Files.createTempFile(normalized, "volo-probe-", ".tmp");
+            Files.deleteIfExists(probe);
             org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试成功 :)");
-
-            return;
         } catch (Exception e) {
             org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
-            org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目录没有写入权限。");
-
-            return;
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("测试失败！目录格式错误或没有写入权限。");
         }
     }
 
     /**
      * 获取本地图床存储位置的图片，并返回
-     *
-     * @param context RT
      */
     @RequestProcessing(value = "/image/{imageFilename}", method = HttpMethod.GET)
     public void getLocalImage(final RequestContext context) {
         try {
             final Response response = context.getResponse();
-            String config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
-            String type = config.split("<<>>")[0];
-            if ("local".equals(type)) {
-                String userInputFilename = context.pathVar("imageFilename");
-                userInputFilename = URLEncoder.encode(userInputFilename, "UTF-8");
-                userInputFilename = userInputFilename.replaceAll("%", "");
-                String filePath = config.split("<<>>")[1] + "/" + userInputFilename;
-                FileInputStream fileInputStream = new FileInputStream(filePath);
-                int fileSize = fileInputStream.available();
-                byte[] data = new byte[fileSize];
-                fileInputStream.read(data);
-                fileInputStream.close();
-                String contentType = Files.probeContentType(Paths.get(filePath));
-                response.setContentType(contentType);
-                response.sendBytes(data);
+            final String config = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG).optString(Option.OPTION_VALUE);
+            final String[] parts = config.split("<<>>", 3);
+            if (parts.length < 2 || !"local".equals(parts[0]) || parts[1].isBlank()) {
+                context.sendError(404);
+                return;
             }
+            final String filename = context.pathVar("imageFilename");
+            final String contentType = safeImageContentType(filename);
+            if (contentType == null) {
+                context.sendError(404);
+                return;
+            }
+            final Path baseDir = Path.of(parts[1].strip()).toAbsolutePath().normalize();
+            if (!Files.isDirectory(baseDir) || Files.isSymbolicLink(baseDir)) {
+                context.sendError(404);
+                return;
+            }
+            final Path resolved = baseDir.resolve(filename).normalize();
+            if (!resolved.startsWith(baseDir) || !Files.isRegularFile(resolved) || Files.isSymbolicLink(resolved)) {
+                context.sendError(404);
+                return;
+            }
+            final Path realBase = baseDir.toRealPath();
+            final Path realTarget = resolved.toRealPath();
+            final long size = Files.size(realTarget);
+            if (!realTarget.startsWith(realBase) || size > MAX_LOCAL_IMAGE_BYTES) {
+                context.sendError(404);
+                return;
+            }
+            final long modified = Files.getLastModifiedTime(realTarget).toMillis();
+            final String etag = "W/\"" + Long.toHexString(modified) + "-" + Long.toHexString(size) + "\"";
+            context.setHeader("X-Content-Type-Options", "nosniff");
+            context.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+            context.setHeader("ETag", etag);
+            context.setHeader("Last-Modified", java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
+                    .format(java.time.Instant.ofEpochMilli(modified).atZone(java.time.ZoneOffset.UTC)));
+            context.setHeader("Cache-Control", "public, max-age=86400");
+            response.setContentType(contentType);
+            final String ifNoneMatch = context.getRequest().getHeader("If-None-Match");
+            boolean notModified = false;
+            if (ifNoneMatch != null) {
+                notModified = java.util.Arrays.stream(ifNoneMatch.split(",")).map(String::trim)
+                        .anyMatch(value -> "*".equals(value) || etag.substring(2).equals(value.replaceFirst("^W/", "")));
+            } else {
+                final String since = context.getRequest().getHeader("If-Modified-Since");
+                if (since != null) {
+                    try {
+                        notModified = modified / 1000 <= java.time.ZonedDateTime.parse(since,
+                                java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toEpochSecond();
+                    } catch (java.time.format.DateTimeParseException ignored) {
+                    }
+                }
+            }
+            if (notModified) {
+                context.setStatus(304);
+                response.sendBytes(new byte[0]);
+                return;
+            }
+            final byte[] data = Files.readAllBytes(realTarget);
+            response.sendBytes(data);
         } catch (Exception e) {
             context.sendError(404);
+        }
+    }
 
-            return;
+    public static String safeImageContentType(final String filename) {
+        if (filename == null || !SAFE_IMAGE_NAME.matcher(filename).matches() || filename.contains("..")) {
+            return null;
+        }
+        try {
+            final String ext = Uploads.extension(filename, "jpg", "jpeg", "png", "gif", "bmp", "webp")
+                    .toLowerCase(Locale.ROOT);
+            return switch (ext) {
+                case "jpg", "jpeg" -> "image/jpeg";
+                case "png" -> "image/png";
+                case "gif" -> "image/gif";
+                case "bmp" -> "image/bmp";
+                case "webp" -> "image/webp";
+                default -> null;
+            };
+        } catch (Exception invalid) {
+            return null;
         }
     }
 }

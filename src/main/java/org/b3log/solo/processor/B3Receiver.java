@@ -23,6 +23,7 @@ import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
+import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
@@ -34,9 +35,13 @@ import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.repository.UserRepository;
 import org.b3log.solo.service.*;
+import org.b3log.solo.util.LoginThrottle;
+import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.PluginUtil;
 import org.json.JSONObject;
 
-import java.util.Date;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * Receiving articles and comments from B3log community. Visits <a href="https://ld246.com/b3log">B3log 构思</a> for more details.
@@ -52,6 +57,8 @@ public class B3Receiver {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(B3Receiver.class);
+
+    private static final LoginThrottle THROTTLE = new LoginThrottle();
 
     /**
      * User repository.
@@ -101,114 +108,114 @@ public class B3Receiver {
     @Inject
     private UserMgmtService userMgmtService;
 
-    /**
-     * Adds or updates an article with the specified request.
-     * <p>
-     * Request json:
-     * <pre>
-     * {
-     *     "article": {
-     *         "id": "",
-     *          "title": "",
-     *          "content": "",
-     *          "contentHTML": "",
-     *          "tags": "tag1,tag2,tag3"
-     *     },
-     *     "client": {
-     *         "userName": "",
-     *         "userB3Key": ""
-     *     }
-     * }
-     * </pre>
-     * </p>
-     * <p>
-     * Renders the response with a json object, for example,
-     * <pre>
-     * {
-     *     "sc": boolean,
-     *     "oId": "", // Generated article id
-     *     "msg": ""
-     * }
-     * </pre>
-     * </p>
-     *
-     * @param context the specified request context
-     */
     @RequestProcessing(value = "/apis/symphony/article", method = {HttpMethod.POST, HttpMethod.PUT})
     public void postArticle(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (!PluginUtil.b3logPluginEnabled()) {
+            context.sendError(404);
+            return;
+        }
         final JSONObject ret = new JSONObject().put(Keys.CODE, 0);
         context.renderJSON(ret);
+
+        final String remoteAddr = LoginThrottle.clientAddress(context.getRequest());
+        final LoginThrottle.Attempt attempt = THROTTLE.acquire(remoteAddr, "symphony-api");
+        if (attempt.retryAfter() > 0) {
+            context.setStatus(429);
+            context.setHeader("Retry-After", Integer.toString(attempt.retryAfter()));
+            ret.put(Keys.CODE, 1).put(Keys.MSG, "Too many requests");
+            return;
+        }
+
+        final BeanManager beanManager = BeanManager.getInstance();
+        final UserQueryService uqs = beanManager == null ? null : beanManager.getReference(UserQueryService.class);
+        final String configuredKey = uqs == null ? "" : uqs.getConfiguredB3Key();
+        if (configuredKey.length() < 8) {
+            context.setStatus(403);
+            ret.put(Keys.CODE, 1).put(Keys.MSG, "Community sync key is not configured");
+            return;
+        }
 
         final JSONObject requestJSONObject = context.requestJSON();
         LOGGER.log(Level.DEBUG, "Received an article from community");
 
         try {
-            final JSONObject client = requestJSONObject.optJSONObject("client");
+            final JSONObject client = requestJSONObject == null ? null : requestJSONObject.optJSONObject("client");
+            if (client == null) {
+                context.setStatus(400);
+                ret.put(Keys.CODE, 1).put(Keys.MSG, "Invalid request");
+                return;
+            }
+            final String b3Key = client.optString(UserExt.USER_B3_KEY, "");
+            if (b3Key.isEmpty() || !MessageDigest.isEqual(
+                    configuredKey.getBytes(StandardCharsets.UTF_8),
+                    b3Key.getBytes(StandardCharsets.UTF_8))) {
+                RiskControlService.recordFailure(context, 403);
+                context.setStatus(403);
+                ret.put(Keys.CODE, 1).put(Keys.MSG, "Forbidden");
+                LOGGER.log(Level.WARN, "Rejected community article sync with invalid key");
+                return;
+            }
+
             final String articleAuthorName = client.optString(User.USER_NAME);
             final JSONObject articleAuthor = userRepository.getByUserName(articleAuthorName);
-            if (null == articleAuthor) {
-                ret.put(Keys.CODE, 1);
-                final String msg = "Not found user [" + articleAuthorName + "]";
-                ret.put(Keys.MSG, msg);
-                LOGGER.log(Level.WARN, msg);
-
+            if (null == articleAuthor || Role.VISITOR_ROLE.equals(articleAuthor.optString(User.USER_ROLE))) {
+                context.setStatus(403);
+                ret.put(Keys.CODE, 1).put(Keys.MSG, "Forbidden");
+                LOGGER.log(Level.WARN, "Not found authorized user [" + articleAuthorName + "]");
                 return;
             }
-
-            final String b3Key = client.optString(UserExt.USER_B3_KEY);
-
-            // Bolo B3key 校验
-            final BeanManager beanManager = BeanManager.getInstance();
-            UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);
-            String key = userQueryService.getB3password();
-
-            if (!StringUtils.equals(key, b3Key)) {
-                ret.put(Keys.CODE, 1);
-                final String msg = "Wrong key";
-                ret.put(Keys.MSG, msg);
-                LOGGER.log(Level.WARN, msg);
-
-                return;
-            }
+            THROTTLE.succeeded(attempt);
 
             final JSONObject symArticle = requestJSONObject.optJSONObject(Article.ARTICLE);
+            if (symArticle == null) {
+                context.setStatus(400);
+                ret.put(Keys.CODE, 1).put(Keys.MSG, "Invalid article payload");
+                return;
+            }
             final String title = symArticle.optString("title");
             final String articleId = symArticle.optString("id");
-            final JSONObject oldArticle = articleQueryService.getArticleById(articleId);
+            final String sanitizedContent = Role.ADMIN_ROLE.equals(articleAuthor.optString(User.USER_ROLE))
+                    ? symArticle.optString("content")
+                    : Markdowns.clean(symArticle.optString("content"));
+            final JSONObject oldArticle = StringUtils.isBlank(articleId) ? null : articleQueryService.getArticleById(articleId);
             if (null == oldArticle) {
-                final JSONObject article = new JSONObject().
-                        put(Keys.OBJECT_ID, symArticle.optString("id")).
-                        put(Article.ARTICLE_TITLE, title).
-                        put(Article.ARTICLE_CONTENT, symArticle.optString("content")).
-                        put(Article.ARTICLE_TAGS_REF, symArticle.optString("tags"));
+                final JSONObject article = new JSONObject()
+                        .put(Keys.OBJECT_ID, articleId)
+                        .put(Article.ARTICLE_TITLE, title)
+                        .put(Article.ARTICLE_CONTENT, sanitizedContent)
+                        .put(Article.ARTICLE_TAGS_REF, symArticle.optString("tags"));
                 article.put(Article.ARTICLE_AUTHOR_ID, articleAuthor.getString(Keys.OBJECT_ID));
-                final String articleContent = article.optString(Article.ARTICLE_CONTENT);
-                article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(articleContent));
+                article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(sanitizedContent));
                 article.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
-                article.put(Common.POST_TO_COMMUNITY, false); // Do not send to rhythm
+                article.put(Common.POST_TO_COMMUNITY, false);
                 article.put(Article.ARTICLE_COMMENTABLE, true);
                 article.put(Article.ARTICLE_VIEW_PWD, "");
-                final String content = article.getString(Article.ARTICLE_CONTENT);
-                article.put(Article.ARTICLE_CONTENT, content);
                 final JSONObject addRequest = new JSONObject().put(Article.ARTICLE, article);
                 articleMgmtService.addArticle(addRequest);
                 LOGGER.log(Level.INFO, "Added an article [" + title + "] via Sym");
-
                 return;
             }
 
-            final String articleContent = symArticle.optString("content");
-            oldArticle.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(articleContent));
-            oldArticle.put(Article.ARTICLE_CONTENT, articleContent);
-            oldArticle.put(Article.ARTICLE_TITLE, symArticle.optString("title"));
+            if (!Role.ADMIN_ROLE.equals(articleAuthor.optString(User.USER_ROLE))
+                    && !articleAuthor.optString(Keys.OBJECT_ID).equals(oldArticle.optString(Article.ARTICLE_AUTHOR_ID))) {
+                context.setStatus(403);
+                ret.put(Keys.CODE, 1).put(Keys.MSG, "Forbidden");
+                return;
+            }
+
+            oldArticle.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(sanitizedContent));
+            oldArticle.put(Article.ARTICLE_CONTENT, sanitizedContent);
+            oldArticle.put(Article.ARTICLE_TITLE, title);
             oldArticle.put(Article.ARTICLE_TAGS_REF, symArticle.optString("tags"));
-            oldArticle.put(Common.POST_TO_COMMUNITY, false); // Do not send to rhythm
+            oldArticle.put(Common.POST_TO_COMMUNITY, false);
             final JSONObject updateRequest = new JSONObject().put(Article.ARTICLE, oldArticle);
             articleMgmtService.updateArticle(updateRequest);
             LOGGER.log(Level.INFO, "Updated an article [" + title + "] via Sym");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
-            ret.put(Keys.CODE, 1).put(Keys.MSG, e.getMessage());
+            context.setStatus(500);
+            ret.put(Keys.CODE, 1).put(Keys.MSG, "Failed to process article");
         }
     }
 }

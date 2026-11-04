@@ -236,7 +236,17 @@ public class ExportService {
 
             try {
                 if (StringUtils.isNotBlank(dbPwd)) {
-                    sql = Execs.exec(new String[]{"mysqldump", "-u" + dbUser, "-p" + dbPwd, "--databases", db}, 60 * 1000 * 5);
+                    final ProcessBuilder pb = new ProcessBuilder("mysqldump", "-u" + dbUser, "--databases", db);
+                    pb.environment().put("MYSQL_PWD", dbPwd);
+                    pb.redirectErrorStream(false);
+                    final Process process = pb.start();
+                    try (var stdout = process.getInputStream()) {
+                        sql = IOUtils.toString(stdout, StandardCharsets.UTF_8);
+                    }
+                    if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
+                        process.destroyForcibly();
+                        sql = "";
+                    }
                 } else {
                     sql = Execs.exec(new String[]{"mysqldump", "-u" + dbUser, "--databases", db}, 60 * 1000 * 5);
                 }
@@ -350,9 +360,9 @@ public class ExportService {
             final String tmpDir = System.getProperty("java.io.tmpdir");
             final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
             String localFilePath = tmpDir + File.separator + "solo-blog-repo-" + date;
-            final File localFile = new File(localFilePath);
+            final File localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
 
-            final File postDir = new File(localFilePath + File.separator + "posts");
+            final File postDir = new File(localFile, "posts");
             exportHexoMd(posts, postDir.getPath());
 
             final File zipFile = ZipUtil.zip(localFile);
@@ -485,9 +495,9 @@ public class ExportService {
             final String tmpDir = System.getProperty("java.io.tmpdir");
             final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
             String localFilePath = tmpDir + File.separator + "solo-hexo-" + date;
-            final File localFile = new File(localFilePath);
+            final File localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
 
-            final File postDir = new File(localFilePath + File.separator + "posts");
+            final File postDir = new File(localFile, "posts");
             exportHexoMd(posts, postDir.getPath());
 
             final File zipFile = ZipUtil.zip(localFile);

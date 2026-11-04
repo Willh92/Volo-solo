@@ -21,7 +21,7 @@ Volo 面向个人博客，支持 Markdown 写作、文章与页面管理、分�
 - **Volo Studio** 是新安装的默认皮肤，与登录页、后台共用六种可选强调色；已有站点可在后台手动切换。
 - 共提供 **16 款皮肤**，支持桌面、手机、浅色与深色界面。
 - 外观支持按时间自动、跟随系统、固定浅色及固定深色。默认按访问者本地时间切换：**07:00–19:00 浅色，其余时间深色**；手动选择保存在浏览器中。
-- 皮肤支持 PJAX 导航、可折叠文章目录、章节定位和返回顶部；可通过 `skin` 参数预览皮肤。
+- 皮肤统一导航与悬浮控件图标比例及对齐，支持 PJAX 导航、可折叠文章目录、章节定位、返回顶部及往返缓存（BFCache）表单状态清理；可通过 `skin` 参数预览皮肤。
 - Volo Studio 提供正文首图封面、公告、分页文章列表、站内搜索、联系方式和自定义导航。管理员登录后可使用后台入口、退出登录和最新评论定位。
 - 可选看板娘插件提供 **26 套本地模型**及换装贴图，资源随发行包提供。
 
@@ -41,7 +41,7 @@ Volo 面向个人博客，支持 Markdown 写作、文章与页面管理、分�
 - IP 限制支持 IPv4、IPv6 和 CIDR，提供查询与分页。地区限制支持国家、省、市范围及多条有序规则，各规则可设置启停和命中、未命中操作，并提供统一的未知位置策略。
 - 评论敏感词使用 [houbb/sensitive-word](https://github.com/houbb/sensitive-word) 本地词库，可配置自定义词和白名单。游客验证码默认启用，管理员可在评论防护中调整。
 - 支持可信反向代理、自定义管理路径，以及独立的前台登录入口和评论开关。未登录时默认隐藏管理入口。
-- 提供上传限制、管理请求来源校验和动态内容输出保护；后台日志支持容量轮换与分页浏览。
+- 提供上传限制、出站请求内网地址阻断（SSRF 防护）、后台密钥脱敏回显、管理请求来源校验和动态内容输出保护；后台日志支持容量轮换与分页浏览。
 
 ## 安装与升级
 
@@ -50,7 +50,7 @@ Volo 面向个人博客，支持 Markdown 写作、文章与页面管理、分�
 1. 升级前备份数据库、旧部署目录、本地图床和自定义主题。
 2. 将独立 ZIP 解压到新的空目录，避免旧依赖 JAR 残留。
 3. 编辑 `WEB-INF/classes/local.properties` 和 `WEB-INF/classes/latke.properties`。升级时保留原数据库、表前缀、域名及其他部署配置，按升级说明合并新增键。
-4. 在部署目录执行 `sh start.sh --listen_port 8080`（Linux）或 `start.cmd --listen_port 8080`（Windows）。脚本优先使用 `JAVA_HOME`，启动类仍为 `org.b3log.solo.Starter`。
+4. 在部署目录执行 `sh start.sh --listen_port 8080`（Linux）或 `start.cmd --listen_port 8080`（Windows）。脚本内置低内存开销的 G1GC 与 Netty 内存池默认参数（可通过环境变量 `JAVA_OPTS` 覆盖），优先使用 `JAVA_HOME`，启动类仍为 `org.b3log.solo.Starter`。
 5. 默认通过 `http://localhost:8080/start` 初始化或登录；若已设置自定义管理路径，使用对应的登录地址。
 
 数据库驱动、日志、HTTPS 反代、TCP 与 Unix socket 的配置示例统一见 [升级与部署说明](UPGRADE.md)。`latke.properties` 的 `serverPort` 用于生成公网 URL，Java 监听端口由 `--listen_port` 控制。
@@ -90,6 +90,7 @@ yarn verify:kanbanniang
 node scripts/verify-editor-runtime.mjs
 node scripts/verify-comments.mjs
 node scripts/verify-recommendations.mjs
+node scripts/verify-console-controls.mjs
 node scripts/verify-skin-controls.mjs
 node scripts/verify-utility-pages.mjs
 mvn -Pci verify
@@ -99,7 +100,7 @@ mvn -Pci verify
 
 普通 Maven 构建不会重写源文件的许可证头；需要统一头部格式时可单独执行 `mvn license:format`。
 
-测试覆盖鉴权、2FA 双重验证、重试与评论限流、代理地址、上传与解压、迁移安全、文章筛选及前端生命周期。CI 在 Java 17、21 上构建并运行检查。
+测试覆盖鉴权、2FA 双重验证、出站地址校验、密钥脱敏、重试与评论限流、会话与缓存容量边界、代理地址、上传与解压、迁移安全、文章筛选及前端生命周期。CI 在 Java 17、21 上构建并运行检查。
 
 依赖审计脚本为 `scripts/audit-dependencies.mjs`。
 

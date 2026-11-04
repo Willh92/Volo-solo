@@ -24,13 +24,13 @@
 <div class="fn__clear"></div>
 <div id="userUpdate" class="fn__none form form__no-table" data-title="${(userProfileLabel!'用户资料')?html}">
     <label for="userNameUpdate">${userName1Label}<span style="color: #991a1a"></span></label>
-    <input id="userNameUpdate" type="text"/>
+    <input id="userNameUpdate" type="text" autocomplete="off"/>
     <label for="userURLUpdate">${userURL1Label}</label>
-    <input id="userURLUpdate" type="text"/>
+    <input id="userURLUpdate" type="text" autocomplete="off"/>
     <label for="userAvatarUpdate">${userAvatar1Label}</label>
-    <input id="userAvatarUpdate" type="text"/>
+    <input id="userAvatarUpdate" type="text" autocomplete="off"/>
     <label for="userB3KeyUpdate">${passwordLabel}</label>
-    <input id="userB3KeyUpdate" type="password" placeholder="${password1Label}"/>
+    <input id="userB3KeyUpdate" type="password" autocomplete="new-password" placeholder="${password1Label}"/>
 
         <div class="console-form-actions"><button onclick="admin.userList.update();" class="fn__right">${updateLabel}</button></div>
     <div class="fn__clear"></div>

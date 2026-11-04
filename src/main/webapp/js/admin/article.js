@@ -368,7 +368,12 @@ admin.article = {
     admin.tagPicker.reset()
 
     $('#permalink').val('')
-    $('#articleCammentable').prop('checked', true)
+    $('#viewPwd').val('')
+    $('#categorySelector').val('')
+    $('#createDate').val('')
+    $('#articleTagInput').val('')
+    this.content = ''
+    $('#articleCommentable').prop('checked', true)
     $('#postToCommunity').prop('checked', false)
     $('.signs button').each(function (i) {
       if (i === 0) {

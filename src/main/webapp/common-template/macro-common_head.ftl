@@ -66,17 +66,17 @@
 <meta name="format-detection" content="telephone=no"/>
 <title>${title?html}</title>
 <script data-bolo-navigation src="${staticServePath}/js/auth-navigation.js?${staticResourceVersion}"></script>
-<meta name="bolo-skin" content="${skinDirName!''}"/>
-<meta name="bolo-accent" content="${appearanceAccent!'forest'}"/>
+<meta name="bolo-skin" content="${(skinDirName!'')?html}"/>
+<meta name="bolo-accent" content="${(appearanceAccent!'forest')?html}"/>
 <script data-bolo-navigation src="${staticServePath}/js/appearance.js?${staticResourceVersion}"></script>
 <script data-bolo-navigation src="${staticServePath}/js/toc-navigation.js?${staticResourceVersion}"></script>
 <link rel="stylesheet" href="${servePath}/js/lib/vditor/dist/index.css?${staticResourceVersion}"/>
     <#if description != ''>
-<meta name="description" content="${description}"/>
-<meta property="og:description" content="${description}"/>
+<meta name="description" content="${description?html}"/>
+<meta property="og:description" content="${description?html}"/>
     <#elseif metaDescription??>
-<meta name="description" content="${metaDescription}"/>
-<meta property="og:description" content="${metaDescription}"/>
+<meta name="description" content="${metaDescription?html}"/>
+<meta property="og:description" content="${metaDescription?html}"/>
     <#else>
     <#if !blogSubtitle??>
         <#assign blogSubtitle = ''>
@@ -85,32 +85,32 @@
 <meta property="og:description" content="${blogTitle?html}。${blogSubtitle?html}"/>
     </#if>
     <#if metaKeywords??>
-    <meta name="keywords" content="${metaKeywords}"/>
+    <meta name="keywords" content="${metaKeywords?html}"/>
     </#if>
 <link rel="dns-prefetch" href="${staticServePath}"/>
 <link rel="preconnect" href="${staticServePath}">
 <link rel="icon" href="${faviconURL?html}"/>
-<link rel="apple-touch-icon" href="${faviconURL}">
+<link rel="apple-touch-icon" href="${faviconURL?html}">
 <link rel="shortcut icon" href="${faviconURL?html}">
 <meta name="copyright" content="B3log"/>
 <meta http-equiv="Window-target" content="_top"/>
-<meta property="og:locale" content="${langLabel}"/>
+<meta property="og:locale" content="${langLabel?html}"/>
 <meta property="og:title" content="${title?html}"/>
 <meta property="og:site_name" content="${blogTitle?html}"/>
 <meta property="og:url"
-      content="${servePath}${request.requestURI}<#if request.queryString??>?${request.queryString}</#if>"/>
-<meta property="og:image" content="${faviconURL}"/>
+      content="${servePath}${request.requestURI?html}<#if request.queryString??>?${request.queryString?html}</#if>"/>
+<meta property="og:image" content="${faviconURL?html}"/>
 <link rel="search" type="application/opensearchdescription+xml" title="${title?html}" href="/opensearch.xml">
 <link href="${servePath}/rss.xml" title="RSS" type="application/rss+xml" rel="alternate"/>
 <link rel="manifest" href="${servePath}/manifest.json">
     <#if paginationCurrentPageNum??>
         <#if paginationCurrentPageNum == 1>
-            <link rel="canonical" href="${servePath}${request.requestURI}">
+            <link rel="canonical" href="${servePath}${request.requestURI?html}">
         <#else>
-            <link rel="canonical" href="${servePath}${request.requestURI}<#if request.queryString??>?${request.queryString}</#if>">
+            <link rel="canonical" href="${servePath}${request.requestURI?html}<#if request.queryString??>?${request.queryString?html}</#if>">
         </#if>
     <#else>
-        <link rel="canonical" href="${servePath}${request.requestURI}">
+        <link rel="canonical" href="${servePath}${request.requestURI?html}">
     </#if>
     <#nested>
 <link rel="stylesheet" href="${staticServePath}/scss/appearance.css?${staticResourceVersion}"/>

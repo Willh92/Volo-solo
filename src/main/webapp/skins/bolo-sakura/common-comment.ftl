@@ -17,23 +17,23 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li class="comment even thread-even depth-1" id="${comment.oId}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li class="comment even thread-even depth-1" id="${comment.oId?html}" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="contents">
         <div class="comment-arrow">
             <div class="main shadow">
                 <div class="commentinfo">
                     <section class="commeta thread-comment-header">
                         <div class="left comment-author">
-                            <#if "http://" == comment.commentURL>
+                            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                                 <a href="javascript:void(0);" rel="nofollow">${comment.commentName?html}</a>
                             <#else>
-                                <a href="${comment.commentURL?html}" rel="nofollow">${comment.commentName?html}</a>
+                                <a href="${comment.commentURL?html}" rel="nofollow noopener noreferrer" target="_blank">${comment.commentName?html}</a>
                             </#if>
                             <#if comment.isReply>
                                 @
-                                <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-                                   onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 23);"
-                                   onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+                                <a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+                                   onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 23);"
+                                   onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
                                 >${comment.commentOriginalCommentName?html}</a>
                             </#if>
                         </div>

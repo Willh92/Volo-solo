@@ -26,6 +26,7 @@ import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.model.Link;
 import org.b3log.solo.repository.LinkRepository;
+import org.b3log.solo.util.OutboundUrls;
 import org.json.JSONObject;
 
 /**
@@ -48,6 +49,19 @@ public class LinkMgmtService {
      */
     @Inject
     private LinkRepository linkRepository;
+
+    private static void validateLinkUrls(final JSONObject link) throws ServiceException {
+        final String linkAddress = link.optString(Link.LINK_ADDRESS).trim();
+        if (!OutboundUrls.isHttpOrHttps(linkAddress)) {
+            throw new ServiceException("链接地址必须以 http:// 或 https:// 开头。");
+        }
+        link.put(Link.LINK_ADDRESS, linkAddress);
+        final String linkIcon = link.optString(Link.LINK_ICON).trim();
+        if (!OutboundUrls.isOptionalSafeIconOrAvatar(linkIcon)) {
+            throw new ServiceException("链接图标地址不合法。");
+        }
+        link.put(Link.LINK_ICON, linkIcon);
+    }
 
     /**
      * Removes a link specified by the given link id.
@@ -75,15 +89,7 @@ public class LinkMgmtService {
     /**
      * Updates a link by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "link": {
-     *                          "oId": "",
-     *                          "linkTitle": "",
-     *                          "linkAddress": "",
-     *                          "linkDescription": "",
-     *                          "linkIcon": ""
-     *                          }
-     *                          see {@link Link} for more details
+     * @param requestJSONObject the specified request json object
      * @throws ServiceException service exception
      */
     public void updateLink(final JSONObject requestJSONObject) throws ServiceException {
@@ -91,6 +97,7 @@ public class LinkMgmtService {
 
         try {
             final JSONObject link = requestJSONObject.getJSONObject(Link.LINK);
+            validateLinkUrls(link);
             final String linkId = link.getString(Keys.OBJECT_ID);
             final JSONObject oldLink = linkRepository.get(linkId);
 
@@ -99,6 +106,11 @@ public class LinkMgmtService {
             linkRepository.update(linkId, link);
 
             transaction.commit();
+        } catch (final ServiceException e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw e;
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -111,8 +123,7 @@ public class LinkMgmtService {
     }
 
     /**
-     * Changes the order of a link specified by the given link id with the
-     * specified direction.
+     * Changes the order of a link specified by the given link id with the specified direction.
      *
      * @param linkId    the given link id
      * @param direction the specified direction, "up"/"down"
@@ -125,11 +136,10 @@ public class LinkMgmtService {
             final JSONObject srcLink = linkRepository.get(linkId);
             final int srcLinkOrder = srcLink.getInt(Link.LINK_ORDER);
 
-            JSONObject targetLink = null;
-
+            final JSONObject targetLink;
             if ("up".equals(direction)) {
                 targetLink = linkRepository.getUpper(linkId);
-            } else { // Down
+            } else {
                 targetLink = linkRepository.getUnder(linkId);
             }
 
@@ -142,7 +152,6 @@ public class LinkMgmtService {
                 return;
             }
 
-            // Swaps
             srcLink.put(Link.LINK_ORDER, targetLink.getInt(Link.LINK_ORDER));
             targetLink.put(Link.LINK_ORDER, srcLinkOrder);
 
@@ -164,15 +173,7 @@ public class LinkMgmtService {
     /**
      * Adds a link with the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          {
-     *                          "link": {
-     *                          "linkTitle": "",
-     *                          "linkAddress": "",
-     *                          "linkDescription": "",
-     *                          "linkIcon": ""
-     *                          }
-     *                          }, see {@link Link} for more details
+     * @param requestJSONObject the specified request json object
      * @return generated link id
      * @throws ServiceException service exception
      */
@@ -181,6 +182,7 @@ public class LinkMgmtService {
 
         try {
             final JSONObject link = requestJSONObject.getJSONObject(Link.LINK);
+            validateLinkUrls(link);
             final int maxOrder = linkRepository.getMaxOrder();
 
             link.put(Link.LINK_ORDER, maxOrder + 1);
@@ -189,6 +191,11 @@ public class LinkMgmtService {
             transaction.commit();
 
             return ret;
+        } catch (final ServiceException e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw e;
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();

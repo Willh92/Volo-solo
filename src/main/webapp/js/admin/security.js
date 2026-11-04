@@ -7,6 +7,7 @@ admin.security = {
     var list = document.getElementById('geoAccessRules'), that = this
     if (!list) return
     var revision = ++this.geoAccessRequest
+    this.geoEdit = -1
     this.geoAccessLoaded = false
     $('#geoAccessSave,#geoAccessAdd').prop('disabled', true)
     $.ajax({url: Label.servePath + '/console/geo-access', type: 'GET', cache: false,
@@ -322,6 +323,13 @@ Object.assign(admin.security, {
     var root = document.querySelector('[data-security-page="totp"]'), that = this
     if (!root) return
     var revision = ++this.totpRequest
+    this.cancelTotpSetup()
+    this.closeTotpAction()
+    this.totpRecoveryPlain = []
+    var recPanel = document.getElementById('totpRecoveryPanel'), recList = document.getElementById('totpRecoveryList'), setMsg = document.getElementById('totpSettingsMessage')
+    if (recPanel) recPanel.hidden = true
+    if (recList) recList.replaceChildren()
+    if (setMsg) setMsg.textContent = ''
     $('#totpSaveSettings,#totpStartSetup').prop('disabled', true)
     $.ajax({url: Label.servePath + '/console/security/totp', type: 'GET', cache: false,
       complete: function () { $('#loadMsg').text('') },
@@ -436,8 +444,12 @@ Object.assign(admin.security, {
     if (panel) panel.hidden = true
     var qr = document.getElementById('totpQrCode')
     if (qr) qr.replaceChildren()
-    var msg = document.getElementById('totpSetupMessage')
+    var msg = document.getElementById('totpSetupMessage'), secText = document.getElementById('totpSecretText'), secMeta = document.getElementById('totpSetupMeta'), curCode = document.getElementById('totpCurrentCode'), setCode = document.getElementById('totpSetupCode')
     if (msg) msg.textContent = ''
+    if (secText) secText.textContent = ''
+    if (secMeta) secMeta.textContent = ''
+    if (curCode) curCode.value = ''
+    if (setCode) setCode.value = ''
   },
   confirmTotpSetup: function () {
     if (this.totpBusy || !this.totpSetup) return
@@ -649,6 +661,6 @@ Object.assign(admin.security, {
 })
 admin.register.access = {obj:admin.security,init:function () { this.loadSettings('access') },refresh:function () { this.loadSettings('access') }}
 admin.register.totp = {obj:admin.security,init:function () { this.loadTotp() },refresh:function () { this.loadTotp() }}
-admin.register.ip = {obj:admin.security,init:admin.security.initIpBans,refresh:admin.security.loadIpBans}
+admin.register.ip = {obj:admin.security,init:admin.security.initIpBans,refresh:function () { if (this.ipBanEditing) this.cancelIpBanEdit(); this.loadIpBans() }}
 admin.register.geo = {obj:admin.security,init:admin.security.loadGeoAccess,refresh:admin.security.loadGeoAccess}
 admin.register.comments = {obj:admin.security,init:function () { this.loadSettings('comments') },refresh:function () { this.loadSettings('comments') }}

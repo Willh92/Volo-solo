@@ -17,20 +17,20 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" class="comment__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li id="${comment.oId?html}" class="comment__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="fn__flex">
         <main class="comment__main fn__flex-1">
             <div class="fn__clear ft__gray thread-comment-header">
             <span class="comment-author">
-            <#if "http://" == comment.commentURL>
+            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                 ${comment.commentName?html}
             <#else>
-            <a href="${comment.commentURL?html}" target="_blank" class="ft__red">${comment.commentName?html}</a>
+            <a href="${comment.commentURL?html}" target="_blank" class="ft__red" rel="noopener noreferrer nofollow">${comment.commentName?html}</a>
             </#if>
             <#if comment.isReply>
-            @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 2);"
-                onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+            @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 2);"
+                onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
                 class="ft__red"
             >${comment.commentOriginalCommentName?html}</a>
             </#if>

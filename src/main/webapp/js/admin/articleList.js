@@ -75,11 +75,11 @@ admin.articleList = {
    */
   syncToHacpai: function (id) {
     $.ajax({
-      url: Label.servePath + '/console/article/push2rhy?id=' + id,
-      type: 'GET',
+      url: Label.servePath + '/console/article/push2rhy?id=' + encodeURIComponent(id),
+      type: 'POST',
       cache: false,
       success: function (result, textStatus) {
-        $('#tipMsg').text(Label.pushSuccLabel)
+        $('#tipMsg').text((result && result.msg) || Label.pushSuccLabel)
       },
     })
   },
@@ -103,20 +103,44 @@ admin.articleList = {
           return
         }
 
+        var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+          return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]
+          })
+        }
+        var encodeQuote = (typeof Util !== 'undefined' && Util.encodeSingleQuote) || function (v) {
+          return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27')
+        }
+        var decodeEntities = function (v) {
+          return String(v == null ? '' : v).replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, function (m, e) {
+            if (e === 'amp') return '&'
+            if (e === 'lt') return '<'
+            if (e === 'gt') return '>'
+            if (e === 'quot') return '"'
+            if (e === 'apos') return "'"
+            var cp = e.charAt(1) === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
+            return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m
+          })
+        }
         var articles = result.articles,
           articleData = []
         for (var i = 0; i < articles.length; i++) {
+          var rawPermalink = String(articles[i].articlePermalink || '')
+          var safeHref = (/^https?:\/\//i.test(rawPermalink) ? escapeHtml(rawPermalink) : escapeHtml(Label.servePath + (rawPermalink.charAt(0) === '/' ? rawPermalink : '/' + rawPermalink)))
+          var safeTitle = escapeHtml(decodeEntities(articles[i].articleTitle))
+          var safeId = encodeQuote(articles[i].oId)
+          var encodedTitle = encodeQuote(articles[i].articleTitle)
           articleData[i] = {}
-          articleData[i].title = '<a href="' + Label.servePath +
-            articles[i].articlePermalink + '" target=\'_blank\' title=\'' +
-            articles[i].articleTitle + '\' class=\'no-underline console-article-title\'>'
-            + articles[i].articleTitle + '</a><span class=\'table-tag\'>' +
-            articles[i].articleTags + '</span>'
+          articleData[i].title = '<a href="' + safeHref +
+            '" target=\'_blank\' rel=\'noopener noreferrer\' title=\'' +
+            safeTitle + '\' class=\'no-underline console-article-title\'>'
+            + safeTitle + '</a><span class=\'table-tag\'>' +
+            escapeHtml(articles[i].articleTags) + '</span>'
           articleData[i].date = $.bowknot.getDate(articles[i].articleCreateTime)
-          articleData[i].comments = articles[i].articleCommentCount
-          articleData[i].articleViewCount = articles[i].articleViewCount
-          articleData[i].author = articles[i].authorName
-          articleData[i].category = articles[i].articleCategory
+          articleData[i].comments = escapeHtml(articles[i].articleCommentCount)
+          articleData[i].articleViewCount = escapeHtml(articles[i].articleViewCount)
+          articleData[i].author = escapeHtml(articles[i].authorName)
+          articleData[i].category = escapeHtml(articles[i].articleCategory)
           if (articles[i].articlePutTop) articleData[i].title = '<span class="console-post-status">' + Label.putTopLabel + '</span>' + articleData[i].title
 
           var topClass = articles[i].articlePutTop
@@ -125,28 +149,28 @@ admin.articleList = {
 
           if (Label.b3logEnabled === "true" || Label.fishpiEnabled === "true") {
             articleData[i].expendRow = '<a href=\'javascript:void(0)\' onclick="admin.article.get(\'' +
-                articles[i].oId + '\', true)">' + Label.updateLabel + '</a>  \
+                safeId + '\', true)">' + Label.updateLabel + '</a>  \
                                 <a href=\'javascript:void(0)\' onclick="admin.article.del(\'' +
-                articles[i].oId + '\', \'article\', \'' +
-                encodeURIComponent(articles[i].articleTitle) + '\')">' +
+                safeId + '\', \'article\', \'' +
+                encodedTitle + '\')">' +
                 Label.removeLabel + '</a>  \
                               <a href=\'javascript:void(0)\' onclick="admin.articleList.syncToHacpai(\'' +
-                articles[i].oId + '\')">' + Label.pushToHacpaiLabel + '</a>  \
+                safeId + '\')">' + Label.pushToHacpaiLabel + '</a>  \
                               <a href=\'javascript:void(0)\' onclick="admin.articleList.popTop(this, \'' +
-                articles[i].oId + '\')">' + topClass + '</a>  \
+                safeId + '\')">' + topClass + '</a>  \
                               <a href=\'javascript:void(0)\' onclick="admin.comment.open(\'' +
-                articles[i].oId + '\', \'article\')">' + Label.commentLabel + '</a>'
+                safeId + '\', \'article\')">' + Label.commentLabel + '</a>'
           } else {
             articleData[i].expendRow = '<a href=\'javascript:void(0)\' onclick="admin.article.get(\'' +
-                articles[i].oId + '\', true)">' + Label.updateLabel + '</a>  \
+                safeId + '\', true)">' + Label.updateLabel + '</a>  \
                                 <a href=\'javascript:void(0)\' onclick="admin.article.del(\'' +
-                articles[i].oId + '\', \'article\', \'' +
-                encodeURIComponent(articles[i].articleTitle) + '\')">' +
+                safeId + '\', \'article\', \'' +
+                encodedTitle + '\')">' +
                 Label.removeLabel + '</a>  \
                               <a href=\'javascript:void(0)\' onclick="admin.articleList.popTop(this, \'' +
-                articles[i].oId + '\')">' + topClass + '</a>  \
+                safeId + '\')">' + topClass + '</a>  \
                               <a href=\'javascript:void(0)\' onclick="admin.comment.open(\'' +
-                articles[i].oId + '\', \'article\')">' + Label.commentLabel + '</a>'
+                safeId + '\', \'article\')">' + Label.commentLabel + '</a>'
           }
         }
 

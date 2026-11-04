@@ -23,8 +23,8 @@
             <p>
                 <i class="fa fa-code"></i> Markdown Supported while <i class="fa fa-code" aria-hidden="true"></i> Forbidden
             </p>
-            <input type="text" placeholder="你的昵称" id="boloUser" style="margin-bottom: 10px">
-            <input type="text" placeholder="你的个人主页URL（选填）" id="boloSite" style="margin-bottom: 10px">
+            <input autocomplete="off" type="text" placeholder="你的昵称" id="boloUser" style="margin-bottom: 10px">
+            <input autocomplete="off" type="text" placeholder="你的个人主页URL（选填）" id="boloSite" style="margin-bottom: 10px">
             <div class="comment-textarea">
                 <textarea placeholder="${postCommentsLabel} ..." aria-label="${postCommentsLabel}" class="commentbody" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
             </div>

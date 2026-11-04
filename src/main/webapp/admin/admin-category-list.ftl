@@ -25,11 +25,11 @@
 <div id="categoryEditor" class="form form__no-table">
     <h3 id="categoryEditorTitle">${addCategoryLabel!'添加分类'}</h3>
     <label for="categoryName">${linkTitle1Label}</label>
-    <input id="categoryName" type="text"/>
+    <input id="categoryName" type="text" autocomplete="off"/>
     <label for="categoryURI">URI：</label>
-    <input id="categoryURI" type="text"/>
+    <input id="categoryURI" type="text" autocomplete="off"/>
     <label for="categoryDesc">${linkDescription1Label}</label>
-    <input id="categoryDesc" type="text"/>
+    <input id="categoryDesc" type="text" autocomplete="off"/>
     <div class="console-form-actions"><button id="categoryCancelEdit" type="button" onclick="admin.categoryList.cancelEdit();" hidden>${cancelLabel}</button><button id="categorySave" type="button" onclick="admin.categoryList.add();">${saveLabel}</button></div>
 </div>
 ${plugins}

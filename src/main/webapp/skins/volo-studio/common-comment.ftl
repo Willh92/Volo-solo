@@ -17,20 +17,20 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<li id="${comment.oId}" class="comment__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
+<li id="${comment.oId?html}" class="comment__item" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="fn__flex">
         <main class="comment__main fn__flex-1">
             <div class="comment__meta ft__gray">
             <span class="comment__author">
-            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://'>
+            <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                 ${comment.commentName?html}
             <#else>
-            <a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer" class="ft__red">${comment.commentName?html}</a>
+            <a href="${comment.commentURL?html}" target="_blank" rel="noopener noreferrer nofollow" class="ft__red">${comment.commentName?html}</a>
             </#if>
             <#if comment.isReply>
-            @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId}"
-                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId}', 2);"
-                onmouseout="page.hideComment('${comment.commentOriginalCommentId}')"
+            @<a href="${servePath}${article.permalink}#${comment.commentOriginalCommentId?html}"
+                onmouseover="page.showComment(this, '${comment.commentOriginalCommentId?js_string}', 2);"
+                onmouseout="page.hideComment('${comment.commentOriginalCommentId?js_string}')"
                 class="ft__red"
             >${comment.commentOriginalCommentName?html}</a>
             </#if>

@@ -33,7 +33,7 @@
                         <div class="blog-slider__wrp swiper-wrapper">
                             <div class="blog-slider__item swiper-slide">
                                 <div class="blog-slider__img">
-                                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                    <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                         <img src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
                                             referrerpolicy="origin">
                                     </a>
@@ -52,7 +52,7 @@
                                         </#if>
                                     </div>
                                     <div class="blog-slider__title "><a class="title is-5 skin-list-title" title="${(article.articleTitle!)?html}"
-                                            href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                            href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                             ${(article.articleTitle!)?html}
                                         </a>
                                     </div>
@@ -62,7 +62,7 @@
                                                 ${article.articleAbstractText!}
                                         </#if>
                                     </div>
-                                    <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}"
+                                    <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}"
                                         class="blog-slider__button">阅读更多</a>
                                 </div>
                             </div>
@@ -73,7 +73,7 @@
                 <#else>
                     <div class="card">
                         <div class="card-image">
-                            <a href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                            <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                 <img class="thumbnail" src="${article.articleImg1URL}" alt="${(article.articleTitle!)?html}"
                                     referrerpolicy="origin">
                             </a>
@@ -95,7 +95,7 @@
                             </div>
                             <h1 class="title is-size-5 is-size-5-mobile has-text-weight-normal">
                                 <a class="has-link-black-ter skin-list-title" title="${(article.articleTitle!)?html}"
-                                    href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">
+                                    href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
                                     ${(article.articleTitle!)?html}
                                 </a>
                             </h1>
@@ -110,7 +110,7 @@
                                 <div class="level-start">
                                     <div class="level-item">
                                         <a class="button is-size-7 is-light"
-                                            href="${isRss?then(article.articlePermalink, servePath + article.articlePermalink)}">阅读更多</a>
+                                            href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">阅读更多</a>
                                     </div>
                                 </div>
                             </div>

@@ -173,7 +173,7 @@
     page.loadRandomArticles('<header class="module__header">${randomArticlesLabel}</header>');
     </#if>
     <#if 0 != relevantArticlesDisplayCount>
-    page.loadRelevantArticles('${article.oId}', '<header class="module__header">${relevantArticlesLabel}</header>');
+    page.loadRelevantArticles('${article.oId?js_string}', '<header class="module__header">${relevantArticlesLabel}</header>');
     </#if>
     Skin.initArticle()
 </@comment_script>
