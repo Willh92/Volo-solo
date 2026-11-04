@@ -655,7 +655,9 @@ body.bolo-console .console-github-table th:first-child { width:60px; }
 body.bolo-console .console-github-table th:nth-child(n+3) { width:72px; }
 body.bolo-console .console-github-table td:first-child { text-align:center; }
 body.bolo-console .console-github-table input[type='checkbox'] { width:17px; height:17px; margin:0; }
-body.bolo-console .console-github-description { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; margin:5px 0 0; color:var(--bolo-muted); font-size:12px; }
+body.bolo-console .console-github-description { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; max-height:calc(1.6em * 2); line-height:1.6; overflow:hidden; margin:5px 0 0; color:var(--bolo-muted); font-size:12px; }
+body.bolo-console .console-github-description[title] { cursor:pointer; }
+body.bolo-console .console-github-description.is-expanded { display:block; -webkit-line-clamp:unset; max-height:none; overflow:visible; }
 body.bolo-console .console-github-excluded { color:var(--bolo-muted); }
 body.bolo-console .console-github-pagination { display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; color:var(--bolo-muted); font-size:12px; }
 body.bolo-console .console-github-pagination:empty { display:none; }

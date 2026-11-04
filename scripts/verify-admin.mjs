@@ -395,7 +395,8 @@ for (const width of [390, 768, 1440]) {
   const lastCheckbox=list.descendants().filter(node=>node.type==='checkbox').at(-1);lastCheckbox.checked=false;lastCheckbox.events.change();
   nodes.get('githubRepositoryQuery').value='repo-0';nodes.get('githubRepositoryQuery').events['input.githubRepos']();
   assert.deepEqual(JSON.parse(JSON.stringify(ui.payload())).hidden,['owner/repo-0','owner/repo-14'],'Pagination and search retain hidden selections');
-  assert(list.descendants().some(node=>node.textContent===payload),'Repository metadata must be rendered as literal text');
+  const descNode=list.descendants().find(node=>node.className==='console-github-description');
+  assert(descNode&&descNode.textContent===payload&&descNode.title===payload,'Repository metadata must be rendered as literal text with full-text tooltip');
   nodes.get('myGitHubID').value='Another';assert.deepEqual(JSON.parse(JSON.stringify(ui.payload())).hidden,[],'An account change must not hide repositories from another owner');
   ui.load();requests.shift().error({});assert.equal(ui.payload(),null,'Read failures must not overwrite saved visibility settings');
 }

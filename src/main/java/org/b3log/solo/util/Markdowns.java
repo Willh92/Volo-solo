@@ -108,14 +108,15 @@ public final class Markdowns {
 
     private static final Safelist SAFE_HTML_WHITELIST = Safelist.relaxed()
             .preserveRelativeLinks(true)
-            .addAttributes("a", "target", "rel")
+            .addAttributes("a", "target", "rel", "data-github-profile")
             .addAttributes("pre", "class")
-            .addAttributes("div", "class", "data-code")
+            .addAttributes("div", "class", "data-code", "title")
             .addAttributes("span", "class")
             .addAttributes("code", "class")
             .addAttributes("img", "class", "alt", "title")
+            .addAttributes("table", "class")
             .addAttributes("th", "align")
-            .addAttributes("td", "align")
+            .addAttributes("td", "align", "class")
             .addTags("input")
             .addAttributes("input", "type", "checked", "disabled");
 

@@ -164,6 +164,24 @@
     menu.style.top = top + 'px'
   }
 
+  function syncGitHubRepoDescriptions () {
+    document.querySelectorAll('.volo-github-repo-desc').forEach(function (desc) {
+      var expanded = desc.classList.contains('is-expanded')
+      var truncatable = expanded || desc.scrollHeight > desc.clientHeight + 1
+      if (truncatable) {
+        desc.dataset.truncatable = 'true'
+        if (!desc.hasAttribute('tabindex')) desc.tabIndex = 0
+        desc.setAttribute('role', 'button')
+        desc.setAttribute('aria-expanded', String(expanded))
+      } else {
+        delete desc.dataset.truncatable
+        desc.removeAttribute('tabindex')
+        desc.removeAttribute('role')
+        desc.removeAttribute('aria-expanded')
+      }
+    })
+  }
+
   function mount () {
     if (!document.body) return
     root.dataset.boloPage = document.body.classList.contains('bolo-console') ? 'console' : document.body.classList.contains('auth-page') ? 'auth' : 'public'
@@ -194,6 +212,7 @@
     moveHeaderControl()
     apply()
     syncNativeControls()
+    syncGitHubRepoDescriptions()
   }
 
   function set (value) {
@@ -217,7 +236,7 @@
   else mount()
   window.addEventListener('bolo:after-navigate', mount)
   window.addEventListener('bolo:before-navigate', function () { close(false) })
-  window.addEventListener('resize', function () { close(false); moveHeaderControl() })
+  window.addEventListener('resize', function () { close(false); moveHeaderControl(); syncGitHubRepoDescriptions() })
   window.addEventListener('scroll', function () { close(false) }, {passive: true})
   document.addEventListener('transitionend', function (event) { if (event.propertyName === 'transform' || event.propertyName === 'left') moveHeaderControl() })
   document.addEventListener('pjax:complete', mount)
@@ -256,9 +275,25 @@
       set(resolved === 'dark' ? 'light' : 'dark')
       return
     }
+    var repoDesc = event.target.closest('.volo-github-repo-desc[data-truncatable="true"]')
+    if (repoDesc && !event.target.closest('a[href]') && !(window.getSelection && String(window.getSelection()).length)) {
+      var nextExpanded = !repoDesc.classList.contains('is-expanded')
+      repoDesc.classList.toggle('is-expanded', nextExpanded)
+      repoDesc.setAttribute('aria-expanded', String(nextExpanded))
+    }
     if (!event.target.closest('.bolo-appearance')) close(false)
   }, true)
   document.addEventListener('keydown', function (event) {
+    if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a[href]')) {
+      var repoDesc = event.target.closest('.volo-github-repo-desc[data-truncatable="true"]')
+      if (repoDesc) {
+        event.preventDefault()
+        var nextExpanded = !repoDesc.classList.contains('is-expanded')
+        repoDesc.classList.toggle('is-expanded', nextExpanded)
+        repoDesc.setAttribute('aria-expanded', String(nextExpanded))
+        return
+      }
+    }
     var menu = event.target.closest('#voloAppearanceMenu, .bolo-appearance [role="menu"]')
     if (event.key === 'Escape') {
       close(!!menu)

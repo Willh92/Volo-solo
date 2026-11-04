@@ -58,7 +58,17 @@ for (const [stored,hour,dark,expected] of [['light',23,true,'light'],['dark',12,
   click();assert(menu.hidden);assert.equal(menu.parentElement,widget);assert.equal(stopped,2,'An adopted native button must not also fire its old toggle handler');
   let escapeStopped=false;click();test.listeners['document:keydown']({target:{closest:()=>menu},key:'Escape',preventDefault(){},stopImmediatePropagation(){escapeStopped=true;}});assert(menu.hidden);assert.equal(focus,1);assert(escapeStopped,'Closing the appearance menu must not also close its parent drawer');
   click();test.listeners['window:bolo:before-navigate']();assert(menu.hidden);assert.equal(menu.parentElement,widget,'PJAX must not leave an orphaned popup in the document');
-  click();test.listeners['window:scroll']();assert(menu.hidden);cases+=5;
+  click();test.listeners['window:scroll']();assert(menu.hidden);
+  const makeDesc=(scrollHeight,clientHeight)=>{const classes=new Set(),attrs=new Map();return {scrollHeight,clientHeight,dataset:{},classList:{contains:n=>classes.has(n),toggle:(n,f)=>f===undefined?(classes.has(n)?(classes.delete(n),false):(classes.add(n),true)):(f?classes.add(n):classes.delete(n),!!f)},hasAttribute:n=>attrs.has(n),setAttribute:(n,v)=>attrs.set(n,v),getAttribute:n=>attrs.get(n),removeAttribute:n=>attrs.delete(n)};};
+  const longDesc=makeDesc(96,42),shortDesc=makeDesc(40,42);
+  test.document.querySelectorAll=selector=>selector==='.volo-github-repo-desc'?[longDesc,shortDesc]:selector==='.bolo-appearance'?[widget]:[];
+  test.api.refresh();
+  assert.equal(longDesc.dataset.truncatable,'true');assert.equal(longDesc.getAttribute('aria-expanded'),'false');assert.equal(shortDesc.dataset.truncatable,undefined);
+  test.listeners['document:click']({target:{closest:selector=>selector==='.volo-github-repo-desc[data-truncatable="true"]'?longDesc:null},preventDefault(){},stopImmediatePropagation(){}});
+  assert(longDesc.classList.contains('is-expanded'));assert.equal(longDesc.getAttribute('aria-expanded'),'true');
+  test.listeners['document:keydown']({key:'Enter',target:{closest:selector=>selector==='.volo-github-repo-desc[data-truncatable="true"]'?longDesc:null},preventDefault(){},stopImmediatePropagation(){}});
+  assert(!longDesc.classList.contains('is-expanded'));assert.equal(longDesc.getAttribute('aria-expanded'),'false');
+  cases+=6;
 }
 
 // Execute the real login handler with synthetic DOM elements and fetch responses.

@@ -107,4 +107,32 @@ public class ImageResourceTest {
         GitHubStats.normalizeNavigationIcon(page);
         Assert.assertEquals(page.getString("pageIcon"), "/images/github-icon.png");
     }
+
+    @Test public void githubRepositoryTableWrapsLongDescriptionsIdempotently() {
+        final String longDesc = "A very long repository description ".repeat(12).trim();
+        final String html = "<h2>开源项目</h2>"
+                + "<table><thead><tr><th>仓库</th><th>项目简介</th><th>Stars</th><th>Forks</th><th>编程语言</th></tr></thead>"
+                + "<tbody><tr><td><a href='https://github.com/Willh92/Volo-solo'>Volo-solo</a></td>"
+                + "<td>" + longDesc + "</td><td>42</td><td>7</td><td>Java</td></tr>"
+                + "<tr><td><a href='https://github.com/Willh92/empty'>empty</a></td>"
+                + "<td></td><td>1</td><td>0</td><td>Shell</td></tr></tbody></table>";
+        final String enhanced = GitHubStats.rewriteImages(html);
+        final var doc = org.jsoup.Jsoup.parseBodyFragment(enhanced);
+        Assert.assertEquals(doc.select(".volo-github-repos-wrap > table.volo-github-repos-table").size(), 1);
+        final var desc = doc.selectFirst(".volo-github-repo-desc");
+        Assert.assertNotNull(desc);
+        Assert.assertEquals(desc.attr("title"), longDesc);
+        Assert.assertEquals(desc.text(), longDesc);
+        final var repoLink = doc.selectFirst("table.volo-github-repos-table tbody td a");
+        Assert.assertNotNull(repoLink);
+        Assert.assertEquals(repoLink.attr("target"), "_blank");
+        Assert.assertTrue(repoLink.attr("rel").contains("noopener"));
+        Assert.assertNull(doc.select("tbody > tr").get(1).selectFirst(".volo-github-repo-desc"),
+                "Empty description cells stay clean without empty tooltip wrappers");
+        Assert.assertEquals(GitHubStats.rewriteImages(enhanced), enhanced, "Repeated rendering must not double-wrap table or descriptions");
+        final String cleaned = org.b3log.solo.util.Markdowns.clean(enhanced);
+        final var cleanedDoc = org.jsoup.Jsoup.parseBodyFragment(cleaned);
+        Assert.assertEquals(cleanedDoc.select(".volo-github-repos-wrap > table.volo-github-repos-table .volo-github-repo-desc").size(), 1);
+        Assert.assertEquals(cleanedDoc.selectFirst(".volo-github-repo-desc").attr("title"), longDesc);
+    }
 }

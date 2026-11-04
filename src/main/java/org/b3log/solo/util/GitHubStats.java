@@ -50,47 +50,97 @@ public final class GitHubStats {
     }
 
     public static String rewriteImages(final String html) {
-        if (html == null || (!html.contains("github-readme-stats.vercel.app") && !html.contains("/github-stats/"))) return html;
+        if (html == null) return null;
+        final boolean hasStatsImage = html.contains("github-readme-stats.vercel.app") || html.contains("/github-stats/");
+        final boolean hasRepoTable = html.contains("<table") && html.contains("项目简介") && html.contains("编程语言");
+        if (!hasStatsImage && !hasRepoTable) return html;
         final var document = Jsoup.parseBodyFragment(html);
         document.outputSettings().prettyPrint(false);
-        final java.util.Set<String> profiles = new java.util.LinkedHashSet<>();
-        for (final var image : document.select("img[src]")) {
-            final String source = localSource(image.attr("src"));
-            image.attr("src", source);
-            try {
-                final URI uri = URI.create(source);
-                final String prefix = Latkes.getContextPath() + "/github-stats/";
-                final String path = uri.getPath();
-                if (path == null || !path.startsWith(prefix) || !path.endsWith(".svg")
-                        || (uri.getRawAuthority() != null && !java.util.Objects.equals(uri.getAuthority(), URI.create(Latkes.getServePath()).getAuthority()))) continue;
-                final String username = path.substring(prefix.length(), path.length() - 4);
-                if (!validUser(username)) continue;
-                final String profile = "https://github.com/" + username;
-                profileLink(image, profile);
-                profiles.add(profile);
-            } catch (IllegalArgumentException ignored) { }
-        }
-        if (profiles.size() == 1) {
-            final String profile = profiles.iterator().next();
+        if (hasStatsImage) {
+            final java.util.Set<String> profiles = new java.util.LinkedHashSet<>();
             for (final var image : document.select("img[src]")) {
+                final String source = localSource(image.attr("src"));
+                image.attr("src", source);
                 try {
-                    final String path = URI.create(image.attr("src")).getPath();
-                    if (path != null && path.endsWith("/images/github_repo.jpg")) profileLink(image, profile);
+                    final URI uri = URI.create(source);
+                    final String prefix = Latkes.getContextPath() + "/github-stats/";
+                    final String path = uri.getPath();
+                    if (path == null || !path.startsWith(prefix) || !path.endsWith(".svg")
+                            || (uri.getRawAuthority() != null && !java.util.Objects.equals(uri.getAuthority(), URI.create(Latkes.getServePath()).getAuthority()))) continue;
+                    final String username = path.substring(prefix.length(), path.length() - 4);
+                    if (!validUser(username)) continue;
+                    final String profile = "https://github.com/" + username;
+                    profileLink(image, profile);
+                    profiles.add(profile);
                 } catch (IllegalArgumentException ignored) { }
             }
-            for (final var heading : document.select("h2")) {
-                if ("github stats".equalsIgnoreCase(heading.text().trim())) {
-                    if (heading.childrenSize() == 1 && "a".equals(heading.child(0).tagName())) {
-                        heading.child(0).attr("href", profile).attr("target", "_blank").attr("rel", "noopener noreferrer");
-                    } else if (heading.childrenSize() == 0) {
-                        final String text = heading.text();
-                        heading.empty().appendElement("a").attr("href", profile).attr("target", "_blank")
-                                .attr("rel", "noopener noreferrer").text(text);
+            if (profiles.size() == 1) {
+                final String profile = profiles.iterator().next();
+                for (final var image : document.select("img[src]")) {
+                    try {
+                        final String path = URI.create(image.attr("src")).getPath();
+                        if (path != null && path.endsWith("/images/github_repo.jpg")) profileLink(image, profile);
+                    } catch (IllegalArgumentException ignored) { }
+                }
+                for (final var heading : document.select("h2")) {
+                    if ("github stats".equalsIgnoreCase(heading.text().trim())) {
+                        if (heading.childrenSize() == 1 && "a".equals(heading.child(0).tagName())) {
+                            heading.child(0).attr("href", profile).attr("target", "_blank").attr("rel", "noopener noreferrer");
+                        } else if (heading.childrenSize() == 0) {
+                            final String text = heading.text();
+                            heading.empty().appendElement("a").attr("href", profile).attr("target", "_blank")
+                                    .attr("rel", "noopener noreferrer").text(text);
+                        }
                     }
                 }
             }
         }
+        if (hasRepoTable) {
+            enhanceRepositoryTables(document);
+        }
         return document.body().html();
+    }
+
+    private static void enhanceRepositoryTables(final org.jsoup.nodes.Document document) {
+        for (final var table : document.select("table")) {
+            final var headerRow = table.selectFirst("thead > tr, tr");
+            if (headerRow == null) continue;
+            final var headers = headerRow.select("> th");
+            if (headers.size() != 5
+                    || !"仓库".equals(headers.get(0).text().trim())
+                    || !"项目简介".equals(headers.get(1).text().trim())
+                    || !"Stars".equals(headers.get(2).text().trim())
+                    || !"Forks".equals(headers.get(3).text().trim())
+                    || !"编程语言".equals(headers.get(4).text().trim())) {
+                continue;
+            }
+            table.addClass("volo-github-repos-table");
+            if (table.parent() == null || !table.parent().hasClass("volo-github-repos-wrap")) {
+                table.wrap("<div class=\"volo-github-repos-wrap\"></div>");
+            }
+            final var rows = table.select("tbody > tr");
+            for (final var row : rows.isEmpty() ? table.select("> tr") : rows) {
+                final var cells = row.select("> td");
+                if (cells.size() < 5) continue;
+                for (final var link : cells.get(0).select("a[href]")) {
+                    link.attr("target", "_blank").attr("rel", "noopener noreferrer");
+                }
+                final var descCell = cells.get(1);
+                descCell.addClass("volo-github-repo-desc-cell");
+                if (descCell.selectFirst("> .volo-github-repo-desc") == null) {
+                    final String plainDesc = descCell.text().trim();
+                    if (!plainDesc.isEmpty()) {
+                        final var wrapper = document.createElement("div")
+                                .addClass("volo-github-repo-desc")
+                                .attr("title", plainDesc);
+                        for (final var child : new java.util.ArrayList<>(descCell.childNodes())) {
+                            wrapper.appendChild(child);
+                        }
+                        descCell.appendChild(wrapper);
+                    }
+                }
+            }
+        }
     }
 
     private static void profileLink(final org.jsoup.nodes.Element image, final String profile) {

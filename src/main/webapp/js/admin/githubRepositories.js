@@ -93,7 +93,12 @@ admin.githubRepositories = {
         input.addEventListener('change', function () { repo.selected = input.checked; row.classList.toggle('console-github-excluded', !input.checked || input.disabled); admin.githubRepositories.dirty = true; admin.githubRepositories.updateSummary() })
         selection.appendChild(input)
         var link = element('a', repo.name); link.href = 'https://github.com/' + repo.fullName; link.target = '_blank'; link.rel = 'noopener noreferrer'
-        info.appendChild(link); info.appendChild(element('p', repo.description || '暂无简介', 'console-github-description'))
+        var desc = element('p', repo.description || '暂无简介', 'console-github-description')
+        if (repo.description) {
+          desc.title = repo.description
+          desc.addEventListener('click', function () { desc.classList.toggle('is-expanded') })
+        }
+        info.appendChild(link); info.appendChild(desc)
         ;[selection, info, type, element('td', repo.stars), element('td', repo.forks)].forEach(function (cell, index) {
           cell.dataset.label = ['展示', '仓库', '类型', 'Stars', 'Forks'][index]; row.appendChild(cell)
         })
