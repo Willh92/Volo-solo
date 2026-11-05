@@ -36,12 +36,10 @@ var Skin = {
                 $('body').removeClass('body--gray')
             }
             $('.header__nav a').each(function () {
-                console.log(this.href)
-                console.log(location.href)
                 if (this.href === location.href) {
                     this.className = 'active nexmoe-list-item mdui-list-item mdui-ripple'
-                }else{
-                    this.className ='nexmoe-list-item mdui-list-item mdui-ripple'
+                } else {
+                    this.className = 'nexmoe-list-item mdui-list-item mdui-ripple'
                 }
             })
 
@@ -58,16 +56,17 @@ var Skin = {
                 this.className = 'active nexmoe-list-item mdui-list-item mdui-ripple'
             }
         })
-
-
     },
     _initBackToTop: function () {
         var control = document.querySelector('#nexmoe-content .back-to-top')
         if (!control) return
         control.setAttribute('role', 'button')
         control.setAttribute('aria-label', '返回顶部')
+        var lastVisible = null
         function update () {
             var visible = window.scrollY > 240
+            if (visible === lastVisible) return
+            lastVisible = visible
             control.classList.toggle('is-visible', visible)
             control.setAttribute('aria-hidden', String(!visible))
             control.tabIndex = visible ? 0 : -1
@@ -85,22 +84,14 @@ var Skin = {
         })
     },
     _initToc: function () {
-        /* $(window).keydown(function (event) {
-            if (event.which == 84) {
-                Util.goTop()
-            }
-        }); */
         // 删除重复头图问题
-        let headerImg = $(".nexmoe-post-cover img:eq(0)").attr("data-src") || $(".nexmoe-post-cover img:eq(0)").attr("src")
-        let firstP = $("article p:eq(0) img:eq(0)").attr("data-src")
-
-        if (firstP == undefined) {
-            firstP = $("article p:eq(0) img:eq(0)").attr("src")
-        }
+        let $coverImg = $(".nexmoe-post-cover img:eq(0)")
+        let $firstImg = $("article p:eq(0) img:eq(0)")
+        let headerImg = $coverImg.attr("data-src") || $coverImg.attr("src")
+        let firstP = $firstImg.attr("data-src") || $firstImg.attr("src")
         if (headerImg == firstP && headerImg != undefined) {
             $("article img:eq(0)").remove()
         }
-
     },
     _initShare: function () {
         var $this = $('.post__share')

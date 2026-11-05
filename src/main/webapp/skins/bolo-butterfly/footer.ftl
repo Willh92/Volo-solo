@@ -36,7 +36,7 @@
 <#--</svg>-->
 <#include "rightside.ftl">
 <#include "mobile-menu.ftl">
-<script src="${staticServePath}/js/lib/jquery/jquery.min.js"></script>
+<script src="${staticServePath}/js/lib/jquery/jquery.min.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
 <script type="text/javascript"
         src="${staticServePath}/skins/${skinDirName}/js/common.min.js?${staticResourceVersion}"

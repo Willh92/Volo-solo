@@ -119,6 +119,111 @@
                 <button type="button" onclick="admin.others.loadLocalBackups()">刷新归档列表</button>
             </div>
             <div class="console-simple-table-wrap"><table id="localBackupsTable" class="console-simple-table"></table></div>
+            <div class="console-subcard console-subcard--surface" style="margin-top: 16px;">
+                <div class="console-section-head">
+                    <div class="console-section-head__copy">
+                        <h4>备份校验与一键整站恢复</h4>
+                        <p>可在上方列表点击“预览恢复”，或上传外部备份 <code>.zip</code>。执行前会自动创建一份 <code>pre-restore</code> 本地快照；默认安全恢复模式保留当前管理员密码、TOTP 与通行密钥。</p>
+                    </div>
+                </div>
+                <div class="console-inline-bar">
+                    <input id="restoreZipUploadInput" type="file" accept=".zip"/>
+                    <button type="button" onclick="admin.others.inspectUploadedBackup(this)">解析外部备份 ZIP</button>
+                </div>
+                <div id="backupRestoreConfirmBox" class="console-restore-summary" style="display: none;">
+                    <div id="backupRestoreSummaryMeta" class="console-restore-summary__meta"></div>
+                    <div class="console-checkbox-group" style="margin: 10px 0;">
+                        <label class="checkbox" for="backupRestoreOverwriteAuth">
+                            <input id="backupRestoreOverwriteAuth" type="checkbox"/>
+                            <span>强制使用归档内的管理员账号密码、TOTP 与通行密钥覆盖当前凭据（勾选后需用备份内凭据重新登录）</span>
+                        </label>
+                    </div>
+                    <div class="console-inline-bar" style="margin: 0;">
+                        <button type="button" id="confirmBackupRestoreBtn" onclick="admin.others.executeBackupRestore(this)">确认执行整站恢复</button>
+                        <button type="button" onclick="admin.others.cancelBackupRestore()">取消</button>
+                    </div>
+                </div>
+            </div>
+            <div class="console-subcard console-subcard--surface">
+                <div class="console-section-head">
+                    <div class="console-section-head__copy">
+                        <h4>异地备份自动同步（WebDAV / S3 兼容存储）</h4>
+                        <p>每日滚动归档或手动备份完成后，自动异步上传至坚果云 / Nextcloud / OpenList（WebDAV）或 Cloudflare R2 / MinIO / AWS S3。</p>
+                    </div>
+                </div>
+                <div class="console-form-grid">
+                    <div class="console-form-cell">
+                        <label for="remoteBackupEnabled">自动异地同步</label>
+                        <select id="remoteBackupEnabled">
+                            <option value="false">关闭（默认）</option>
+                            <option value="true">开启归档后自动同步</option>
+                        </select>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteBackupProtocol">存储协议</label>
+                        <select id="remoteBackupProtocol" onchange="admin.others.onRemoteProtocolChange()">
+                            <option value="webdav">WebDAV（坚果云 / Nextcloud / OpenList）</option>
+                            <option value="s3">S3 兼容存储（Cloudflare R2 / MinIO / AWS S3）</option>
+                        </select>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteBackupKeepCount">远端保留份数（1~90）</label>
+                        <input id="remoteBackupKeepCount" type="number" min="1" max="90" value="14"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteBackupPrefix">远端目录 / 对象前缀</label>
+                        <input id="remoteBackupPrefix" type="text" value="volo-backups" placeholder="例如 volo-backups"/>
+                    </div>
+                </div>
+                <div id="remoteWebdavFields" class="console-form-grid">
+                    <div class="console-form-cell console-form-cell--full">
+                        <label for="remoteWebdavUrl">WebDAV 服务地址（仅限公网 HTTPS/HTTP）</label>
+                        <input id="remoteWebdavUrl" type="url" placeholder="https://dav.jianguoyun.com/dav/"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteWebdavUsername">WebDAV 用户名</label>
+                        <input id="remoteWebdavUsername" type="text" autocomplete="off" placeholder="账号或邮箱"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteWebdavPassword">WebDAV 应用密码</label>
+                        <input id="remoteWebdavPassword" type="password" autocomplete="new-password" placeholder="留空则保留已保存密码"/>
+                    </div>
+                </div>
+                <div id="remoteS3Fields" class="console-form-grid" style="display: none;">
+                    <div class="console-form-cell">
+                        <label for="remoteS3Endpoint">S3 Endpoint 地址</label>
+                        <input id="remoteS3Endpoint" type="url" placeholder="https://<accountid>.r2.cloudflarestorage.com"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteS3Bucket">Bucket 桶名称</label>
+                        <input id="remoteS3Bucket" type="text" placeholder="my-blog-backups"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteS3Region">Region 区域</label>
+                        <input id="remoteS3Region" type="text" value="auto" placeholder="auto 或 us-east-1"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteS3PathStyle">寻址风格</label>
+                        <select id="remoteS3PathStyle">
+                            <option value="false">Virtual-Hosted 虚拟主机风格（默认）</option>
+                            <option value="true">Path-Style 路径风格（MinIO 推荐）</option>
+                        </select>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteS3AccessKey">AccessKey ID</label>
+                        <input id="remoteS3AccessKey" type="text" autocomplete="off"/>
+                    </div>
+                    <div class="console-form-cell">
+                        <label for="remoteS3SecretKey">SecretAccessKey</label>
+                        <input id="remoteS3SecretKey" type="password" autocomplete="new-password" placeholder="留空则保留已保存密钥"/>
+                    </div>
+                </div>
+                <div class="console-inline-bar" style="margin-bottom: 0;">
+                    <button type="button" onclick="admin.others.saveRemoteBackupConfig(this)">保存异地同步配置</button>
+                    <button type="button" onclick="admin.others.testRemoteBackup(this)">测试远端连通性</button>
+                    <button type="button" onclick="admin.others.syncRemoteBackupNow(this)">立即同步最新归档</button>
+                </div>
+            </div>
         </section>
     </div>
     <div id="tabOthersPanel_webhooks" class="fn__none form">
@@ -217,16 +322,48 @@
         <div class="console-log-output"><table id="logList"></table></div>
         <div id="logPagination"></div>
     </div>
-    <div id="tabOthersPanel_import" class="fn__none">
-        <h3>${others4Label}</h3>
-        <br>
-        <p><b>${others5Label}</b></p>
-        <br>
-        <form id="fileUploadForm" enctype="multipart/form-data">
-            <input name="file" type="file" id="backupUpload" accept=".xml,.zip,.dat">
-        </form>
-        <br>
-        ${others8Label}
+    <div id="tabOthersPanel_import" class="fn__none form">
+        <section class="console-utility-section">
+            <h3>批量拖拽导入 Markdown / ZIP</h3>
+            <p class="console-form-help">支持一次拖入或选择多个 <code>.md</code> 文稿与 <code>.zip</code> 压缩包，自动解析 YAML Front Matter（标题、标签、日期、固定链接、摘要与密码）。</p>
+            <div id="batchImportDropzone" class="console-dropzone" tabindex="0" role="button"
+                 onclick="document.getElementById('batchImportFileInput').click()"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('batchImportFileInput').click();}">
+                <div class="console-dropzone__title">拖拽多个 .md 或 .zip 文件到此处，或点击选择文件</div>
+                <div class="console-dropzone__hint">单次最多上传 100 篇文稿，自动防重并生成唯一归档与分类关联</div>
+                <input id="batchImportFileInput" type="file" multiple accept=".md,.markdown,.zip" style="display: none;" onchange="admin.others.onBatchFilesSelected(this.files)"/>
+            </div>
+            <div id="batchImportFileSummary" class="console-form-help" style="display: none;"></div>
+            <div class="console-form-grid">
+                <div class="console-form-cell">
+                    <label for="batchImportPublishStatus">导入后发布状态</label>
+                    <select id="batchImportPublishStatus">
+                        <option value="published">直接公开为已发布文章</option>
+                        <option value="draft">存入草稿箱待审</option>
+                    </select>
+                </div>
+                <div class="console-form-cell">
+                    <label for="batchImportDuplicateMode">同名或同链接冲突策略</label>
+                    <select id="batchImportDuplicateMode">
+                        <option value="skip">跳过已存在的同名/同链接文章（推荐）</option>
+                        <option value="copy">保留副本并自动生成新链接</option>
+                    </select>
+                </div>
+            </div>
+            <div class="console-inline-bar">
+                <button type="button" id="batchImportSubmitBtn" onclick="admin.others.submitBatchImport(this)">开始批量导入</button>
+                <button type="button" onclick="admin.others.clearBatchImport()">清空已选文件</button>
+            </div>
+            <div id="batchImportResultBox" class="console-subcard" style="display: none;"></div>
+        </section>
+        <section class="console-utility-section">
+            <h3>${others4Label}（兼容模式）</h3>
+            <p class="console-form-help">${others5Label}</p>
+            <form id="fileUploadForm" enctype="multipart/form-data" style="margin-bottom: 12px;">
+                <input name="file" type="file" id="backupUpload" accept=".xml,.zip,.dat">
+            </form>
+            <div class="console-inline-bar">${others8Label}</div>
+        </section>
         <script type="text/javascript">
             function uploadFile(name) {
                 if (uploadFile.pending) return;

@@ -4,8 +4,11 @@
  */
 (function () {
   'use strict'
-  if (window.VoloKanban) window.VoloKanban.destroy()
-  var host = document.querySelector('.solo-kanbanniang')
+  var host = (typeof document.getElementById === 'function' && document.getElementById('boloKanBanNiangContainer')) || document.querySelector('.solo-kanbanniang')
+  if (window.VoloKanban) {
+    if (typeof window.VoloKanban.isAlive === 'function' && window.VoloKanban.isAlive() && host && host.isConnected) return
+    window.VoloKanban.destroy()
+  }
   if (!host) return
   var alive = true, started = false, ready = false
   var messageTimer, closeTimer, loadTimer, chatTimer, drag
@@ -61,6 +64,7 @@
         var script = document.createElement('script')
         script.src = staticBase + '/live2d.js'
         script.async = true
+        if (typeof script.setAttribute === 'function') script.setAttribute('data-bolo-navigation', 'persist')
         script.onload = function () {
           if (typeof window.loadlive2d === 'function') resolve()
           else reject(new Error('Live2D did not initialize'))
@@ -77,7 +81,13 @@
     delete host.dataset.ready
     clearTimeout(loadTimer)
     loadTimer = setTimeout(pause, 10000)
-    window.loadlive2d('soloKanbanniang', modelBase + (random ? 'absoluteRandomModel' : 'model') + '?t=' + Date.now())
+    var query = random ? '?t=' + Date.now() : '?model=' + encodeURIComponent(host.dataset.model || 'default')
+    var modelURL = modelBase + (random ? 'absoluteRandomModel' : 'model') + query
+    if (window.BoloNavigation && typeof window.BoloNavigation.runPersistent === 'function') {
+      window.BoloNavigation.runPersistent(function () { window.loadlive2d('soloKanbanniang', modelURL) })
+    } else {
+      window.loadlive2d('soloKanbanniang', modelURL)
+    }
   }
   function restorePosition () {
     var x = Number(get('soloKanbanniangX')), y = Number(get('soloKanbanniangY'))
@@ -93,7 +103,7 @@
     try {
       await sdk()
       if (!alive || innerWidth <= 800 || !host.isConnected) { started = false; return }
-      // A context lost while hidden or after a PJAX visit needs a fresh canvas.
+      // A context lost while hidden or after a full teardown needs a fresh canvas.
       var oldCanvas = host.querySelector('#soloKanbanniang')
       oldCanvas.replaceWith(oldCanvas.cloneNode(false))
       randomBackground()
@@ -105,10 +115,11 @@
     if (icon) listen(icon.closest('button') || icon, 'click', action)
   }
   tool('Home', function () {
-    if (window.BoloNavigation) window.BoloNavigation.navigate((label.servePath || '') + '/')
-    else window.location.assign((label.servePath || '') + '/')
+    var homeURL = ((window.Label && window.Label.servePath) || label.servePath || '') + '/'
+    if (window.BoloNavigation) window.BoloNavigation.navigate(homeURL)
+    else window.location.assign(homeURL)
   })
-  tool('RSS', function () { window.location.assign((label.servePath || '') + '/rss.xml') })
+  tool('RSS', function () { window.location.assign(((window.Label && window.Label.servePath) || label.servePath || '') + '/rss.xml') })
   tool('Github', function () { window.open('https://github.com/Willh92/Volo-solo', '_blank', 'noopener,noreferrer') })
   tool('Chat', function () { message(tips.chat); randomBackground() })
   tool('Change', function () { change(true); message('换一套新装，继续陪你阅读。'); randomBackground() })
@@ -137,6 +148,7 @@
   })
   listen(document, 'copy', function () { message('如果转载，也请记得注明出处。') })
   listen(document, 'mouseover', function (event) {
+    if (!ready || !(typeof Element !== 'undefined' ? event.target instanceof Element : event.target && typeof event.target.closest === 'function')) return
     for (var entry of tips.mouseover || []) {
       var element
       try { element = event.target.closest(entry.selector) } catch (error) { continue }
@@ -165,8 +177,21 @@
   }
   listen(host, 'pointerup', releaseDrag)
   listen(host, 'pointercancel', releaseDrag)
-  if (window.BoloNavigation) window.BoloNavigation.onLeave(destroy)
-  window.VoloKanban = {destroy: destroy, change: change, showMessage: message, isReady: function () { return ready }}
+  function handleLeave (context) {
+    if (context && context.keepKanban) {
+      if (window.BoloNavigation) window.BoloNavigation.onLeave(handleLeave)
+      return
+    }
+    destroy()
+  }
+  if (window.BoloNavigation) window.BoloNavigation.onLeave(handleLeave)
+  window.VoloKanban = {
+    destroy: destroy,
+    change: change,
+    showMessage: message,
+    isReady: function () { return ready },
+    isAlive: function () { return alive }
+  }
   if (innerWidth <= 800 || get('soloKanbanniang') === 'close') { host.hidden = true; return }
   fetch(staticBase + '/assets/tips.json', {signal: requests.signal}).then(function (response) {
     if (!response.ok) throw new Error('Local tips are unavailable')

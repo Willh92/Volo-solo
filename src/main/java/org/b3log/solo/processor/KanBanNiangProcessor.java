@@ -14,9 +14,11 @@ import org.b3log.latke.repository.RepositoryException;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.OptionRepository;
+import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.util.KanbanModels;
 import org.b3log.solo.util.Solos;
 import org.b3log.solo.web.JsonResponses;
+import org.b3log.solo.web.WebResources;
 import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONObject;
 
@@ -27,16 +29,36 @@ import org.json.JSONObject;
  */
 @Singleton
 public class KanBanNiangProcessor {
+
+    private static volatile KanbanModels defaultModels;
+
+    @Inject
+    private OptionQueryService optionQueryService;
+
     @Inject
     private OptionRepository optionRepository;
+
+    private static KanbanModels sharedModels() {
+        final WebResources webResources = SoloApplication.getWebResources();
+        KanbanModels current = defaultModels;
+        if (current == null || current.resources() != webResources) {
+            current = new KanbanModels(webResources);
+            defaultModels = current;
+        }
+        return current;
+    }
 
     @RequestProcessing(value = "/plugins/kanbanniang/assets/model", method = HttpMethod.GET)
     public void randomModel(final RequestContext context) {
         String selected = "";
         try {
-            final JSONObject option = optionRepository.get(Option.ID_C_KANBANNIANG_SELECTOR);
-            if (option != null) selected = option.optString(Option.OPTION_VALUE);
-        } catch (RepositoryException ignored) {
+            final JSONObject option = optionQueryService != null
+                    ? optionQueryService.getOptionById(Option.ID_C_KANBANNIANG_SELECTOR)
+                    : (optionRepository != null ? optionRepository.get(Option.ID_C_KANBANNIANG_SELECTOR) : null);
+            if (option != null) {
+                selected = option.optString(Option.OPTION_VALUE);
+            }
+        } catch (final RepositoryException ignored) {
             // Missing preferences must not prevent the bundled default from loading.
         }
         renderModel(context, selected);
@@ -50,8 +72,8 @@ public class KanBanNiangProcessor {
     private void renderModel(final RequestContext context, final String selected) {
         context.setHeader("Cache-Control", "no-store");
         try {
-            context.renderJSON(new KanbanModels(SoloApplication.getWebResources()).select(selected));
-        } catch (IOException | org.json.JSONException exception) {
+            context.renderJSON(sharedModels().select(selected));
+        } catch (final IOException | org.json.JSONException exception) {
             context.setStatus(503);
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "Bundled model resources are unavailable"));
         }
@@ -67,8 +89,8 @@ public class KanBanNiangProcessor {
         }
         try {
             context.renderJSON(new JSONObject().put("sc", true)
-                    .put("msg", String.join(";", new KanbanModels(SoloApplication.getWebResources()).names())));
-        } catch (IOException | org.json.JSONException exception) {
+                    .put("msg", String.join(";", sharedModels().names())));
+        } catch (final IOException | org.json.JSONException exception) {
             context.setStatus(503);
             JsonResponses.json(context).renderMsg("Bundled model resources are unavailable");
         }

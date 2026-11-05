@@ -21,13 +21,11 @@
 <div id="web_bg" data-type="color"></div>
 <link media="all" href="${staticServePath}/skins/${skinDirName}/css/main.css?${staticResourceVersion}"
       rel="stylesheet"/>
-<script src="${staticServePath}/js/lib/instantpage.js" type="module" defer></script>
-<script src="${staticServePath}/js/lib/lazyload.iife.min.js" async></script>
-<script src="${staticServePath}/js/lib/typed.js"></script>
+<script src="${staticServePath}/js/lib/typed.js?${staticResourceVersion}"></script>
 <script>window.Label = window.Label || {}; Label.staticServePath = '${staticServePath?js_string}';</script>
-<script src="${staticServePath}/skins/${skinDirName}/js/GlobalConfig.js"></script>
-<script src="${staticServePath}/skins/${skinDirName}/js/utils.js"></script>
-<script src="${staticServePath}/skins/${skinDirName}/js/activate-power-mode.js"></script>
+<script src="${staticServePath}/skins/${skinDirName}/js/GlobalConfig${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<script src="${staticServePath}/skins/${skinDirName}/js/utils${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<script src="${staticServePath}/skins/${skinDirName}/js/activate-power-mode${miniPostfix!''}.js?${staticResourceVersion}"></script>
 <#macro header type>
     <header class="header--${type}">
         <nav id="nav" style="opacity: 1; animation: 1s ease 0s 1 normal none running headerNoOpacity;" class="">
@@ -111,4 +109,3 @@
         </nav>
     </header>
 </#macro>
-

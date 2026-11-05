@@ -17,17 +17,21 @@
  */
 package org.b3log.solo.service;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
-import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Strings;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.PageRepository;
 
@@ -59,34 +63,68 @@ public class PermalinkQueryService {
     private ArticleRepository articleRepository;
 
     /**
-     * Reserved permalinks.
+     * Exact built-in routes reserved from permalink resolution.
      */
-    public static final String[] RESERVED_LINKS = new String[] {
-            "/", "/article", "/tags.html", "/tags", "/page", "/atom.xml", "/rss.xml", "/articles/random", "/captcha",
-            "/kill-browser",
-            "/article/comments", "/add-article-from-symphony-comment.do", "/page/comments", "/get-article-content",
-            "/sitemap.xml",
-            "/logout", "/get-article-content", "/admin-index.do", "/admin-article.do", "/admin-article-list.do",
+    public static final Set<String> RESERVED_EXACT_LINKS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+            "/", "/search", "/manifest.json", "/opensearch.xml",
+            "/categories.html", "/archives.html", "/links.html", "/follows.html",
+            "/dynamic.html", "/bookshelf.html", "/books", "/follows", "/usite", "/timeaxis",
+            "/change-skin", "/login", "/logout", "/register", "/start", "/kill-browser", "/captcha",
+            "/favicon", "/favicon.ico", "/robots.txt", "/rss.xml", "/atom.xml", "/sitemap.xml",
+            "/sw.js", "/service-worker.js",
+            "/article", "/articles", "/tags.html", "/tags", "/page", "/articles/random",
+            "/article/comments", "/add-article-from-symphony-comment.do", "/page/comments",
+            "/get-article-content", "/blog/info", "/blog/articles-tags",
+            "/admin-index.do", "/admin-article.do", "/admin-article-list.do",
             "/admin-link-list.do", "/admin-follow-list.do", "/admin-preference.do", "/admin-file-list.do",
-            "/admin-page-list.do", "/admin-others.do",
-            "/admin-draft-list.do", "/admin-user-list.do", "/admin-plugin-list.do", "/admin-main.do", "/admin-about.do",
-            "/admin-label",
-            "/admin-about.do", "/start"
+            "/admin-page-list.do", "/admin-others.do", "/admin-draft-list.do", "/admin-user-list.do",
+            "/admin-plugin-list.do", "/admin-main.do", "/admin-about.do", "/admin-label"
+    )));
+
+    /**
+     * Multi-segment reserved route prefixes.
+     */
+    private static final String[] RESERVED_PREFIXES = new String[] {
+            "/articles/", "/tags/", "/archives/", "/authors/", "/category/",
+            "/console/", "/admin/", "/oauth/", "/api/", "/apis/", "/plugins/", "/skins/",
+            "/images/", "/image/", "/js/", "/scss/", "/github-stats/"
     };
 
-    private final static Pattern pattern = Pattern.compile("/articles/(?:\\d{4}/\\d{2}/\\d{2}/)?\\d+\\.html");
+    /**
+     * Scanner probe prefixes rejected before hitting SQL.
+     */
+    private static final String[] SCANNER_PROBE_PREFIXES = new String[] {
+            "/.env", "/.git"
+    };
+
+    /**
+     * Scanner probe suffixes rejected before hitting SQL.
+     */
+    private static final String[] SCANNER_PROBE_SUFFIXES = new String[] {
+            ".php", ".asp", ".aspx", ".jsp", ".cgi"
+    };
+
+    /**
+     * Reserved permalinks (kept for API compatibility).
+     */
+    public static final String[] RESERVED_LINKS = RESERVED_EXACT_LINKS.toArray(new String[0]);
+
+    private static final Pattern DEFAULT_ARTICLE_PERMALINK_PATTERN =
+            Pattern.compile("/articles/(?:\\d{4}/\\d{2}/\\d{2}/)?\\d+\\.html");
 
     /**
      * Checks whether the specified article permalink matches the system generated
-     * format pattern ("/articles/yyyy/MM/dd/${articleId}.html").
-     * format pattern ("/articles/${articleId}.html").
-     * 
+     * format pattern ("/articles/yyyy/MM/dd/${articleId}.html") or ("/articles/${articleId}.html").
+     *
      * @param permalink the specified permalink
      * @return {@code true} if matches, returns {@code false} otherwise
      */
     public static boolean matchDefaultArticlePermalinkFormat(final String permalink) {
+        if (null == permalink) {
+            return false;
+        }
 
-        final Matcher matcher = pattern.matcher(permalink);
+        final Matcher matcher = DEFAULT_ARTICLE_PERMALINK_PATTERN.matcher(permalink);
 
         return matcher.matches();
     }
@@ -147,6 +185,14 @@ public class PermalinkQueryService {
             return true;
         }
 
+        if ('/' != permalink.charAt(0) || permalink.length() <= 1 || permalink.length() > 255) {
+            return true;
+        }
+
+        if (isScannerProbePath(permalink)) {
+            return true;
+        }
+
         if (isReservedLink(permalink)) {
             return true;
         }
@@ -159,37 +205,63 @@ public class PermalinkQueryService {
         int slashCnt = 0;
 
         for (int i = 0; i < permalink.length(); i++) {
-            if ('/' == permalink.charAt(i)) {
+            final char c = permalink.charAt(i);
+            if ('/' == c) {
                 slashCnt++;
-            }
-
-            if (slashCnt > 1) {
+                if (slashCnt > 1) {
+                    return true;
+                }
+            } else if (!isValidPermalinkChar(c)) {
                 return true;
             }
         }
 
-        return !Strings.isURL(Latkes.getServer() + permalink);
+        return false;
+    }
+
+    private static boolean isScannerProbePath(final String permalink) {
+        final String lower = permalink.toLowerCase(Locale.ROOT);
+        for (final String prefix : SCANNER_PROBE_PREFIXES) {
+            if (lower.startsWith(prefix)) {
+                return true;
+            }
+        }
+        for (final String suffix : SCANNER_PROBE_SUFFIXES) {
+            if (lower.endsWith(suffix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isValidPermalinkChar(final char c) {
+        if (c <= 0x20 || c == 0x7F || Character.isWhitespace(c)) {
+            return false;
+        }
+        return '?' != c && '#' != c && '\\' != c && '<' != c && '>' != c && '"' != c;
     }
 
     /**
      * Determines whether the specified request URI is a reserved link.
-     * <p>
-     * A URI starts with one of {@link PermalinkQueryService#RESERVED_LINKS reserved
-     * links}
-     * will be treated as reserved link.
-     * </p>
      *
      * @param requestURI the specified request URI
-     * @return {@code true} if it is a reserved link, returns {@code false}
-     *         otherwise
+     * @return {@code true} if it is a reserved link, returns {@code false} otherwise
      */
     private static boolean isReservedLink(final String requestURI) {
-        if (org.b3log.solo.util.AdminPaths.reserved(requestURI)) return true;
-        for (int i = 0; i < RESERVED_LINKS.length; i++) {
-            final String reservedLink = RESERVED_LINKS[i];
-
-            if (reservedLink.startsWith(requestURI)) {
-
+        if (null == requestURI) {
+            return false;
+        }
+        if (org.b3log.solo.util.AdminPaths.reserved(requestURI)) {
+            return true;
+        }
+        if (RESERVED_EXACT_LINKS.contains(requestURI)) {
+            return true;
+        }
+        for (final String prefix : RESERVED_PREFIXES) {
+            if (requestURI.startsWith(prefix)) {
+                if ("/articles/".equals(prefix) && matchDefaultArticlePermalinkFormat(requestURI)) {
+                    return false;
+                }
                 return true;
             }
         }

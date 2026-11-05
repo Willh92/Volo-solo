@@ -25,14 +25,14 @@
           <div class="article__info--left">
             <#if article.authorId?? && article.authorId !="">
               <a class="author" href="${servePath}/authors/${article.authorId}" rel="nofollow">
-                <img class="author__avatar" src="${article.authorThumbnailURL}" alt="author avatar" />
+                <img class="author__avatar" src="${article.authorThumbnailURL}" alt="author avatar"<#if article_index gt 0> loading="lazy"</#if> decoding="async" />
                 <span class="author__name">
                   ${article.authorName}
                 </span>
               </a>
               <#else>
                 <a class="author" href="${servePath}/follow/articles/${article.articleAuthorId}" rel="nofollow">
-                  <img class="author__avatar" src="${article.authorThumbnailURL}" alt="author avatar" />
+                  <img class="author__avatar" src="${article.authorThumbnailURL}" alt="author avatar"<#if article_index gt 0> loading="lazy"</#if> decoding="async" />
                   <span class="author__name">
                     ${article.authorName}
                   </span>

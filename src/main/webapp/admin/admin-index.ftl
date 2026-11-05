@@ -24,9 +24,9 @@
         <@head title="${adminConsoleLabel} - ${blogTitle}">
             <link type="text/css" rel="stylesheet" href="${staticServePath}/scss/admin.css?${staticResourceVersion}" />
             <link type="text/css" rel="stylesheet" href="${staticServePath}/scss/console-theme.css?${staticResourceVersion}" />
-            <link type="text/css" rel="stylesheet" href="${staticServePath}/js/lib/Chart.min.css" />
+            <link type="text/css" rel="stylesheet" href="${staticServePath}/js/lib/Chart.min.css?${staticResourceVersion}" />
             <meta name="robots" content="fn__none" />
-            <link href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+            <link href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css?${staticResourceVersion}" rel="stylesheet">
         </@head>
     </head>
     <body class="bolo-console" onhashchange="admin.setCurByHash();">
@@ -277,41 +277,41 @@
                 Powered by <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener">Volo</a> <span id="version">${boloVersion}</span>
             </div>
         </div>
-        <script src="${staticServePath}/js/lib/compress/admin-lib.min.js"></script>
-        <script src="${servePath}/js/lib/vditor/dist/index.min.js?${staticResourceVersion}"></script>
-        <script src="${staticServePath}/js/common.js"></script>
+        <script src="${staticServePath}/js/lib/compress/admin-lib.min.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/common${miniPostfix!''}.js?${staticResourceVersion}"></script>
         <#if "" == miniPostfix>
-        <script src="${staticServePath}/js/admin/admin.js"></script>
-        <script src="${staticServePath}/js/admin/pagination.js"></script>
-        <script src="${staticServePath}/js/admin/logs.js"></script>
-        <script src="${staticServePath}/js/admin/editor.js"></script>
-        <script src="${staticServePath}/js/admin/tablePaginate.js"></script>
-        <script src="${staticServePath}/js/admin/article.js"></script>
-        <script src="${staticServePath}/js/admin/comment.js"></script>
-        <script src="${staticServePath}/js/admin/articleList.js"></script>
-        <script src="${staticServePath}/js/admin/draftList.js"></script>
-        <script src="${staticServePath}/js/admin/pageList.js"></script>
-        <script src="${staticServePath}/js/admin/others.js"></script>
-        <script src="${staticServePath}/js/admin/linkList.js"></script>
-        <script src="${staticServePath}/js/admin/followList.js"></script>
-        <script src="${staticServePath}/js/admin/preference.js"></script>
-        <script src="${staticServePath}/js/admin/githubRepositories.js"></script>
-        <script src="${staticServePath}/js/admin/security.js"></script>
-        <script src="${staticServePath}/js/admin/pluginList.js"></script>
-        <script src="${staticServePath}/js/admin/userList.js"></script>
-        <script src="${staticServePath}/js/admin/categoryList.js"></script>
-        <script src="${staticServePath}/js/admin/bookList.js"></script>
-        <script src="${staticServePath}/js/admin/commentList.js"></script>
-        <script src="${staticServePath}/js/admin/plugin.js"></script>
-        <script src="${staticServePath}/js/admin/main.js"></script>
-        <script src="${staticServePath}/js/admin/about.js"></script>
-        <script src="${staticServePath}/js/admin/themeList.js"></script>
-        <script src="${staticServePath}/js/admin/usite.js"></script>
+        <script src="${staticServePath}/js/admin/admin.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/pagination.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/logs.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/editor.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/tagPicker.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/tablePaginate.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/article.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/comment.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/articleList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/draftList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/pageList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/others.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/linkList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/followList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/preference.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/githubRepositories.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/security.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/pluginList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/userList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/categoryList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/bookList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/commentList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/plugin.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/main.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/about.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/themeList.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/admin/usite.js?${staticResourceVersion}"></script>
         <#else>
         <script src="${staticServePath}/js/admin/admin.min.js?${staticResourceVersion}"></script>
         </#if>
-        <script src="${staticServePath}/js/lib/Chart.min.js"></script>
-        <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
+        <script src="${staticServePath}/js/lib/Chart.min.js?${staticResourceVersion}"></script>
+        <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js?${staticResourceVersion}"></script>
         <script>
             function noBtnSwal(msg, timer) {
                 if (timer == null) {
@@ -333,8 +333,8 @@
             }
         </script>
         <#include "admin-label.ftl">
-        <script src="${staticServePath}/js/console-select.js?${staticResourceVersion}"></script>
-        <script src="${staticServePath}/js/console-theme.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/console-select${miniPostfix!''}.js?${staticResourceVersion}"></script>
+        <script src="${staticServePath}/js/console-theme${miniPostfix!''}.js?${staticResourceVersion}"></script>
         <script>
             admin.inited();
         </script>

@@ -29,44 +29,40 @@ import pers.adlered.simplecurrentlimiter.cache.pair.CachePair;
  **/
 public class MainControl extends MainCache {
     public static final int MAX_CACHE_ENTRIES = 10_000;
+    private final java.util.concurrent.atomic.AtomicBoolean pruning = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public boolean write(String str) {
         if (str == null) {
             return true;
         }
         final long currentTimeStamp = System.currentTimeMillis();
-        if (!this.cachePairMap.containsKey(str) && this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
+        final CachePair existing = this.cachePairMap.get(str);
+        if (existing != null) {
+            return existing.incrementAndGet(currentTimeStamp, this.expireTime) <= this.frequencyTime;
+        }
+        if (this.cachePairMap.size() >= MAX_CACHE_ENTRIES) {
             if (!makeRoomForNewKey(currentTimeStamp)) {
                 return false;
             }
         }
-        final CachePair updated = this.cachePairMap.compute(str, (key, verifyPair) -> {
-            long frequency;
-            long timeStamp;
-            if (verifyPair == null) {
-                frequency = 1L;
-                timeStamp = currentTimeStamp;
-            } else {
-                frequency = verifyPair.getFrequency() + 1L;
-                timeStamp = verifyPair.getTimeStamp();
-                if (this.expireTime != -1 && (currentTimeStamp - timeStamp) > this.expireTime) {
-                    frequency = 1L;
-                    timeStamp = currentTimeStamp;
-                }
-            }
-            final CachePair next = new CachePair();
-            next.setFrequency(frequency);
-            next.setTimeStamp(timeStamp);
-            return next;
-        });
-        if (this.cachePairMap.size() > MAX_CACHE_ENTRIES) {
+        final CachePair fresh = new CachePair(0L, currentTimeStamp);
+        final CachePair actual = this.cachePairMap.putIfAbsent(str, fresh);
+        final CachePair target = actual != null ? actual : fresh;
+        final long count = target.incrementAndGet(currentTimeStamp, this.expireTime);
+        if (actual == null && this.cachePairMap.size() > MAX_CACHE_ENTRIES) {
             makeRoomForNewKey(currentTimeStamp);
         }
-        return updated.getFrequency() <= this.frequencyTime;
+        return count <= this.frequencyTime;
     }
 
     private boolean makeRoomForNewKey(final long currentTimeStamp) {
-        synchronized (this.cachePairMap) {
+        if (this.cachePairMap.size() < MAX_CACHE_ENTRIES) {
+            return true;
+        }
+        if (!this.pruning.compareAndSet(false, true)) {
+            return this.cachePairMap.size() < MAX_CACHE_ENTRIES;
+        }
+        try {
             if (this.cachePairMap.size() < MAX_CACHE_ENTRIES) {
                 return true;
             }
@@ -89,6 +85,8 @@ public class MainControl extends MainCache {
                 }
             }
             return this.cachePairMap.size() < MAX_CACHE_ENTRIES;
+        } finally {
+            this.pruning.set(false);
         }
     }
 

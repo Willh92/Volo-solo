@@ -733,7 +733,7 @@
                 <div class="vedit">
                     <textarea placeholder="${postCommentsLabel} ..." class="veditor vinput" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
                 </div>
-                <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
+                <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js?${staticResourceVersion}"></script>
                 <div class="vrow">
                     <div class="vcol vcol-30"><a alt="Markdown is supported"
                                                  href="https://guides.github.com/features/mastering-markdown/"

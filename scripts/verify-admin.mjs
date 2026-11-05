@@ -547,7 +547,9 @@ console.log('Admin checks passed: safe renderers, persistent list actions, pagin
   const secTpl=fs.readFileSync('src/main/webapp/admin/admin-security.ftl','utf8');
   assert(prefTpl.includes('id="allowRegister"'),'allowRegister belongs in Frontend Open Settings');
   assert(!secTpl.includes('allowRegisterSecurity')&&!secTpl.includes('id="allowRegister"'),'Security panel must not duplicate allowRegister');
-  for(const [tpl,ids] of [[prefTpl,['adminActiveSentToMailbox','smtpAuth','showLoginEntry','interactiveSwitch','allowRegister']],[secTpl,['riskControlEnabled','wafPower','totpEnabled','geoAccessActive','commentFilterBuiltin','commentCaptchaEnabled']]]){
+  const othersTpl=fs.readFileSync('src/main/webapp/admin/admin-others.ftl','utf8');
+  assert(prefTpl.includes('id="tc9"')&&prefTpl.includes('<option value="false">')&&prefTpl.includes('<option value="true">'),'Dynamic S3 path-style select #tc9 must use "true"/"false"');
+  for(const [tpl,ids] of [[prefTpl,['adminActiveSentToMailbox','smtpAuth','showLoginEntry','interactiveSwitch','allowRegister','indexNowEnabled']],[secTpl,['riskControlEnabled','wafPower','totpEnabled','geoAccessActive','commentFilterBuiltin','commentCaptchaEnabled']],[othersTpl,['remoteBackupEnabled','remoteS3PathStyle']]]){
     for(const id of ids){
       const match=tpl.match(new RegExp('<select[^>]*\\bid="'+id+'"[^>]*>([\\s\\S]*?)</select>'));
       assert(match,'Select #'+id+' must exist');
@@ -645,4 +647,134 @@ console.log('Admin checks passed: safe renderers, persistent list actions, pagin
   const consoleScss=fs.readFileSync('src/main/webapp/scss/console-theme.scss','utf8');
   assert(consoleScss.includes('.table-lineHover td { background: transparent;'),'Sticky .table-lineHover must not force row highlight background');
   assert(consoleScss.includes('.table-body tbody.console-data-card:hover > tr.console-data-row > td'),'Unified CSS hover must cover TablePaginate rows');
+
+  // Client-side adaptive WebP converter skips GIF/SVG/disabled and keeps smaller output only.
+  {
+    const editorSrc=fs.readFileSync('src/main/webapp/js/admin/editor.js','utf8');
+    const $e=()=>({});$e.extend=Object.assign;
+    const sb={$:$e,Label:{imageWebpAdaptive:'true',imageUploadCompress:'0.85'},admin:{},
+      URL:{createObjectURL:()=>'blob:test',revokeObjectURL(){}},
+      File:class MockFile{constructor(parts,name,opts={}){this.size=parts.reduce((n,p)=>n+(p.size||p.length||0),0);this.name=name;this.type=opts.type||'';}},
+      Image:class MockImg{set src(_){this.naturalWidth=800;this.naturalHeight=600;if(this.onload)this.onload();}},
+      document:{createElement:tag=>tag==='canvas'?{width:0,height:0,getContext:()=>({drawImage(){}}),toBlob(cb,type){cb({size:120,type});}}:{}}};
+    vm.runInNewContext(editorSrc,sb);
+    const gif={name:'anim.gif',type:'image/gif',size:900};
+    assert.equal(await sb.SoloEditor.convertStaticImageToWebp(gif),gif,'Animated GIF must never be converted');
+    const png={name:'shot.png',type:'image/png',size:900};
+    const converted=await sb.SoloEditor.convertStaticImageToWebp(png);
+    assert.equal(converted.name,'shot.webp');
+    assert.equal(converted.type,'image/webp');
+    const tinyPng={name:'tiny.png',type:'image/png',size:80};
+    assert.equal(await sb.SoloEditor.convertStaticImageToWebp(tinyPng),tinyPng,'Must keep original file when WebP is not smaller');
+  }
+
+  // Article local draft snapshot LRU cap, recovery banner, and single-request others.js export.
+  {
+    const store=new Map();
+    const localStorage={
+      get length(){return store.size;},
+      key:i=>[...store.keys()][i]??null,
+      getItem:k=>store.has(k)?store.get(k):null,
+      setItem:(k,v)=>store.set(k,String(v)),
+      removeItem:k=>store.delete(k)
+    };
+    const domVals=new Map([['#title','草稿标题'],['#permalink','/draft-1'],['#tag','Java,Volo'],['#quickLockType','pwd'],['#quickLockPwd','2026'],['#quickLockHint','口令提示'],['#quickLockBody','受保护正文']]);
+    let barShown=false,insertedText='';
+    const $a=sel=>({
+      length:1,
+      val(v){if(v===undefined)return domVals.get(sel)??'';domVals.set(sel,v);return this;},
+      text(){return this;},show(){if(sel==='#articleDraftRecoveryBar')barShown=true;return this;},hide(){if(sel==='#articleDraftRecoveryBar')barShown=false;return this;},
+      focus(){return this;},on(){return this;},off(){return this;},click(){return this;}
+    });
+    const artSb={$:$a,Label:{servePath:''},localStorage,window:{localStorage},setTimeout,clearTimeout,
+      admin:{register:{},article:{},editors:{articleEditor:{editor:{insertValue:v=>{insertedText=v;}},getContent:()=>'新的本地长文内容',setContent:v=>{domVals.set('content',v);}},abstractEditor:{getContent:()=>'摘要',setContent:v=>{domVals.set('abstract',v);}}}}};
+    vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/article.js','utf8'),artSb);
+    for(let i=0;i<12;i++)localStorage.setItem('volo.draftSnapshot.old'+i,JSON.stringify({updatedAt:1000+i,content:'x'}));
+    artSb.admin.article.status={id:'a1'};
+    artSb.admin.article._saveLocalDraftSnapshot();
+    assert([...store.keys()].filter(k=>k.startsWith('volo.draftSnapshot.')).length<=10,'Draft snapshots must enforce 10-entry LRU bound');
+    artSb.admin.article._checkLocalDraftRecovery({articleTitle:'旧标题',articleContent:'旧正文'});
+    assert.equal(barShown,true,'Recovery banner must appear when local snapshot differs from server');
+    artSb.admin.article.insertQuickLockBlock();
+    assert(insertedText.includes(':::lock type="pwd" pwd="2026" hint="口令提示"')&&insertedText.includes('受保护正文'));
+    artSb.admin.article.discardLocalDraft();
+    assert.equal(barShown,false);
+
+    const othersSb={$:()=>({text(){return this;},hide(){return this;},show(){return this;}}),Label:{servePath:''},admin:{register:{}},window:{location:{href:''}}};
+    othersSb.$.ajax=()=>{throw new Error('Export must not double-trigger $.ajax');};
+    vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/others.js','utf8'),othersSb);
+    othersSb.admin.others.exportJSON();
+    assert.equal(othersSb.window.location.href,'/console/export/json','Export must trigger single download without preliminary AJAX generation');
+  }
+
+  // Multi-series trend chart colors & legend swatches + console modal/button/hover CSS regressions.
+  {
+    const accentTokens={
+      forest:{light:'#2f6f55',dark:'#9bc8af'},
+      ocean:{light:'#2f6886',dark:'#9fc4d9'},
+      teal:{light:'#2a6d71',dark:'#97c8c9'},
+      amber:{light:'#875d28',dark:'#d8ba8d'},
+      plum:{light:'#71527e',dark:'#cbb2d6'},
+      rose:{light:'#885360',dark:'#ddb0bb'}
+    };
+    let curTheme='dark',curAccent='ocean',readyDispatched=0;
+    const winListeners=new Map();
+    const chartInstances={};
+    let chartSeq=0;
+    class MockChart{
+      constructor(ctx,cfg){
+        this.ctx=ctx;this.config=cfg;this.data=cfg.data;this.options=cfg.options||{};
+        this.updated=0;
+        chartInstances[++chartSeq]=this;
+      }
+      update(){this.updated++;}
+      destroy(){}
+    }
+    MockChart.instances=chartInstances;
+    MockChart.defaults={global:{defaultFontColor:'',legend:{labels:{generateLabels:c=>c.data.datasets.map((ds,i)=>({text:ds.label,fillStyle:ds.backgroundColor,strokeStyle:ds.borderColor,datasetIndex:i}))}}}};
+    const mockWin={
+      Chart:MockChart,
+      BoloTheme:{current:()=>curTheme,accent:()=>curAccent,setAccent:a=>{curAccent=a;}},
+      addEventListener(type,fn){const arr=winListeners.get(type)||[];arr.push(fn);winListeners.set(type,arr);},
+      removeEventListener(){},
+      dispatchEvent(ev){if(ev.type==='bolo:console-charts-ready')readyDispatched++;for(const fn of winListeners.get(ev.type)||[])fn(ev);}
+    };
+    const mockDoc={
+      documentElement:{getAttribute:k=>k==='data-bolo-theme'?curTheme:null},
+      body:{classList:{contains:c=>c==='bolo-console'}},
+      getElementById:id=>id==='voloDailyTrendChart'?{getContext:()=>({})}:null,
+      addEventListener(){},removeEventListener(){}
+    };
+    const chartSb={
+      window:mockWin,document:mockDoc,Chart:MockChart,BoloTheme:mockWin.BoloTheme,
+      Event:class{constructor(t){this.type=t;}},
+      $:()=>({text(){return this;},html(){return this;},toggleClass(){return this;}}),
+      Label:{servePath:''},
+      admin:{register:{},toggleMenu(){}},
+      getComputedStyle:()=>({getPropertyValue:p=>({'--bolo-muted':'#99a7a2','--bolo-line':'#384545','--bolo-surface':'#242b2c','--bolo-accent':accentTokens[curAccent][curTheme]}[p]||'')})
+    };
+    vm.runInNewContext(fs.readFileSync('src/main/webapp/js/console-theme.js','utf8'),chartSb);
+    vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/main.js','utf8'),chartSb);
+    chartSb.admin.main.renderTrends({totalPv:12,totalUv:5,labels:['11-04','11-05'],pvSeries:[8,4],uvSeries:[3,2],topArticles:[],topReferers:[]});
+    assert.equal(readyDispatched,1,'renderTrends must dispatch bolo:console-charts-ready so theme colors apply immediately');
+    const trendChart=chartSb.admin.main.trendChart;
+    for(const theme of ['light','dark']){
+      for(const accent of Object.keys(accentTokens)){
+        curTheme=theme;curAccent=accent;
+        mockWin.dispatchEvent({type:'bolo:theme-change'});
+        const [pv,uv]=trendChart.data.datasets;
+        assert.notEqual(pv.borderColor,uv.borderColor,`PV and UV series colors must remain distinct under ${theme}/${accent}`);
+        const labels=trendChart.options.legend.labels.generateLabels(trendChart);
+        assert.equal(labels[0].fillStyle,pv.borderColor,'PV legend swatch must use solid series color');
+        assert.equal(labels[1].fillStyle,uv.borderColor,'UV legend swatch must use solid series color');
+        assert.notEqual(labels[0].fillStyle,labels[1].fillStyle,'PV and UV legend indicators must be visually distinct');
+      }
+    }
+
+    const articleFtl=fs.readFileSync('src/main/webapp/admin/admin-article.ftl','utf8');
+    assert(!/<select[^>]*id="quickLockType"[^>]*data-native-select/.test(articleFtl),'#quickLockType must use unified console-select enhancement');
+    assert(consoleScss.includes('.console-modal')&&consoleScss.includes("input[type='search']"),'Console modal controls must receive unified input/select/textarea styling');
+    assert(consoleScss.includes('button.console-btn-compact:hover:not(:disabled):not(.is-active)'),'Compact console button hover must explicitly preserve legible surface background');
+    assert(consoleScss.includes('.console-trend-rank li.is-empty:hover'),'Empty trend rank card must preserve surface background on hover');
+  }
 }

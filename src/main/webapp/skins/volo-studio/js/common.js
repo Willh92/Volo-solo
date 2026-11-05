@@ -69,8 +69,14 @@ var Skin = {init: function () {
   document.addEventListener('click', closeHeaderPanels, true);
   document.addEventListener('keydown', closeHeaderPanels);
   var animation = 0;
+  var lastHidden = null;
   function cancelScroll () { if (animation) cancelAnimationFrame(animation); animation = 0; }
-  function update () { top.hidden = window.scrollY < 320; }
+  function update () {
+    var nextHidden = window.scrollY < 320;
+    if (nextHidden === lastHidden) return;
+    lastHidden = nextHidden;
+    top.hidden = nextHidden;
+  }
   function goTop () {
     cancelScroll();
     var start = window.scrollY;

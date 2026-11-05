@@ -20,7 +20,12 @@ package org.b3log.solo.plugin;
 import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.event.AbstractEventListener;
 import org.b3log.latke.event.Event;
+import org.b3log.latke.event.EventManager;
+import org.b3log.latke.ioc.BeanManager;
+import org.b3log.latke.plugin.AbstractPlugin;
 import org.b3log.latke.plugin.NotInteractivePlugin;
+import org.b3log.latke.plugin.PluginManager;
+import org.b3log.latke.plugin.PluginStatus;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.event.EventTypes;
 import org.b3log.solo.model.Article;
@@ -32,6 +37,7 @@ import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -44,15 +50,54 @@ import java.util.Map;
  */
 public class ToCPlugin extends NotInteractivePlugin {
 
+    private static volatile boolean active = false;
+
     /**
      * Public constructor.
      */
     private final ToCEventHandler listener = new ToCEventHandler();
-    @Override protected void start() {
-        org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.latke.event.EventManager.class).registerListener(listener);
+
+    @Override
+    protected void start() {
+        active = true;
+        final BeanManager beanManager = BeanManager.getInstance();
+        if (null != beanManager) {
+            final EventManager eventManager = beanManager.getReference(EventManager.class);
+            if (null != eventManager) {
+                eventManager.registerListener(listener);
+            }
+        }
     }
-    @Override protected void stop() {
-        org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.latke.event.EventManager.class).unregisterListener(listener);
+
+    @Override
+    protected void stop() {
+        active = false;
+        final BeanManager beanManager = BeanManager.getInstance();
+        if (null != beanManager) {
+            final EventManager eventManager = beanManager.getReference(EventManager.class);
+            if (null != eventManager) {
+                eventManager.unregisterListener(listener);
+            }
+        }
+    }
+
+    public static boolean isActive() {
+        return active;
+    }
+
+    public static boolean isPluginActive(final PluginManager pluginManager) {
+        if (active) {
+            return true;
+        }
+        if (null == pluginManager) {
+            return false;
+        }
+        for (final AbstractPlugin plugin : pluginManager.getPlugins()) {
+            if (plugin instanceof ToCPlugin) {
+                return PluginStatus.ENABLED == plugin.getStatus();
+            }
+        }
+        return false;
     }
 
     @Override
@@ -67,8 +112,7 @@ public class ToCPlugin extends NotInteractivePlugin {
         if (article == null) {
             return;
         }
-        new ToCEventHandler().action(new Event<>(EventTypes.BEFORE_RENDER_ARTICLE,
-                new JSONObject().put(Article.ARTICLE, article)));
+        ToCEventHandler.populateArticleToc(article);
     }
 }
 
@@ -98,9 +142,13 @@ class ToCEventHandler extends AbstractEventListener<JSONObject> {
         if (null == article) {
             return;
         }
+        populateArticleToc(article);
+    }
+
+    static void populateArticleToc(final JSONObject article) {
         final String content = article.optString(Article.ARTICLE_CONTENT);
         if (!StringUtils.containsIgnoreCase(content, "<h")) {
-            article.put(Article.ARTICLE_T_TOC, (Object) java.util.Collections.emptyList());
+            article.put(Article.ARTICLE_T_TOC, (Object) Collections.emptyList());
             return;
         }
         final Document doc = Jsoup.parse(content, StringUtils.EMPTY, Parser.htmlParser());
@@ -108,7 +156,7 @@ class ToCEventHandler extends AbstractEventListener<JSONObject> {
 
         final Elements hs = doc.select("h1, h2, h3, h4, h5");
         if (hs.isEmpty()) {
-            article.put(Article.ARTICLE_T_TOC, (Object) java.util.Collections.emptyList());
+            article.put(Article.ARTICLE_T_TOC, (Object) Collections.emptyList());
             return;
         }
         final List<JSONObject> toc = new ArrayList<>(hs.size());

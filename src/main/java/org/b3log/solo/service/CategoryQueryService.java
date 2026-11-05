@@ -37,7 +37,11 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Category query service.
@@ -86,9 +90,40 @@ public class CategoryQueryService {
                 setPageSize(fetchSize).setPageCount(1);
         try {
             final List<JSONObject> ret = categoryRepository.getList(query);
-            for (final JSONObject category : ret) {
-                final List<JSONObject> tags = getTags(category.optString(Keys.OBJECT_ID));
+            if (ret.isEmpty()) {
+                return ret;
+            }
 
+            final Set<String> categoryIds = new LinkedHashSet<>(ret.size());
+            for (final JSONObject category : ret) {
+                final String id = category.optString(Keys.OBJECT_ID);
+                if (!id.isEmpty()) {
+                    categoryIds.add(id);
+                }
+            }
+
+            final Map<String, List<JSONObject>> tagsByCategory = new HashMap<>(categoryIds.size());
+            if (!categoryIds.isEmpty()) {
+                final String placeholders = String.join(",", Collections.nCopies(categoryIds.size(), "?"));
+                final List<JSONObject> rows = tagRepository.select(
+                        "SELECT ct.category_oId AS C, t.oId, t.tagTitle FROM " + tagRepository.getName()
+                                + " AS t JOIN " + categoryTagRepository.getName()
+                                + " AS ct ON ct.tag_oId = t.oId WHERE ct.category_oId IN (" + placeholders + ")",
+                        categoryIds.toArray());
+                if (null != rows) {
+                    for (final JSONObject row : rows) {
+                        final String catId = row.optString("C");
+                        row.remove("C");
+                        if (!catId.isEmpty()) {
+                            tagsByCategory.computeIfAbsent(catId, k -> new ArrayList<>()).add(row);
+                        }
+                    }
+                }
+            }
+
+            for (final JSONObject category : ret) {
+                final String catId = category.optString(Keys.OBJECT_ID);
+                final List<JSONObject> tags = tagsByCategory.getOrDefault(catId, new ArrayList<>(0));
                 category.put(Category.CATEGORY_T_TAGS, (Object) tags);
             }
 
@@ -112,7 +147,7 @@ public class CategoryQueryService {
         }
         try {
             final List<JSONObject> rows = tagRepository.select(
-                    "SELECT t.* FROM " + tagRepository.getName() + " AS t JOIN "
+                    "SELECT t.oId, t.tagTitle FROM " + tagRepository.getName() + " AS t JOIN "
                             + categoryTagRepository.getName() + " AS ct ON ct.tag_oId = t.oId WHERE ct.category_oId = ?",
                     categoryId);
             return null == rows ? new ArrayList<>() : rows;
@@ -166,27 +201,8 @@ public class CategoryQueryService {
     /**
      * Gets categories by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "categoryTitle": "", // optional
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10
-     *                          see {@link Pagination} for more details
-     * @return for example,
-     * <pre>
-     * {
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "categories": [{
-     *         "oId": "",
-     *         "categoryTitle": "",
-     *         "categoryDescription": "",
-     *         ....
-     *      }, ....]
-     * }
-     * </pre>
+     * @param requestJSONObject the specified request json object
+     * @return paginated categories
      * @throws ServiceException service exception
      * @see Pagination
      */

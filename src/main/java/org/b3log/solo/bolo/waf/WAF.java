@@ -18,6 +18,7 @@
 package org.b3log.solo.bolo.waf;
 
 import org.b3log.latke.Latkes;
+import org.b3log.solo.bolo.pic.PicUploadProcessor;
 import org.b3log.solo.bolo.prop.Options;
 import org.b3log.solo.model.Option;
 import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
@@ -31,10 +32,47 @@ import pers.adlered.simplecurrentlimiter.main.SimpleCurrentLimiter;
  **/
 public class WAF {
     public static volatile boolean POWER = false;
+    private static final long WARN_INTERVAL_MS = 10_000L;
+    private static final int MAX_WARN_TRACKED_IPS = 2048;
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_WARN_AT =
+            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.concurrent.atomic.AtomicBoolean PRUNING_WARN =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
-    public static void on() {
+    private static boolean shouldLogWarn(final String requestIP) {
+        final String key = requestIP == null ? "" : requestIP;
+        final long now = System.currentTimeMillis();
+        final Long prev = LAST_WARN_AT.get(key);
+        if (prev != null && now - prev < WARN_INTERVAL_MS) {
+            return false;
+        }
+        if (prev == null && LAST_WARN_AT.size() >= MAX_WARN_TRACKED_IPS) {
+            if (PRUNING_WARN.compareAndSet(false, true)) {
+                try {
+                    LAST_WARN_AT.entrySet().removeIf(e -> now - e.getValue() >= WARN_INTERVAL_MS);
+                    if (LAST_WARN_AT.size() >= MAX_WARN_TRACKED_IPS) {
+                        final java.util.Iterator<String> it = LAST_WARN_AT.keySet().iterator();
+                        int evicted = 0;
+                        while (evicted < 64 && it.hasNext()) {
+                            it.next();
+                            it.remove();
+                            evicted++;
+                        }
+                    }
+                } finally {
+                    PRUNING_WARN.set(false);
+                }
+            } else if (LAST_WARN_AT.size() >= MAX_WARN_TRACKED_IPS * 2) {
+                return false;
+            }
+        }
+        final Long raced = LAST_WARN_AT.put(key, now);
+        return raced == null || now - raced >= WARN_INTERVAL_MS;
+    }
+
+    public static synchronized void on() {
         if (!POWER) {
-            POWER = true;
+
 
             int second;
             int times;
@@ -48,23 +86,25 @@ public class WAF {
             }
 
             WAFstorage.currentLimiter = new SimpleCurrentLimiter(second, times);
+            POWER = true;
         }
     }
 
-    public static void off() {
+    public static synchronized void off() {
         if (POWER) {
             POWER = false;
 
             WAFstorage.currentLimiter = null;
+            LAST_WARN_AT.clear();
         }
     }
 
-    public static void restart() {
+    public static synchronized void restart() {
         off();
         on();
     }
 
-    public static void set() {
+    public static synchronized void set() {
         try {
             String wafPower = Options.get(Option.ID_C_WAF_POWER);
             if ("false".equalsIgnoreCase(wafPower)) {
@@ -75,6 +115,16 @@ public class WAF {
         } catch (Exception e) {
             WAF.restart();
         }
+    }
+
+    private static boolean isSafeLocalImageRequest(final String requestURL) {
+        if (requestURL == null || !requestURL.startsWith("/image/")) {
+            return false;
+        }
+        final String rawName = requestURL.substring("/image/".length());
+        final int q = rawName.indexOf('?');
+        final String filename = q >= 0 ? rawName.substring(0, q) : rawName;
+        return PicUploadProcessor.safeImageContentType(filename) != null;
     }
 
     public static boolean in(String requestIP, String requestURL) {
@@ -117,7 +167,8 @@ public class WAF {
                         requestURL.startsWith("/article/commentSync/getList") ||
                         requestURL.startsWith("/PBC/status") ||
                         requestURL.startsWith("/favicon") ||
-                        requestURL.startsWith("/oauth/bolo/login")
+                        requestURL.startsWith("/oauth/bolo/login") ||
+                        isSafeLocalImageRequest(requestURL)
         )) {
 
             final SimpleCurrentLimiter limiter = WAFstorage.currentLimiter;
@@ -127,7 +178,9 @@ public class WAF {
 
                 return true;
             } else {
-                WAFlogger.logWarn("Illegal access from " + requestIP + " was denied to " + requestURL);
+                if (shouldLogWarn(requestIP)) {
+                    WAFlogger.logWarn("Illegal access from " + requestIP + " was denied to " + requestURL);
+                }
 
                 return false;
             }

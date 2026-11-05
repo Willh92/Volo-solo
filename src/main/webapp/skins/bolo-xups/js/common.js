@@ -32,9 +32,20 @@ var Skin = {
         Util.initPjax()
         $(function () {
             var top = $('#JELON__backToTop');
-            var updateTop = function () { top.toggleClass('is-visible', window.scrollY > 200); };
-            top.on('click', function () { Util.goTop(); });
-            $(window).on('scroll', updateTop);
+            var lastVisible = null;
+            var updateTop = function () {
+                var visible = window.scrollY > 200;
+                if (visible === lastVisible) return;
+                lastVisible = visible;
+                top.toggleClass('is-visible', visible);
+            };
+            top.off('click.boloXups').on('click.boloXups', function () { Util.goTop(); });
+            $(window).off('scroll.boloXups').on('scroll.boloXups', updateTop);
+            if (window.BoloNavigation) {
+                BoloNavigation.onLeave(function () {
+                    $(window).off('scroll.boloXups');
+                });
+            }
             updateTop();
         });
     },

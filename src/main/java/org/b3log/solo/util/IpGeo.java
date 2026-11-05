@@ -20,6 +20,8 @@ import org.lionsoul.ip2region.xdb.Version;
 /** Local-only city lookup, with shared vector indexes and a bounded result cache. */
 public final class IpGeo {
     private static final Logger LOGGER = Logger.getLogger(IpGeo.class);
+    private static final boolean WINDOWS = System.getProperty("os.name", "")
+            .toLowerCase(java.util.Locale.ROOT).contains("win");
     private static final Location UNKNOWN = new Location("", "");
     public record Location(String region, String countryCode, String province, String city) {
         public Location(final String region, final String countryCode) { this(region, countryCode, "", ""); }
@@ -87,7 +89,11 @@ public final class IpGeo {
                 final Path path = directory.resolve(prefix + type + ".mmdb");
                 if (!Files.isRegularFile(path)) continue;
                 // Keep one bounded snapshot so database updaters can replace the file on Windows too.
-                try { return new Reader(path.toFile(), Reader.FileMode.MEMORY, new CHMCache(4096)); }
+                try {
+                    final Reader.FileMode mode = WINDOWS && Files.size(path) < 262_144
+                            ? Reader.FileMode.MEMORY : Reader.FileMode.MEMORY_MAPPED;
+                    return new Reader(path.toFile(), mode, new CHMCache(4096));
+                }
                 catch (IOException unavailable) {
                     LOGGER.log(Level.WARN, "Unable to open offline IP database [{0}]", path);
                 }

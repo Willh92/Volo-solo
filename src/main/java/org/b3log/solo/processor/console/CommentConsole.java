@@ -21,6 +21,8 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.CommentCache;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.http.RequestContext;
@@ -76,6 +78,21 @@ public class CommentConsole {
     @Inject
     private ArticleQueryService articleQueryService;
 
+    @Inject
+    private CommentCache commentCache;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidateCaches(final String articleId) {
+        if (null != commentCache) {
+            commentCache.invalidateArticleComments(articleId);
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     /**
      * Removes a comment of an article by the specified request.
      *
@@ -105,6 +122,7 @@ public class CommentConsole {
                 commentMgmtService.removeArticleCommentThread(commentId);
             } else commentMgmtService.removeArticleComment(commentId);
 
+            invalidateCaches("");
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("removeSuccLabel"));
         } catch (final Exception e) {
@@ -133,12 +151,9 @@ public class CommentConsole {
             requestJSONObject.put("status", context.param("status") == null ? "all" : context.param("status"));
             final boolean adminLoggedIn = Solos.isAdminLoggedIn(context);
             final JSONObject result = commentQueryService.getComments(requestJSONObject, adminLoggedIn);
-            final java.util.Map<String, String> emails = new java.util.HashMap<>();
-            if (adminLoggedIn) {
-                for (final var binding : org.b3log.solo.bolo.prop.MailService.getUserMailContext()) {
-                    emails.put(binding.getCommentId(), binding.getCommentEmail());
-                }
-            }
+            final java.util.Map<String, String> emails = adminLoggedIn
+                    ? org.b3log.solo.bolo.prop.MailService.getUserMailEmailsByCommentId()
+                    : java.util.Collections.emptyMap();
             final var comments = result.optJSONArray(Comment.COMMENTS);
             if (comments != null) {
                 for (int i = 0; i < comments.length(); i++) {
@@ -207,6 +222,7 @@ public class CommentConsole {
             final JSONObject modResult = commentMgmtService.moderateComment(commentId, targetStatus);
             final int previousStatus = modResult.optInt("previousStatus", Comment.COMMENT_STATUS_C_APPROVED);
             final JSONObject comment = modResult.optJSONObject("comment");
+            invalidateCaches(comment == null ? "" : comment.optString(Comment.COMMENT_ON_ID));
             if (previousStatus == Comment.COMMENT_STATUS_C_PENDING
                     && targetStatus == Comment.COMMENT_STATUS_C_APPROVED
                     && comment != null) {

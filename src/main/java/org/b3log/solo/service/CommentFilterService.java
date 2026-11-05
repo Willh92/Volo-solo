@@ -6,7 +6,11 @@ import com.github.houbb.sensitive.word.support.allow.WordAllows;
 import com.github.houbb.sensitive.word.support.deny.WordDenys;
 import com.github.houbb.sensitive.word.support.resultcondition.WordResultConditions;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.model.Option;
@@ -15,11 +19,16 @@ import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.parser.Parser;
 
-/** An immutable DFA snapshot shared by new comments and visitor edits. No remote API is used. */
+/** An immutable DFA snapshot shared by new comments and visitor edits, lazily initialized on first check. No remote API is used. */
 @Singleton
 public class CommentFilterService {
     public static final String REJECTION = "评论包含不适合发表的词语，请修改后再试。";
     @Inject private OptionQueryService optionQueryService;
+    private volatile boolean configuredBuiltin = true;
+    private volatile Set<String> customWords = Set.of();
+    private volatile Set<String> allowWords = Set.of();
+    private volatile String lastBuiltSignature;
+    private volatile SensitiveWordBs wordBs;
     private volatile Prepared current;
 
     private record Rules(boolean builtin, List<String> deny, List<String> allow) {
@@ -32,32 +41,50 @@ public class CommentFilterService {
             return new Rules(!"false".equals(builtin), words(preference.optString(Option.ID_C_SPAM)),
                     words(preference.optString(Option.ID_C_COMMENT_FILTER_ALLOW)));
         }
+
+        String signature() {
+            return builtin + "\0" + String.join("\n", deny) + "\0" + String.join("\n", allow);
+        }
     }
 
     public static final class Prepared {
+        private final CommentFilterService owner;
         private final Rules rules;
-        private final SensitiveWordBs matcher;
-        private Prepared(final Rules rules, final SensitiveWordBs matcher) {
+        private volatile SensitiveWordBs matcher;
+
+        private Prepared(final CommentFilterService owner, final Rules rules) {
+            this.owner = owner;
             this.rules = rules;
-            this.matcher = matcher;
         }
+
         public boolean blocks(final String content) {
-            if (matcher == null || content == null || content.isBlank()) return false;
+            if ((!rules.builtin && rules.deny.isEmpty()) || content == null || content.isBlank()) return false;
+            SensitiveWordBs m = matcher;
+            if (m == null) {
+                m = (owner != null && (owner.current == this || owner.current == null))
+                        ? owner.ensureWordBs(this)
+                        : ensureDetachedMatcher();
+            }
+            if (m == null) return false;
             // Check both source and visible Markdown text; markup/entities must not split a forbidden word.
-            return matcher.contains(text(content))
-                    || matcher.contains(text(Jsoup.parseBodyFragment(Markdowns.toHTMLLocally(content)).text()));
+            return m.contains(text(content))
+                    || m.contains(text(Jsoup.parseBodyFragment(Markdowns.toHTMLLocally(content)).text()));
         }
+
+        private synchronized SensitiveWordBs ensureDetachedMatcher() {
+            if (matcher == null && (rules.builtin || !rules.deny.isEmpty())) {
+                matcher = buildMatcher(rules);
+            }
+            return matcher;
+        }
+
         private static String text(final String value) {
             return Parser.unescapeEntities(value, false).replaceAll("\\p{Cf}", "");
         }
     }
 
-    public Prepared prepare(final JSONObject preference) {
-        final Rules rules = Rules.read(preference);
-        final Prepared previous = current;
-        if (previous != null && previous.rules.equals(rules)) return previous;
-        if (!rules.builtin && rules.deny.isEmpty()) return new Prepared(rules, null);
-        final SensitiveWordBs matcher = SensitiveWordBs.newInstance()
+    private static SensitiveWordBs buildMatcher(final Rules rules) {
+        return SensitiveWordBs.newInstance()
                 .wordDeny(WordDenys.chains(rules.builtin ? WordDenys.defaults() : WordDenys.empty(), rules::deny))
                 .wordAllow(WordAllows.chains(rules.builtin ? WordAllows.defaults() : WordAllows.empty(), rules::allow))
                 .ignoreCase(true).ignoreWidth(true).ignoreChineseStyle(true).ignoreEnglishStyle(true)
@@ -65,11 +92,62 @@ public class CommentFilterService {
                 .enableWordCheck(true).enableNumCheck(false).enableEmailCheck(false)
                 .enableUrlCheck(false).enableIpv4Check(false)
                 .wordResultCondition(WordResultConditions.englishWordMatch()).init();
-        return new Prepared(rules, matcher);
+    }
+
+    private synchronized SensitiveWordBs ensureWordBs(final Prepared target) {
+        if (target.matcher != null) {
+            return target.matcher;
+        }
+        final Rules rules = target.rules;
+        if (!rules.builtin && rules.deny.isEmpty()) {
+            return null;
+        }
+        final String sig = rules.signature();
+        if (sig.equals(this.lastBuiltSignature) && this.wordBs != null) {
+            target.matcher = this.wordBs;
+            return this.wordBs;
+        }
+        // Release any previous 35-60 MB builtin trie reference before constructing a new instance.
+        this.wordBs = null;
+        this.lastBuiltSignature = null;
+        final SensitiveWordBs built = buildMatcher(rules);
+        target.matcher = built;
+        if (this.current == target || this.current == null) {
+            this.configuredBuiltin = rules.builtin;
+            this.customWords = Collections.unmodifiableSet(new LinkedHashSet<>(rules.deny));
+            this.allowWords = Collections.unmodifiableSet(new LinkedHashSet<>(rules.allow));
+            this.wordBs = built;
+            this.lastBuiltSignature = sig;
+        }
+        return built;
+    }
+
+    public Prepared prepare(final JSONObject preference) {
+        final Rules rules = Rules.read(preference);
+        final Prepared previous = current;
+        if (previous != null && previous.rules.equals(rules)) return previous;
+        return new Prepared(this, rules);
     }
 
     /** Publish only after the preference transaction commits; readers retain their complete old snapshot. */
-    public synchronized void activate(final Prepared prepared) { current = java.util.Objects.requireNonNull(prepared); }
+    public synchronized void activate(final Prepared prepared) {
+        Objects.requireNonNull(prepared);
+        final Rules rules = prepared.rules;
+        this.configuredBuiltin = rules.builtin;
+        this.customWords = Collections.unmodifiableSet(new LinkedHashSet<>(rules.deny));
+        this.allowWords = Collections.unmodifiableSet(new LinkedHashSet<>(rules.allow));
+        final String sig = rules.signature();
+        if (!rules.builtin && rules.deny.isEmpty()) {
+            this.wordBs = null;
+            this.lastBuiltSignature = null;
+        } else if (!sig.equals(this.lastBuiltSignature)) {
+            this.wordBs = null;
+            this.lastBuiltSignature = null;
+        } else if (this.wordBs != null) {
+            prepared.matcher = this.wordBs;
+        }
+        current = prepared;
+    }
 
     public void reload() { activate(prepare(optionQueryService.getPreference())); }
 
@@ -80,7 +158,7 @@ public class CommentFilterService {
                 snapshot = current;
                 if (snapshot == null) {
                     snapshot = prepare(optionQueryService.getPreference());
-                    current = snapshot;
+                    activate(snapshot);
                 }
             }
         }

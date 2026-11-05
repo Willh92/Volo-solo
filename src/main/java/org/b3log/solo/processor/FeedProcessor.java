@@ -18,23 +18,29 @@
 package org.b3log.solo.processor;
 
 import com.vdurmont.emoji.EmojiParser;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
-import org.b3log.latke.model.Role;
-import org.b3log.latke.model.User;
-import org.b3log.latke.repository.*;
-import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.RequestProcessing;
-import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.AtomRenderer;
 import org.b3log.latke.http.renderer.RssRenderer;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.model.Role;
+import org.b3log.latke.model.User;
+import org.b3log.latke.repository.CompositeFilter;
+import org.b3log.latke.repository.CompositeFilterOperator;
+import org.b3log.latke.repository.Filter;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
+import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.SortDirection;
+import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.util.Locales;
 import org.b3log.solo.SoloApplication;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.atom.Category;
@@ -44,13 +50,20 @@ import org.b3log.solo.model.rss.Channel;
 import org.b3log.solo.model.rss.Item;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.service.ArticleQueryService;
+import org.b3log.solo.service.HiddenContentService;
 import org.b3log.solo.service.OptionQueryService;
+import org.b3log.solo.service.SeriesAndBookshelfService;
+import org.b3log.solo.service.SyndicationCacheService;
 import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.QueryResults;
+import org.b3log.solo.util.ReadingStatsUtil;
+import org.b3log.solo.web.HttpCompression;
+import org.b3log.solo.web.PublicResourceHandler;
+import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import org.b3log.latke.http.Response;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -72,6 +85,10 @@ public class FeedProcessor {
      */
     private static final Logger LOGGER = Logger.getLogger(FeedProcessor.class);
 
+    private static final String ATOM_CONTENT_TYPE = "application/atom+xml; charset=UTF-8";
+    private static final String RSS_CONTENT_TYPE = "application/rss+xml; charset=UTF-8";
+    private static final byte[] EMPTY_BYTES = new byte[0];
+
     /**
      * Article query service.
      */
@@ -90,6 +107,9 @@ public class FeedProcessor {
     @Inject
     private OptionQueryService optionQueryService;
 
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
     /**
      * Blog articles Atom output.
      *
@@ -97,42 +117,90 @@ public class FeedProcessor {
      */
     @RequestProcessing(value = "/atom.xml", method = {HttpMethod.GET, HttpMethod.HEAD})
     public void blogArticlesAtom(final RequestContext context) {
-        final AtomRenderer renderer = new AtomRenderer();
-        context.setRenderer(renderer);
-
-        final Feed feed = new Feed();
         try {
-            final JSONObject preference = optionQueryService.getPreference();
-            final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
-            final String blogSubtitle = preference.getString(Option.ID_C_BLOG_SUBTITLE);
-            final int outputCnt = preference.getInt(Option.ID_C_FEED_OUTPUT_CNT);
-            feed.setTitle(blogTitle);
-            feed.setSubtitle(blogSubtitle);
-            feed.setUpdated(new Date());
-            feed.setAuthor(blogTitle);
-            feed.setLink(Latkes.getServePath() + "/atom.xml");
-            feed.setId(Latkes.getServePath() + "/");
+            final SyndicationCacheService.Snapshot snapshot = syndicationCacheService != null
+                    ? syndicationCacheService.getOrCompute(SyndicationCacheService.KEY_ATOM, this::buildAtomXml)
+                    : SyndicationCacheService.Snapshot.of(buildAtomXml());
 
-            final List<Filter> filters = new ArrayList<>();
-            filters.add(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
-            filters.add(new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""));
-            final Query query = new Query().setPage(1, outputCnt).
-                    setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters)).
-                    addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).setPageCount(1);
-            final JSONObject articleResult = articleRepository.get(query);
-            final JSONArray articles = org.b3log.solo.util.QueryResults.array(articleResult);
-            final boolean isFullContent = "fullContent".equals(preference.getString(Option.ID_C_FEED_OUTPUT_MODE));
-            for (int i = 0; i < articles.length(); i++) {
-                final Entry entry = getEntry(articles, isFullContent, i);
-                feed.addEntry(entry);
+            HttpCompression.ensureVaryAcceptEncoding(context.getResponse());
+            if (SyndicationCacheService.tryServeNotModified(context, snapshot, ATOM_CONTENT_TYPE)) {
+                return;
             }
 
-            renderer.setContent(feed.toString());
+            final AtomRenderer renderer = new AtomRenderer();
+            renderer.setContent(snapshot.xml());
+            context.setRenderer(renderer);
+            if ("HEAD".equalsIgnoreCase(context.method())) {
+                context.getResponse().sendBytes(EMPTY_BYTES);
+            } else if (PublicResourceHandler.acceptsGzip(context.header("Accept-Encoding"))) {
+                HttpCompression.sendText(context, snapshot.xml(), ATOM_CONTENT_TYPE);
+            } else {
+                renderer.render(context);
+            }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Get blog article feed error", e);
 
             context.sendError(503);
         }
+    }
+
+    private String buildAtomXml() throws Exception {
+        final Feed feed = new Feed();
+        final JSONObject preference = optionQueryService.getPreference();
+        final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
+        final String blogSubtitle = preference.getString(Option.ID_C_BLOG_SUBTITLE);
+        final int outputCnt = preference.getInt(Option.ID_C_FEED_OUTPUT_CNT);
+        final boolean isFullContent = "fullContent".equals(preference.optString(Option.ID_C_FEED_OUTPUT_MODE));
+        feed.setTitle(blogTitle);
+        feed.setSubtitle(blogSubtitle);
+        feed.setUpdated(new Date());
+        feed.setAuthor(blogTitle);
+        feed.setLink(Latkes.getServePath() + "/atom.xml");
+        feed.setId(Latkes.getServePath() + "/");
+
+        final List<Filter> filters = new ArrayList<>();
+        filters.add(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
+        filters.add(new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""));
+        final Query query = new Query()
+                .setPage(1, outputCnt)
+                .setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters))
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                .setPageCount(1);
+        if (isFullContent) {
+            query.select(Keys.OBJECT_ID,
+                    Article.ARTICLE_TITLE,
+                    Article.ARTICLE_CONTENT,
+                    Article.ARTICLE_UPDATED,
+                    Article.ARTICLE_PERMALINK,
+                    Article.ARTICLE_AUTHOR_ID,
+                    Article.ARTICLE_TAGS_REF,
+                    Article.ARTICLE_STATUS,
+                    Article.ARTICLE_VIEW_PWD);
+        } else {
+            query.select(Keys.OBJECT_ID,
+                    Article.ARTICLE_TITLE,
+                    Article.ARTICLE_ABSTRACT,
+                    Article.ARTICLE_UPDATED,
+                    Article.ARTICLE_PERMALINK,
+                    Article.ARTICLE_AUTHOR_ID,
+                    Article.ARTICLE_TAGS_REF,
+                    Article.ARTICLE_STATUS,
+                    Article.ARTICLE_VIEW_PWD);
+        }
+        final JSONObject articleResult = articleRepository.get(query);
+        final JSONArray articles = QueryResults.array(articleResult);
+        for (int i = 0; i < articles.length(); i++) {
+            final JSONObject article = articles.optJSONObject(i);
+            if (article == null
+                    || article.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                    || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                continue;
+            }
+            final Entry entry = getEntry(articles, isFullContent, i);
+            feed.addEntry(entry);
+        }
+
+        return feed.toString();
     }
 
     private Entry getEntry(final JSONArray articles, final boolean isFullContent, int i)
@@ -144,8 +212,8 @@ public class FeedProcessor {
         final JSONObject author = articleQueryService.getAuthor(article);
         String summary = isFullContent ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
-        summary = org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
-                org.b3log.solo.service.HiddenContentService.stripForFeed(summary));
+        summary = SeriesAndBookshelfService.stripForFeed(
+                HiddenContentService.stripForFeed(summary));
         summary = Markdowns.toHTML(EmojiParser.parseToAliases(summary));
         if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
             summary = Markdowns.clean(summary);
@@ -173,15 +241,9 @@ public class FeedProcessor {
      * Blog articles RSS output.
      *
      * @param context the specified context
-     * @throws Exception exception
      */
     @RequestProcessing(value = "/rss.xml", method = {HttpMethod.GET, HttpMethod.HEAD})
     public void blogArticlesRSS(final RequestContext context) {
-        final RssRenderer renderer = new RssRenderer();
-        context.setRenderer(renderer);
-
-        final Channel channel = new Channel();
-
         try {
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
@@ -190,41 +252,97 @@ public class FeedProcessor {
                 return;
             }
 
-            final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
-            final String blogSubtitle = preference.getString(Option.ID_C_BLOG_SUBTITLE);
-            final int outputCnt = preference.getInt(Option.ID_C_FEED_OUTPUT_CNT);
+            final SyndicationCacheService.Snapshot snapshot = syndicationCacheService != null
+                    ? syndicationCacheService.getOrCompute(SyndicationCacheService.KEY_RSS, () -> buildRssXml(preference))
+                    : SyndicationCacheService.Snapshot.of(buildRssXml(preference));
 
-            channel.setTitle(blogTitle);
-            channel.setLastBuildDate(new Date());
-            channel.setLink(Latkes.getServePath());
-            channel.setAtomLink(Latkes.getServePath() + "/rss.xml");
-            channel.setGenerator("Volo, v" + SoloApplication.VERSION + ", https://github.com/Willh92/Volo-solo");
-            final String localeString = preference.getString(Option.ID_C_LOCALE_STRING);
-            final String country = Locales.getCountry(localeString).toLowerCase();
-            final String language = Locales.getLanguage(localeString).toLowerCase();
-            channel.setLanguage(language + '-' + country);
-            channel.setDescription(blogSubtitle);
-
-            final List<Filter> filters = new ArrayList<>();
-            filters.add(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
-            filters.add(new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""));
-            final Query query = new Query().setPageCount(1).setPage(1, outputCnt).
-                    setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters)).
-                    addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING);
-            final JSONObject articleResult = articleRepository.get(query);
-            final JSONArray articles = org.b3log.solo.util.QueryResults.array(articleResult);
-            final boolean isFullContent = "fullContent".equals(preference.getString(Option.ID_C_FEED_OUTPUT_MODE));
-            for (int i = 0; i < articles.length(); i++) {
-                final Item item = getItem(articles, isFullContent, i);
-                channel.addItem(item);
+            HttpCompression.ensureVaryAcceptEncoding(context.getResponse());
+            if (SyndicationCacheService.tryServeNotModified(context, snapshot, RSS_CONTENT_TYPE)) {
+                return;
             }
 
-            renderer.setContent(channel.toString());
+            final RssRenderer renderer = new RssRenderer();
+            renderer.setContent(snapshot.xml());
+            context.setRenderer(renderer);
+            if ("HEAD".equalsIgnoreCase(context.method())) {
+                context.getResponse().sendBytes(EMPTY_BYTES);
+            } else if (PublicResourceHandler.acceptsGzip(context.header("Accept-Encoding"))) {
+                HttpCompression.sendText(context, snapshot.xml(), RSS_CONTENT_TYPE);
+            } else {
+                renderer.render(context);
+            }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Get blog article rss error", e);
 
             context.sendError(503);
         }
+    }
+
+    private String buildRssXml(final JSONObject preference) throws Exception {
+        final Channel channel = new Channel();
+        final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
+        final String blogSubtitle = preference.getString(Option.ID_C_BLOG_SUBTITLE);
+        final int outputCnt = preference.getInt(Option.ID_C_FEED_OUTPUT_CNT);
+        final boolean isFullContent = "fullContent".equals(preference.optString(Option.ID_C_FEED_OUTPUT_MODE));
+
+        channel.setTitle(blogTitle);
+        channel.setLastBuildDate(new Date());
+        channel.setLink(Latkes.getServePath());
+        channel.setAtomLink(Latkes.getServePath() + "/rss.xml");
+        channel.setGenerator("Volo, v" + SoloApplication.VERSION + ", https://github.com/Willh92/Volo-solo");
+        final String localeString = preference.getString(Option.ID_C_LOCALE_STRING);
+        final String country = Locales.getCountry(localeString).toLowerCase();
+        final String language = Locales.getLanguage(localeString).toLowerCase();
+        channel.setLanguage(language + '-' + country);
+        channel.setDescription(blogSubtitle);
+
+        final List<Filter> filters = new ArrayList<>();
+        filters.add(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
+        filters.add(new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""));
+        final Query query = new Query()
+                .setPageCount(1)
+                .setPage(1, outputCnt)
+                .setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters))
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING);
+        if (isFullContent) {
+            query.select(Keys.OBJECT_ID,
+                    Article.ARTICLE_TITLE,
+                    Article.ARTICLE_CONTENT,
+                    Article.ARTICLE_UPDATED,
+                    Article.ARTICLE_PERMALINK,
+                    Article.ARTICLE_AUTHOR_ID,
+                    Article.ARTICLE_TAGS_REF,
+                    Article.ARTICLE_AUDIO_URL,
+                    Article.ARTICLE_AUDIO_SIZE,
+                    Article.ARTICLE_STATUS,
+                    Article.ARTICLE_VIEW_PWD);
+        } else {
+            query.select(Keys.OBJECT_ID,
+                    Article.ARTICLE_TITLE,
+                    Article.ARTICLE_ABSTRACT,
+                    Article.ARTICLE_UPDATED,
+                    Article.ARTICLE_PERMALINK,
+                    Article.ARTICLE_AUTHOR_ID,
+                    Article.ARTICLE_TAGS_REF,
+                    Article.ARTICLE_AUDIO_URL,
+                    Article.ARTICLE_AUDIO_SIZE,
+                    Article.ARTICLE_STATUS,
+                    Article.ARTICLE_VIEW_PWD);
+        }
+        final JSONObject articleResult = articleRepository.get(query);
+        final JSONArray articles = QueryResults.array(articleResult);
+        for (int i = 0; i < articles.length(); i++) {
+            final JSONObject article = articles.optJSONObject(i);
+            if (article == null
+                    || article.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                    || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                continue;
+            }
+            final Item item = getItem(articles, isFullContent, i);
+            channel.addItem(item);
+        }
+
+        return channel.toString();
     }
 
     private Item getItem(final JSONArray articles, final boolean isFullContent, int i) throws JSONException, ServiceException {
@@ -236,8 +354,8 @@ public class FeedProcessor {
         String description = isFullContent
                 ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
-        description = org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
-                org.b3log.solo.service.HiddenContentService.stripForFeed(description));
+        description = SeriesAndBookshelfService.stripForFeed(
+                HiddenContentService.stripForFeed(description));
         final JSONObject author = articleQueryService.getAuthor(article);
         description = EmojiParser.parseToAliases(description);
         description = Markdowns.toHTML(description);
@@ -252,13 +370,13 @@ public class FeedProcessor {
         ret.setGUID(link);
         final String authorName = author.getString(User.USER_NAME);
         ret.setAuthor(authorName);
-        final String rawAudioUrl = org.apache.commons.lang3.StringUtils.trimToEmpty(article.optString(Article.ARTICLE_AUDIO_URL));
-        if (org.b3log.solo.util.ReadingStatsUtil.isSafeAudioUrl(rawAudioUrl)) {
+        final String rawAudioUrl = StringUtils.trimToEmpty(article.optString(Article.ARTICLE_AUDIO_URL));
+        if (ReadingStatsUtil.isSafeAudioUrl(rawAudioUrl)) {
             final String fullAudioUrl = rawAudioUrl.startsWith("/")
                     ? (Latkes.getServePath() + rawAudioUrl)
                     : rawAudioUrl;
             final long audioSize = Math.max(0L, article.optLong(Article.ARTICLE_AUDIO_SIZE, 0L));
-            final String audioMime = org.b3log.solo.util.ReadingStatsUtil.inferAudioMimeType(fullAudioUrl);
+            final String audioMime = ReadingStatsUtil.inferAudioMimeType(fullAudioUrl);
             ret.setEnclosure(fullAudioUrl, audioSize, audioMime);
         }
         final String tagsString = article.getString(Article.ARTICLE_TAGS_REF);

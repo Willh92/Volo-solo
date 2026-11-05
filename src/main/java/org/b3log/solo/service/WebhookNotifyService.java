@@ -11,6 +11,7 @@ import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.Transaction;
+import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Option;
@@ -57,7 +58,7 @@ public class WebhookNotifyService {
             "comment", "moderation", "register", "security", "backup");
 
     private static final AtomicInteger THREAD_SEQ = new AtomicInteger(1);
-    private static final ExecutorService DISPATCH_POOL = new ThreadPoolExecutor(
+    private static final ThreadPoolExecutor DISPATCH_POOL = new ThreadPoolExecutor(
             1, 2, 60L, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(64),
             runnable -> {
@@ -66,6 +67,17 @@ public class WebhookNotifyService {
                 return t;
             },
             new ThreadPoolExecutor.DiscardOldestPolicy());
+
+    static {
+        DISPATCH_POOL.allowCoreThreadTimeOut(true);
+    }
+
+    /**
+     * Shuts down the asynchronous webhook delivery pool.
+     */
+    public static void shutdown() {
+        DISPATCH_POOL.shutdown();
+    }
 
     @Inject
     private OptionRepository optionRepository;
@@ -112,7 +124,7 @@ public class WebhookNotifyService {
     }
 
     private static JSONObject maskItem(final JSONObject item) {
-        final JSONObject copy = new JSONObject(item.toString());
+        final JSONObject copy = org.b3log.solo.util.Solos.clone(item);
         final String secret = copy.optString("secret", "");
         copy.put("secretSet", !secret.isBlank());
         copy.put("secret", "");
@@ -265,7 +277,7 @@ public class WebhookNotifyService {
         if (list.isEmpty()) {
             return;
         }
-        final JSONObject safeDetails = details == null ? new JSONObject() : new JSONObject(details.toString());
+        final JSONObject safeDetails = details == null ? new JSONObject() : org.b3log.solo.util.Solos.clone(details);
         for (int i = 0; i < list.length(); i++) {
             final JSONObject item = list.optJSONObject(i);
             if (item == null || !item.optBoolean("enabled", true)) {
@@ -274,12 +286,17 @@ public class WebhookNotifyService {
             if (!subscribes(item.optJSONArray("events"), category)) {
                 continue;
             }
-            final JSONObject snapshot = new JSONObject(item.toString());
+            final JSONObject snapshot = org.b3log.solo.util.Solos.clone(item);
             DISPATCH_POOL.execute(() -> {
                 try {
                     deliverOne(snapshot, eventType, summary, safeDetails);
                 } catch (final Exception e) {
                     LOGGER.log(Level.WARN, "Webhook delivery failed for [" + snapshot.optString("name") + "]: " + e.getMessage());
+                } finally {
+                    try {
+                        JdbcRepository.dispose();
+                    } catch (final Exception ignored) {
+                    }
                 }
             });
         }

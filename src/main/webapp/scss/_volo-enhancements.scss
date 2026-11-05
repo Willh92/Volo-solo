@@ -174,6 +174,78 @@
 }
 
 /* 2. Partial hidden content cards (.volo-lock-card & .volo-unlocked-block) */
+.volo-backlinks-box.volo-backlinks-box {
+  margin: 22px 0;
+  padding: 16px 20px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 12px;
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.volo-backlinks-box__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.volo-backlinks-box__title {
+  color: var(--bolo-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.volo-backlinks-box__count {
+  margin-left: auto;
+  padding: 2px 9px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 999px;
+  background: var(--bolo-surface);
+  color: var(--bolo-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__list {
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__item {
+  margin: 0 !important;
+  padding: 8px 12px !important;
+  list-style: none !important;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-surface);
+}
+.volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__item::before {
+  content: none !important;
+  display: none !important;
+}
+.volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__link {
+  color: var(--bolo-text) !important;
+  text-decoration: none !important;
+  font-size: 13.5px;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__link:hover {
+  color: var(--bolo-accent) !important;
+}
+.volo-backlinks-box__date {
+  flex-shrink: 0;
+  color: var(--bolo-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .volo-lock-card.volo-lock-card {
   margin: 20px 0;
   padding: 18px 20px;
@@ -215,11 +287,20 @@
   font-size: 13.5px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.volo-lock-btn:not(.volo-lock-btn--ghost):hover:not(:disabled) {
+  background: var(--bolo-button-hover, var(--bolo-accent));
 }
 .volo-lock-btn--ghost {
   background: var(--bolo-surface);
   color: var(--bolo-text) !important;
   border-color: var(--bolo-line);
+}
+.volo-lock-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bolo-accent) 8%, var(--bolo-surface));
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent) !important;
 }
 .volo-lock-card.volo-lock-card .volo-lock-card__msg {
   margin: 8px 0 0 !important;
@@ -356,6 +437,10 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   font-size: 11px;
   cursor: pointer;
 }
+.volo-search-esc:hover {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent);
+}
 .volo-search-filters {
   display: flex;
   flex-wrap: wrap;
@@ -372,6 +457,10 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   color: var(--bolo-muted);
   font-size: 12px;
   cursor: pointer;
+}
+.volo-filter-pill:not(.is-active):hover {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent);
 }
 .volo-filter-pill.is-active {
   background: var(--bolo-button, var(--bolo-accent));
@@ -441,6 +530,10 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   font-weight: 500;
   cursor: pointer;
 }
+.volo-reader-tab:not(.is-active):hover {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-text);
+}
 .volo-reader-tab.is-active {
   background: var(--bolo-button, var(--bolo-accent));
   border-color: transparent;
@@ -453,6 +546,9 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
+}
+.volo-modal-close:hover {
+  color: var(--bolo-accent);
 }
 .volo-reader-pane h1 {
   margin: 0 0 8px;
@@ -531,6 +627,10 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   cursor: pointer;
   white-space: nowrap;
 }
+.volo-reader-send-code:hover:not(:disabled) {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent);
+}
 .volo-reader-submit {
   height: 42px;
   margin-top: 4px;
@@ -541,6 +641,9 @@ html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+}
+.volo-reader-submit:hover:not(:disabled) {
+  background: var(--bolo-button-hover, var(--bolo-accent));
 }
 .volo-reader-alert { padding: 8px 12px; border-radius: 8px; background: var(--bolo-raised); color: var(--bolo-danger); font-size: 12.5px; }
 .volo-reader-alert.is-success { color: var(--bolo-accent); }
@@ -591,6 +694,8 @@ html.volo-reader-lock-scroll { overflow: hidden !important; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }
 .volo-book-card__head { display: flex; gap: 14px; align-items: flex-start; }
 .volo-bookshelf.volo-bookshelf .volo-book-card__cover {
@@ -683,7 +788,15 @@ html.volo-reader-lock-scroll { overflow: hidden !important; }
   flex-direction: column;
   height: min(78vh, 760px);
 }
-.volo-book-reader[hidden] { display: none !important; }
+.volo-book-reader[hidden],
+.volo-search-filters[hidden],
+.volo-book-card[hidden],
+.volo-book-card__resume[hidden],
+.volo-book-toc__item[hidden],
+.volo-reader-pane[hidden],
+.volo-reader-alert[hidden] {
+  display: none !important;
+}
 .volo-book-reader.volo-book-reader.is-fullscreen {
   position: fixed !important;
   inset: 0 !important;
@@ -716,6 +829,11 @@ html.volo-reader-lock-scroll { overflow: hidden !important; }
   font-size: 12px;
   text-decoration: none !important;
   cursor: pointer;
+}
+.volo-book-reader.volo-book-reader .volo-book-reader__btn:hover:not(:disabled) {
+  border-color: var(--bolo-accent) !important;
+  color: var(--bolo-accent) !important;
+  background: color-mix(in srgb, var(--bolo-accent) 8%, var(--bolo-surface));
 }
 .volo-book-reader__btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .volo-book-reader__body { display: flex; flex: 1; min-height: 0; }
@@ -782,4 +900,12 @@ html.volo-reader-lock-scroll { overflow: hidden !important; }
   .volo-lock-card__form .volo-lock-btn,
   .volo-lock-card__actions .volo-lock-btn { flex: 1; text-align: center; justify-content: center; }
   .volo-series-box__progress { margin-left: 0; }
+  .volo-backlinks-box.volo-backlinks-box { padding: 14px; }
+  .volo-backlinks-box.volo-backlinks-box .volo-backlinks-box__item { flex-direction: column; gap: 3px; }
+}
+
+/* 5. Safe below-the-fold rendering containment for comment items */
+html[data-bolo-page='public'] [data-comment-depth]:not(.comment-body-ref):not(:hover):not(:focus-within):not(:target) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }

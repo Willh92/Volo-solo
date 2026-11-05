@@ -146,7 +146,7 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   $.fn={qrcode(){}};
   $.ajax=req=>requests.push(req);
   const notices=[];
-  const sandbox={$,Label:{servePath:'',staticServePath:''},admin:{register:{},showNotice:m=>notices.push(m)},document:f.document,window:{Label:{staticServePath:''}},navigator:{},confirm:()=>true};
+  const sandbox={$,Label:{servePath:'',staticServePath:''},admin:{register:{},showNotice:m=>notices.push(m)},document:f.document,window:{Label:{staticServePath:''}},navigator:{},confirm:()=>true,btoa,atob,Uint8Array};
   vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/security.js','utf8'),sandbox);
   assert.ok(sandbox.admin.register.totp,'TOTP security console module must register with admin router');
   const sec=sandbox.admin.security;
@@ -190,5 +190,17 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   assert.equal(f.document.getElementById('totpSettingsMessage').dataset.tone,'ok');
   const consoleCss=fs.readFileSync('src/main/webapp/scss/console-theme.css','utf8');
   assert(consoleCss.includes('.console-smtp-grid button.console-select-trigger'),'Grid select triggers must match adjacent input width and 44px height');
+
+  // Passkey Base64URL helpers & DOM-safe credential rendering.
+  for(const id of ['passkeyStatusBadge','passkeyDeviceName','passkeyListBody','passkeyMessage','passkeyRegisterBtn']){
+    const el=f.document.createElement(id==='passkeyDeviceName'?'input':'div');el.id=id;f.document.body.append(el);
+  }
+  const sampleBytes=new Uint8Array([0,255,254,62,63,128,1]);
+  const encoded=sec._bytesToB64Url(sampleBytes.buffer);
+  assert(!encoded.includes('+')&&!encoded.includes('/')&&!encoded.includes('='),'Base64URL must not contain +, /, or =');
+  assert.deepEqual([...sec._b64UrlToBytes(encoded)],[...sampleBytes]);
+  sec.renderPasskeys([{id:'cred-1',name:'MacBook <img src=x onerror=alert(1)>',alg:-7,createdAt:1700000000000,lastUsedAt:0,signCount:3}]);
+  assert.equal(f.document.getElementById('passkeyListBody').querySelectorAll('img').length,0,'Passkey names must render via textContent without HTML parsing');
+  assert.equal(f.document.getElementById('passkeyStatusBadge').dataset.state,'enabled');
 }
 console.log('Console controls: selects, tags, IP edits and TOTP console controls passed keyboard, events, safe labels, dynamic values, hidden controls, cleanup and submission checks.');

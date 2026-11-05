@@ -12,6 +12,7 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.Transaction;
+import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Link;
@@ -26,9 +27,9 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -48,17 +49,34 @@ public class LinkHealthService {
     private static final int MAX_OPTION_CHARS = 9800;
 
     private static final AtomicInteger THREAD_SEQ = new AtomicInteger(1);
-    private static final ExecutorService PROBE_POOL = Executors.newFixedThreadPool(4, runnable -> {
-        final Thread thread = new Thread(runnable, "volo-link-probe-" + THREAD_SEQ.getAndIncrement());
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ThreadPoolExecutor PROBE_POOL = createProbePool();
 
     @Inject
     private LinkRepository linkRepository;
 
     @Inject
     private OptionRepository optionRepository;
+
+    private static ThreadPoolExecutor createProbePool() {
+        final ThreadPoolExecutor pool = new ThreadPoolExecutor(
+                4, 4, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(256),
+                runnable -> {
+                    final Thread thread = new Thread(runnable, "volo-link-probe-" + THREAD_SEQ.getAndIncrement());
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy());
+        pool.allowCoreThreadTimeOut(true);
+        return pool;
+    }
+
+    /**
+     * Shuts down the broken link probe executor pool.
+     */
+    public static void shutdown() {
+        PROBE_POOL.shutdown();
+    }
 
     /**
      * Reads cached link health map keyed by link {@code oId}.
@@ -103,8 +121,9 @@ public class LinkHealthService {
 
         try {
             final JSONArray links = QueryResults.array(linkRepository.get(new Query()));
+            disposeJdbcQuietly();
             total = links.length();
-            final List<Callable< linkProbeOutcome >> tasks = new ArrayList<>(total);
+            final List<Callable<linkProbeOutcome>> tasks = new ArrayList<>(total);
             for (int i = 0; i < total; i++) {
                 final JSONObject link = links.optJSONObject(i);
                 if (link == null) {
@@ -113,20 +132,25 @@ public class LinkHealthService {
                 final String id = link.optString(Keys.OBJECT_ID);
                 final String url = StringUtils.trimToEmpty(link.optString(Link.LINK_ADDRESS));
                 tasks.add(() -> {
-                    final OutboundUrls.ProbeResult res = OutboundUrls.probeUrl(
-                            url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS, USER_AGENT, false);
-                    final JSONObject item = new JSONObject()
-                            .put("ok", res.ok())
-                            .put("status", res.status())
-                            .put("latencyMs", res.latencyMs())
-                            .put("checkedAt", checkedAt);
-                    if (StringUtils.isNotBlank(res.error())) {
-                        item.put("error", StringUtils.abbreviate(res.error(), 60));
+                    try {
+                        final OutboundUrls.ProbeResult res = OutboundUrls.probeUrl(
+                                url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS, USER_AGENT, false);
+                        final JSONObject item = new JSONObject()
+                                .put("ok", res.ok())
+                                .put("status", res.status())
+                                .put("latencyMs", res.latencyMs())
+                                .put("checkedAt", checkedAt);
+                        if (StringUtils.isNotBlank(res.error())) {
+                            item.put("error", StringUtils.abbreviate(res.error(), 60));
+                        }
+                        return new linkProbeOutcome(id, res.ok(), item);
+                    } finally {
+                        disposeJdbcQuietly();
                     }
-                    return new linkProbeOutcome(id, res.ok(), item);
                 });
             }
 
+            int approxChars = 2; // "{}"
             final List<Future<linkProbeOutcome>> futures = PROBE_POOL.invokeAll(tasks, 45L, TimeUnit.SECONDS);
             for (int i = 0; i < futures.size(); i++) {
                 final Future<linkProbeOutcome> future = futures.get(i);
@@ -141,8 +165,14 @@ public class LinkHealthService {
                     } else {
                         unhealthy++;
                     }
-                    if (healthMap.toString().length() < MAX_OPTION_CHARS) {
-                        healthMap.put(out.id(), out.entry());
+                    if (StringUtils.isNotBlank(out.id()) && !healthMap.has(out.id())) {
+                        final String entryJson = out.entry().toString();
+                        final int entryChars = (healthMap.isEmpty() ? 0 : 1)
+                                + JSONObject.quote(out.id()).length() + 1 + entryJson.length();
+                        if (approxChars + entryChars <= MAX_OPTION_CHARS) {
+                            healthMap.put(out.id(), out.entry());
+                            approxChars += entryChars;
+                        }
                     }
                 } catch (final Exception e) {
                     unhealthy++;
@@ -152,6 +182,8 @@ public class LinkHealthService {
             saveHealthMap(healthMap);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Broken link health check failed", e);
+        } finally {
+            disposeJdbcQuietly();
         }
 
         return new JSONObject()
@@ -163,6 +195,7 @@ public class LinkHealthService {
     }
 
     private void saveHealthMap(final JSONObject healthMap) {
+        final String serialized = healthMap.toString();
         final Transaction tx = optionRepository.beginTransaction();
         try {
             JSONObject opt = optionRepository.get(Option.ID_C_VOLO_LINK_HEALTH);
@@ -170,10 +203,10 @@ public class LinkHealthService {
                 opt = new JSONObject();
                 opt.put(Keys.OBJECT_ID, Option.ID_C_VOLO_LINK_HEALTH);
                 opt.put(Option.OPTION_CATEGORY, "linkHealth");
-                opt.put(Option.OPTION_VALUE, healthMap.toString());
+                opt.put(Option.OPTION_VALUE, serialized);
                 optionRepository.add(opt);
             } else {
-                opt.put(Option.OPTION_VALUE, healthMap.toString());
+                opt.put(Option.OPTION_VALUE, serialized);
                 optionRepository.update(Option.ID_C_VOLO_LINK_HEALTH, opt);
             }
             tx.commit();
@@ -182,6 +215,13 @@ public class LinkHealthService {
                 tx.rollback();
             }
             LOGGER.log(Level.WARN, "Failed to persist link health map", e);
+        }
+    }
+
+    private static void disposeJdbcQuietly() {
+        try {
+            JdbcRepository.dispose();
+        } catch (final Exception ignored) {
         }
     }
 

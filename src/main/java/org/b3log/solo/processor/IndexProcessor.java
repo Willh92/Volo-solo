@@ -44,12 +44,15 @@ import org.b3log.solo.model.Option;
 import org.b3log.solo.service.*;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.web.HttpCompression;
 import org.json.JSONObject;
 
 import org.b3log.latke.http.Request;
 import org.b3log.latke.http.Response;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -105,7 +108,7 @@ public class IndexProcessor {
      *
      * @param context the specified context
      */
-    @RequestProcessing(value = {"", "/"}, method = HttpMethod.GET)
+    @RequestProcessing(value = {"", "/"}, method = {HttpMethod.GET, HttpMethod.HEAD})
     public void showIndex(final RequestContext context) {
         final Request request = context.getRequest();
         final Response response = context.getResponse();
@@ -141,7 +144,15 @@ public class IndexProcessor {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, nextPageNum);
             dataModel.put(Common.PATH, "");
 
-            statisticMgmtService.incBlogViewCount(context, response);
+            if ("HEAD".equalsIgnoreCase(context.method())) {
+                if (response != null) {
+                    response.setContentType("text/html; charset=UTF-8");
+                    HttpCompression.ensureVaryAcceptEncoding(response);
+                    context.sendBytes(new byte[0]);
+                }
+            } else {
+                statisticMgmtService.incBlogViewCount(context, response);
+            }
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -320,7 +331,19 @@ public class IndexProcessor {
         try {
             final String page = context.getRequest().getParameter("page");
             if (page == null) {
-                jsonObject = new JSONObject().put("result", RamAppender.getList());
+                final String rawLimit = context.getRequest().getParameter("limit");
+                final List<Map<String, Object>> all = RamAppender.getList();
+                if (rawLimit == null || rawLimit.isBlank()) {
+                    jsonObject = new JSONObject().put("result", all);
+                } else {
+                    final int limit = Integer.parseInt(rawLimit.trim());
+                    if (limit < 1 || limit > 500) {
+                        throw new IllegalArgumentException();
+                    }
+                    final int fromIndex = Math.max(0, all.size() - limit);
+                    jsonObject = new JSONObject().put("result",
+                            fromIndex == 0 ? all : new ArrayList<>(all.subList(fromIndex, all.size())));
+                }
             } else {
                 final int current = Integer.parseInt(page);
                 final String size = context.getRequest().getParameter("pageSize");

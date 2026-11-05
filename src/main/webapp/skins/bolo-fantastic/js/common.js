@@ -15,62 +15,20 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-//animate
+// burger
 (function () {
-    function $() {
-        return Array.prototype.slice.call(document.querySelectorAll.apply(document, arguments));
-    }
-
-    $('body > .navbar, body > .section, body > .footer').forEach(function (element) {
-        element.style.transition = '0s';
-        element.style.opacity = '0';
-    });
-    document.querySelector('body > .navbar').style.transform = 'translateY(-100px)';
-    ['.column-main > .card',
-     '.column-left > .card, .column-right-shadow > .card',
-     '.column-right > .card'].map(function (selector) {
-        $(selector).forEach(function (element) {
-            element.style.transition = '0s';
-            element.style.opacity = '0';
-            element.style.transform = 'scale(0.8)';
-            element.style.transformOrigin = 'center top';
-        });
-    });
-    setTimeout(function () {
-        $('body > .navbar, body > .section, body > .footer').forEach(function (element) {
-            element.style.opacity = '1';
-            element.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-        });
-        document.querySelector('body > .navbar').style.transform = 'translateY(0)';
-        ['.column-main > .card',
-         '.column-left > .card, .column-right-shadow > .card',
-         '.column-right > .card'].map(function (selector) {
-            var i = 1;
-            $(selector).forEach(function (element) {
-                setTimeout(function () {
-                    element.style.opacity = '1';
-                    element.style.transform = '';
-                    element.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-                }, i * 100);
-                i++;
-            });
-        });
-    });
-})();
-
-  //burger
-  (function () {
     var burger = document.querySelector('.burger');
+    if (!burger || !burger.dataset.target) return;
     var menu = document.querySelector('#' + burger.dataset.target);
+    if (!menu) return;
     burger.addEventListener('click', function () {
         burger.classList.toggle('is-active');
         menu.classList.toggle('is-active');
         burger.setAttribute('aria-expanded', String(menu.classList.contains('is-active')));
     });
-
 })();
 
-//backtotop
+// backtotop
 $(document).ready(function () {
     var $button = $('#back-to-top');
     var $footer = $('footer.footer');
@@ -81,6 +39,10 @@ $(document).ready(function () {
     var rightMargin = 20;
     var bottomMargin = 20;
     var lastState = null;
+    var lastControlWidth = null;
+    var lastControlRadius = null;
+    var lastControlHeight = null;
+    var updateRaf = 0;
     var state = {
         base: {
             classname: 'card has-text-centered',
@@ -111,44 +73,59 @@ $(document).ready(function () {
 
     function isStateEquals(prev, next) {
         for (var prop in prev) {
-            if (!next.hasOwnProperty(prop) || next[prop] !== prev[prop]) {
+            if (!Object.prototype.hasOwnProperty.call(next, prop) || next[prop] !== prev[prop]) {
                 return false;
             }
         }
-        for (var prop in next) {
-            if (!prev.hasOwnProperty(prop) || prev[prop] !== prev[prop]) {
+        for (var nextProp in next) {
+            if (!Object.prototype.hasOwnProperty.call(prev, nextProp) || prev[nextProp] !== next[nextProp]) {
                 return false;
             }
         }
         return true;
     }
 
-    function applyState(state) {
-        state = Object.assign({}, state);
+    function applyState(next) {
+        next = Object.assign({}, next);
         var mobile = window.innerWidth <= 600;
         var appearance = document.querySelector('.bolo-appearance--floating');
-        if (mobile) state.bottom += (document.querySelector('.mobile-reading-toc') ? 58 : 0) + (appearance ? 58 : 0);
+        if (mobile) next.bottom += (document.querySelector('.mobile-reading-toc') ? 58 : 0) + (appearance ? 58 : 0);
         var rootStyle = document.documentElement.style;
-        rootStyle.setProperty('--fantastic-control-width', state.width + 'px');
-        rootStyle.setProperty('--fantastic-control-radius', typeof state['border-radius'] === 'number' ? state['border-radius'] + 'px' : state['border-radius']);
-        if (appearance) {
-            var besideReturn = state.classname.includes('fade-in') && state.classname.includes('rise-up');
-            appearance.style.left = besideReturn && typeof state.left === 'number' ? state.left + 'px' : 'auto';
-            appearance.style.right = besideReturn && typeof state.left === 'number' ? 'auto' : (state.right || rightMargin) + 'px';
-            appearance.style.bottom = (mobile ? 78 : besideReturn ? state.bottom + 54 : 80) + 'px';
+        var nextWidth = next.width + 'px';
+        if (nextWidth !== lastControlWidth) {
+            lastControlWidth = nextWidth;
+            rootStyle.setProperty('--fantastic-control-width', nextWidth);
         }
-        if (lastState !== null && isStateEquals(lastState, state)) {
+        var nextRadius = typeof next['border-radius'] === 'number' ? next['border-radius'] + 'px' : String(next['border-radius']);
+        if (nextRadius !== lastControlRadius) {
+            lastControlRadius = nextRadius;
+            rootStyle.setProperty('--fantastic-control-radius', nextRadius);
+        }
+        if (appearance) {
+            var besideReturn = next.classname.includes('fade-in') && next.classname.includes('rise-up');
+            var nextAppLeft = besideReturn && typeof next.left === 'number' ? next.left + 'px' : 'auto';
+            var nextAppRight = besideReturn && typeof next.left === 'number' ? 'auto' : (next.right || rightMargin) + 'px';
+            var nextAppBottom = (mobile ? 78 : besideReturn ? next.bottom + 54 : 80) + 'px';
+            if (appearance.style.left !== nextAppLeft) appearance.style.left = nextAppLeft;
+            if (appearance.style.right !== nextAppRight) appearance.style.right = nextAppRight;
+            if (appearance.style.bottom !== nextAppBottom) appearance.style.bottom = nextAppBottom;
+        }
+        if (lastState !== null && isStateEquals(lastState, next)) {
             return;
         }
-        $button.attr('class', state.classname);
-        for (let prop in state) {
+        $button.attr('class', next.classname);
+        for (let prop in next) {
             if (prop === 'classname') {
                 continue;
             }
-            $button.css(prop, state[prop]);
+            $button.css(prop, next[prop]);
         }
-        rootStyle.setProperty('--fantastic-control-height', $button.outerHeight() + 'px');
-        lastState = state;
+        var nextHeight = $button.outerHeight() + 'px';
+        if (nextHeight !== lastControlHeight) {
+            lastControlHeight = nextHeight;
+            rootStyle.setProperty('--fantastic-control-height', nextHeight);
+        }
+        lastState = next;
     }
 
     function isDesktop() {
@@ -159,8 +136,8 @@ $(document).ready(function () {
         return window.innerWidth >= 768 && !isDesktop();
     }
 
-    function isScrollUp() {
-        return $(window).scrollTop() < lastScrollTop && $(window).scrollTop() > 0;
+    function isScrollUp(scrollTop) {
+        return scrollTop < lastScrollTop && scrollTop > 0;
     }
 
     function hasLeftSidebar() {
@@ -175,74 +152,78 @@ $(document).ready(function () {
         if (!hasRightSidebar()) {
             return 0;
         }
-        return Math.max.apply(null, $rightSidebar.find('.widget').map(function () {
+        var widgets = $rightSidebar.find('.widget');
+        if (!widgets.length) return 0;
+        return Math.max.apply(null, widgets.map(function () {
             return $(this).offset().top + $(this).outerHeight(true);
         }));
     }
 
-    function getScrollTop() {
-        return $(window).scrollTop();
-    }
-
-    function getScrollBottom() {
-        return $(window).scrollTop() + $(window).height();
-    }
-
-    function getButtonWidth() {
-        return $button.outerWidth(true);
-    }
-
-    function getButtonHeight() {
-        return $button.outerHeight(true);
-    }
-
-    function updateScrollTop() {
-        lastScrollTop = $(window).scrollTop();
-    }
-
     function update() {
+        updateRaf = 0;
+        if (!$button.length) return;
+        var scrollTop = $(window).scrollTop();
+        var winHeight = $(window).height();
+        var scrollBottom = scrollTop + winHeight;
         // desktop mode or tablet mode with only right sidebar enabled
-        if (isDesktop() || (isTablet() && !hasLeftSidebar() && hasRightSidebar())) {
+        if ((isDesktop() || (isTablet() && !hasLeftSidebar() && hasRightSidebar())) && $mainColumn.length && $footer.length) {
             var nextState;
-            var padding = ($mainColumn.outerWidth() - $mainColumn.width()) / 2;
-            var maxLeft = $(window).width() - getButtonWidth() - rightMargin;
-            var maxBottom = $footer.offset().top + getButtonHeight() / 2 + bottomMargin;
-            if (getScrollTop() == 0 || getScrollBottom() < getRightSidebarBottom() + padding + getButtonHeight()) {
+            var mainOuterWidth = $mainColumn.outerWidth();
+            var padding = (mainOuterWidth - $mainColumn.width()) / 2;
+            var btnWidth = $button.outerWidth(true);
+            var btnHeight = $button.outerHeight(true);
+            var maxLeft = $(window).width() - btnWidth - rightMargin;
+            var maxBottom = $footer.offset().top + btnHeight / 2 + bottomMargin;
+            if (scrollTop == 0 || scrollBottom < getRightSidebarBottom() + padding + btnHeight) {
                 nextState = state['desktop-hidden'];
-            } else if (getScrollBottom() < maxBottom) {
+            } else if (scrollBottom < maxBottom) {
                 nextState = state['desktop-visible'];
             } else {
                 nextState = Object.assign({}, state['desktop-dock'], {
-                    bottom: getScrollBottom() - maxBottom + bottomMargin
+                    bottom: scrollBottom - maxBottom + bottomMargin
                 });
             }
 
-            var left = $mainColumn.offset().left + $mainColumn.outerWidth() + padding;
+            var left = $mainColumn.offset().left + mainOuterWidth + padding;
             nextState = Object.assign({}, nextState, {
                 left: Math.min(left, maxLeft)
             });
             applyState(nextState);
         } else {
             // mobile and tablet mode
-            if (!isScrollUp()) {
+            if (!isScrollUp(scrollTop)) {
                 applyState(state['mobile-hidden']);
             } else {
                 applyState(state['mobile-visible']);
             }
-            updateScrollTop();
+            lastScrollTop = scrollTop;
+        }
+    }
+
+    function scheduleUpdate() {
+        if (!updateRaf) {
+            updateRaf = requestAnimationFrame(update);
         }
     }
 
     update();
-    $(window).resize(update);
-    $(window).scroll(update);
+    $(window).off('.boloFantastic').on('resize.boloFantastic scroll.boloFantastic', scheduleUpdate);
+    if (window.BoloNavigation) {
+        window.BoloNavigation.onLeave(function () {
+            if (updateRaf) {
+                cancelAnimationFrame(updateRaf);
+                updateRaf = 0;
+            }
+            $(window).off('.boloFantastic');
+        });
+    }
 
     $('#back-to-top').on('click', function () {
         $('body, html').animate({ scrollTop: 0 }, 400);
     });
 });
 
-//gallery
+// gallery
 document.addEventListener('DOMContentLoaded', function () {
     if (typeof ($.fn.lightGallery) === 'function') {
         $('.article').lightGallery({ selector: '.gallery-item' });
@@ -255,12 +236,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-//main
+// main
 (function ($) {
-    //alert();
     $('.article img:not(".not-gallery-item")').each(function () {
         // wrap images with link and add caption if possible
-        if ($(this).parent('a').length === 0) {
+        if ($(this).parent('a').length === 0 && !$(this).closest('.volo-bookshelf, .volo-lock-card').length) {
             $(this).wrap('<a class="gallery-item" href="' + $(this).attr('src') + '"></a>');
             if (this.alt) {
                 $(this).after('<div class="has-text-centered is-size-6 has-text-grey caption">' + this.alt + '</div>');
@@ -289,7 +269,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
     adjustNavbar();
-    $(window).resize(adjustNavbar);
+    $(window).on('resize.boloFantasticNav', adjustNavbar);
+    if (window.BoloNavigation) {
+        window.BoloNavigation.onLeave(function () {
+            $(window).off('.boloFantasticNav');
+        });
+    }
 
     $('figure.highlight table').wrap('<div class="highlight-body">');
     if (typeof (IcarusThemeSettings) !== 'undefined' &&
@@ -338,10 +323,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var $toc = $('#toc');
     if ($toc.length > 0) {
-        var $mask = $('<div>');
-        $mask.attr('id', 'toc-mask');
-
-        $('body').append($mask);
+        var $mask = $('#toc-mask');
+        if (!$mask.length) {
+            $mask = $('<div>').attr('id', 'toc-mask');
+            $('body').append($mask);
+        }
 
         function toggleToc() {
             if (window.innerWidth > 1023) return;
@@ -355,19 +341,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 })(jQuery);
 
-
-//widget_pin
-var swiper = new Swiper('.blog-slider', {
-    spaceBetween: 30,
-    effect: 'fade',
-    // autoHeight: true,
-    pagination: {
-      el: '.blog-slider__pagination',
-      clickable: true,
-    }
-  });
-
-
-
-  
-  
+// widget_pin
+if (typeof Swiper === 'function' && document.querySelector('.blog-slider')) {
+    var swiper = new Swiper('.blog-slider', {
+        spaceBetween: 30,
+        effect: 'fade',
+        pagination: {
+            el: '.blog-slider__pagination',
+            clickable: true,
+        }
+    });
+}

@@ -23,6 +23,8 @@ import org.b3log.latke.model.Role;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -37,9 +39,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public class UserCache {
 
     /**
-     * Id, User.
+     * Maximum number of cached users in memory (prevents unbounded growth when reader registration is open).
      */
-    private final Map<String, JSONObject> idCache = new ConcurrentHashMap<>();
+    public static final int MAX_ENTRIES = 512;
+
+    /**
+     * Bounded LRU Id -> User cache.
+     */
+    private final Map<String, JSONObject> idCache = Collections.synchronizedMap(
+            new LinkedHashMap<>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, JSONObject> eldest) {
+                    return size() > MAX_ENTRIES;
+                }
+            });
 
     /**
      * Admin user.
@@ -62,6 +75,9 @@ public class UserCache {
      * @param admin the specified admin user
      */
     public void putAdmin(final JSONObject admin) {
+        if (null == admin) {
+            return;
+        }
         adminCache.put(Role.ADMIN_ROLE, Solos.clone(admin));
     }
 
@@ -72,6 +88,9 @@ public class UserCache {
      * @return user, returns {@code null} if not found
      */
     public JSONObject getUser(final String userId) {
+        if (null == userId) {
+            return null;
+        }
         final JSONObject user = idCache.get(userId);
         if (null == user) {
             return null;
@@ -86,7 +105,13 @@ public class UserCache {
      * @param user the specified user
      */
     public void putUser(final JSONObject user) {
-        idCache.put(user.optString(Keys.OBJECT_ID), Solos.clone(user));
+        if (null == user) {
+            return;
+        }
+        final String id = user.optString(Keys.OBJECT_ID);
+        if (!id.isEmpty()) {
+            idCache.put(id, Solos.clone(user));
+        }
     }
 
     /**
@@ -95,12 +120,22 @@ public class UserCache {
      * @param id the specified user id
      */
     public void removeUser(final String id) {
+        if (null == id) {
+            return;
+        }
         final JSONObject user = idCache.remove(id);
         final JSONObject admin = adminCache.get(Role.ADMIN_ROLE);
         if ((null != user && Role.ADMIN_ROLE.equals(user.optString(org.b3log.latke.model.User.USER_ROLE)))
                 || (null != admin && id.equals(admin.optString(Keys.OBJECT_ID)))) {
             adminCache.remove(Role.ADMIN_ROLE);
         }
+    }
+
+    /**
+     * Returns current number of cached user entries.
+     */
+    public int size() {
+        return idCache.size();
     }
 
     /**

@@ -33,13 +33,43 @@ public final class AdminListSearch {
     private AdminListSearch() { }
 
     public static void apply(final Query query, final JSONObject request, final String... fields) {
+        if (null == query || null == request || null == fields || 0 == fields.length) {
+            return;
+        }
         String keyword = request.optString(Common.KEYWORD).strip();
-        if (keyword.isEmpty()) return;
-        if (keyword.codePointCount(0, keyword.length()) > 200) keyword = keyword.substring(0, keyword.offsetByCodePoints(0, 200));
-        final ArrayList<Filter> filters = new ArrayList<>();
-        for (final String field : fields) filters.add(new PropertyFilter(field, FilterOperator.LIKE, "%" + keyword + "%"));
+        if (keyword.isEmpty()) {
+            return;
+        }
+        if (keyword.codePointCount(0, keyword.length()) > 200) {
+            keyword = keyword.substring(0, keyword.offsetByCodePoints(0, 200));
+        }
+        final String escaped = escapeLikeLiteral(keyword);
+        final String pattern = "%" + escaped + "%";
+        final ArrayList<Filter> filters = new ArrayList<>(fields.length);
+        for (final String field : fields) {
+            filters.add(new PropertyFilter(field, FilterOperator.LIKE, pattern));
+        }
         final Filter search = new CompositeFilter(CompositeFilterOperator.OR, filters);
         final Filter existing = query.getFilter();
         query.setFilter(existing == null ? search : CompositeFilterOperator.and(existing, search));
+    }
+
+    /**
+     * Escapes SQL {@code LIKE} wildcard characters ({@code %} and {@code _}) using the default
+     * backslash escape understood by both H2 and MySQL/MariaDB, leaving strings without wildcards untouched.
+     */
+    public static String escapeLikeLiteral(final String raw) {
+        if (null == raw || (raw.indexOf('%') < 0 && raw.indexOf('_') < 0)) {
+            return raw;
+        }
+        final StringBuilder sb = new StringBuilder(raw.length() + 8);
+        for (int i = 0; i < raw.length(); i++) {
+            final char c = raw.charAt(i);
+            if ('\\' == c || '%' == c || '_' == c) {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.toString();
     }
 }

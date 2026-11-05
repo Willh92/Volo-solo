@@ -27,4 +27,4 @@
   <#if footerContent?has_content><div class="studio-footer-content">${footerContent}</div></#if>
 </footer>
 <button id="studioBackToTop" class="studio-back-top" type="button" title="返回顶部" aria-label="返回顶部" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
-<script src="${staticServePath}/js/lib/compress/pjax.min.js"></script><script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script><script src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}"></script><#include "../../common-template/label.ftl">${plugins}
+<script src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}"></script><script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script><script src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}"></script><#include "../../common-template/label.ftl">${plugins}

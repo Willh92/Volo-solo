@@ -9,7 +9,7 @@ import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.util.IpRange;
-import org.b3log.solo.util.IpGeo;
+import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -24,6 +24,7 @@ public class IpBanService {
         return new Rule(data, range, data.optLong("created"), data.optLong("expiresAt"));
     }
     private volatile List<Rule> snapshot;
+    public synchronized void reloadFromStorage() { snapshot = null; }
     protected long now() { return System.currentTimeMillis(); }
     private boolean active(final Rule rule) { return rule.expiresAt() == 0 || rule.expiresAt() > now(); }
 
@@ -61,8 +62,8 @@ public class IpBanService {
     public JSONArray list() throws Exception {
         final JSONArray ret = new JSONArray();
         for (final Rule stored : rules()) {
-            final JSONObject entry = new JSONObject(stored.data().toString());
-            entry.put("region", IpGeo.region(stored.range().baseAddress()));
+            final JSONObject entry = Solos.clone(stored.data());
+            entry.put("region", GeoAccessService.cachedRegion(stored.range().baseAddress()));
             ret.put(entry);
         }
         return ret;
@@ -93,9 +94,9 @@ public class IpBanService {
         final int page = Math.min(requestedPage, pageCount), from = (page - 1) * pageSize;
         final JSONArray entries = new JSONArray();
         for (final Rule rule : filtered.subList(from, Math.min(from + pageSize, filtered.size()))) {
-            entries.put(new JSONObject(rule.data().toString()).put("targetType", "ip")
+            entries.put(Solos.clone(rule.data()).put("targetType", "ip")
                     .put("source", rule.data().optString("source", "manual")).put("active", active(rule))
-                    .put("expiresAt", rule.expiresAt()).put("region", IpGeo.region(rule.range().baseAddress())));
+                    .put("expiresAt", rule.expiresAt()).put("region", GeoAccessService.cachedRegion(rule.range().baseAddress())));
         }
         return new JSONObject().put("rules", entries).put("total", filtered.size()).put("page", page)
                 .put("pageSize", pageSize).put("pageCount", pageCount);
@@ -150,7 +151,7 @@ public class IpBanService {
                 throw new IllegalArgumentException("此网段包含你当前的访问 IP，请通过其他连接管理，避免封禁自己。");
             }
             // Keep the original automatic/manual attribution and trigger as audit information.
-            final JSONObject data = new JSONObject(existing.data().toString()).put("note", note)
+            final JSONObject data = Solos.clone(existing.data()).put("note", note)
                     .put("updated", timestamp).put("expiresAt", expiresAt);
             if (occurrences != null) data.put("occurrences", occurrences);
             updated.set(i, toRule(data, range));
@@ -171,7 +172,7 @@ public class IpBanService {
             final int occurrences = Math.min(1_000_000, Math.max(0, previous.data().optInt("occurrences", 1)) + 1);
             final long days = occurrences == 1 ? 1 : occurrences == 2 ? 3 : occurrences == 3 ? 7 : 30;
             final long timestamp = now();
-            final JSONObject data = new JSONObject(previous.data().toString()).put("occurrences", occurrences)
+            final JSONObject data = Solos.clone(previous.data()).put("occurrences", occurrences)
                     .put("updated", timestamp).put("reasonCode", trigger.code()).put("reason", trigger.reason())
                     .put("expiresAt", trigger.code().equals("xss_payload") ? 0 : timestamp + days * 86_400_000L);
             updated.set(i, toRule(data, range));

@@ -26,4 +26,4 @@ COPY --from=MVN_BUILD /opt/bolo/ /opt/bolo/
 ENV TZ=Asia/Shanghai
 EXPOSE 8080
 
-ENTRYPOINT [ "java", "-Dfile.encoding=UTF-8", "-Djava.awt.headless=true", "-cp", "WEB-INF/classes:WEB-INF/lib/*:.", "org.b3log.solo.Starter" ]
+ENTRYPOINT [ "java", "-XX:InitialRAMPercentage=25.0", "-XX:MaxRAMPercentage=65.0", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=100", "-XX:+UseStringDeduplication", "-XX:MaxDirectMemorySize=96m", "-Dfile.encoding=UTF-8", "-Djava.awt.headless=true", "-Dio.netty.allocator.maxOrder=9", "-Dio.netty.allocator.numDirectArenas=2", "-Dio.netty.allocator.numHeapArenas=2", "-cp", "WEB-INF/classes:WEB-INF/lib/*:.", "org.b3log.solo.Starter" ]

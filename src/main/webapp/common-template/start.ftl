@@ -85,6 +85,13 @@
                 </div>
                 <div id="status" class="auth-error" role="alert" aria-live="polite" hidden></div>
                 <button id="loginBtn" class="auth-submit" type="submit"><i aria-hidden="true"></i><span>登录管理后台</span><b aria-hidden="true">→</b></button>
+                <div id="passkeyLoginBox" class="auth-passkey-box" hidden>
+                    <div class="auth-divider"><span>或免密验证</span></div>
+                    <button id="passkeyLoginBtn" class="auth-secondary auth-passkey-btn" type="button">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.85 12.15 8.15-8.15M16 7l3 3M18 5l2 2"/></svg>
+                        <span>使用通行密钥（Passkey）登录</span>
+                    </button>
+                </div>
                 <button id="totpBackBtn" class="auth-secondary" type="button" hidden>← 返回重新输入账号密码</button>
             </form>
             <div class="auth-card-foot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg> 仅限博客管理者访问</div>

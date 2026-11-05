@@ -20,6 +20,7 @@ package org.b3log.solo.service;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.ServiceException;
@@ -70,6 +71,15 @@ public class TagMgmtService {
     @Inject
     private TagArticleRepository tagArticleRepository;
 
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    @Inject
+    private InstantSearchService instantSearchService;
+
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
     /**
      * Removes all unused tags.
      *
@@ -77,6 +87,7 @@ public class TagMgmtService {
      */
     public void removeUnusedTags() throws ServiceException {
         final Transaction transaction = tagRepository.beginTransaction();
+        boolean removed = false;
 
         try {
             final List<JSONObject> tags = tagQueryService.getTags();
@@ -87,10 +98,22 @@ public class TagMgmtService {
                 if (1 > articleCount) {
                     categoryTagRepository.removeByTagId(tagId);
                     tagRepository.remove(tagId);
+                    removed = true;
                 }
             }
 
             transaction.commit();
+            if (removed) {
+                if (null != publicViewCache) {
+                    publicViewCache.invalidateAll();
+                }
+                if (null != instantSearchService) {
+                    instantSearchService.invalidate();
+                }
+                if (null != syndicationCacheService) {
+                    syndicationCacheService.invalidate();
+                }
+            }
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();

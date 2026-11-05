@@ -81,24 +81,44 @@ function ScrollManagerCreator(_now) {
   var $nav = $('.J_navbar')
   var $backToTop = $('.toTop')
   var showBackToTopHeight = 100
-  var backToTopVisible
+  var backToTopVisible = null
+  var isFixed = null
+  var isShown = null
+  var cachedOffsetTop = ($nav.height() || 0) + 1
+
+  function refreshOffset() {
+    cachedOffsetTop = ($nav.height() || 0) + 1
+  }
 
   function checkFixed(nextScroll) {
-    var offsetTop = $nav.height() + 1
+    var offsetTop = cachedOffsetTop > 1 ? cachedOffsetTop : (($nav.height() || 0) + 1)
+    cachedOffsetTop = offsetTop
     if (nextScroll > offsetTop) {
-      $nav.addClass('is-fixed').css('top', -1 * offsetTop);
+      if (isFixed !== true) {
+        isFixed = true
+        isShown = null
+        $nav.addClass('is-fixed').css('top', -1 * offsetTop)
+      }
     } else if (nextScroll <= 0) {
-      $nav.removeClass('is-fixed').css('top', 0);
+      if (isFixed !== false) {
+        isFixed = false
+        isShown = null
+        $nav.removeClass('is-fixed').css('top', 0)
+      }
     }
 
-    if (!$nav.hasClass('is-fixed')) {
+    if (isFixed !== true) {
       return
     }
 
-    if (nextScroll > nowScroll) {
-      $nav.removeClass('show')
-    } else {
-      $nav.addClass('show')
+    var shouldShow = !(nextScroll > nowScroll)
+    if (shouldShow !== isShown) {
+      isShown = shouldShow
+      if (shouldShow) {
+        $nav.addClass('show')
+      } else {
+        $nav.removeClass('show')
+      }
     }
   }
 
@@ -118,12 +138,14 @@ function ScrollManagerCreator(_now) {
   checkFixed(nowScroll)
   checkBackToTop(nowScroll)
 
-  return function(nextScroll) {
+  var manager = function(nextScroll) {
     checkFixed(nextScroll)
     checkBackToTop(nextScroll)
 
     nowScroll = nextScroll
   }
+  manager.refreshOffset = refreshOffset
+  return manager
 }
 
 function emiyaScrollTo(to) {
@@ -135,6 +157,7 @@ function emiyaScrollTo(to) {
 var scrollManager = ScrollManagerCreator($(window).scrollTop())
 
 Emiya.prototype.listen = function() {
+  $(window).off('scroll.boloEmiya resize.boloEmiya')
   $(".J_navbar_toggle").on("click", function() {
     var targetClass = '.' + $(this).attr('data-for')
     if ($(targetClass).hasClass('show')) {
@@ -156,10 +179,20 @@ Emiya.prototype.listen = function() {
     emiyaScrollTo(0);
     e.preventDefault();
   });
-  $(window).on('scroll', function() {
+  $(window).on('resize.boloEmiya', function() {
+    if (scrollManager && scrollManager.refreshOffset) {
+      scrollManager.refreshOffset()
+    }
+  });
+  $(window).on('scroll.boloEmiya', function() {
     var nowScrollTop = $(window).scrollTop()
     scrollManager(nowScrollTop)
   });
+  if (window.BoloNavigation) {
+    BoloNavigation.onLeave(function() {
+      $(window).off('scroll.boloEmiya resize.boloEmiya')
+    })
+  }
 }
 
 Emiya.prototype.initArticle = function() {

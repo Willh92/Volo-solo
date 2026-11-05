@@ -49,7 +49,7 @@ public final class BackgroundEvents {
     public static void follow(final Runnable task) { FOLLOWS.execute(() -> run(task)); }
 
     public static void community(final JSONObject data, final Consumer<JSONObject> action) {
-        final JSONObject snapshot = new JSONObject(data.toString());
+        final JSONObject snapshot = org.b3log.solo.util.Solos.clone(data);
         COMMUNITY.execute(() -> run(() -> action.accept(snapshot)));
     }
 

@@ -55,6 +55,7 @@ admin.others = {
       else if (window.location.hash.indexOf('#tools/others/backups') === 0) admin.others.loadLocalBackups();
       else if (window.location.hash.indexOf('#tools/others/webhooks') === 0) admin.others.loadWebhooks();
     }
+    this._bindBatchDropzone();
     clearInterval(this.pollTimer);
     const pollTimer = setInterval(function () {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -100,64 +101,22 @@ admin.others = {
    * @description 导出数据为 SQL 文件
    */
   exportSQL: function () {
-    $("#tipMsg").text("");
-
-    $.ajax({
-      url: Label.servePath + "/console/export/sql",
-      type: "GET",
-      cache: false,
-      success: function (result, textStatus) {
-        // AJAX 下载文件的话这里会发两次请求，用 sc 来判断是否是文件，如果没有 sc 说明文件可以下载（实际上就是 result）
-        if (!result.sc) {
-          // 再发一次请求进行正式下载
-          window.location = Label.servePath + "/console/export/sql";
-        } else {
-          $("#tipMsg").text(result.msg);
-        }
-      }
-    });
+    $("#tipMsg").text("正在准备 SQL 导出归档，浏览器将直接开始下载…");
+    window.location.href = Label.servePath + "/console/export/sql";
   },
   /*
  * @description 导出数据为 JSON 文件
  */
   exportJSON: function () {
-    $("#tipMsg").text("");
-
-    $.ajax({
-      url: Label.servePath + "/console/export/json",
-      type: "GET",
-      cache: false,
-      success: function (result, textStatus) {
-        // AJAX 下载文件的话这里会发两次请求，用 sc 来判断是否是文件，如果没有 sc 说明文件可以下载（实际上就是 result）
-        if (!result.sc) {
-          // 再发一次请求进行正式下载
-          window.location = Label.servePath + "/console/export/json";
-        } else {
-          $("#tipMsg").text(result.msg);
-        }
-      }
-    });
+    $("#tipMsg").text("正在准备 JSON 导出归档，浏览器将直接开始下载…");
+    window.location.href = Label.servePath + "/console/export/json";
   },
   /*
   * @description 导出数据为 Hexo Markdown 文件
   */
   exportHexo: function () {
-    $("#tipMsg").text("");
-
-    $.ajax({
-      url: Label.servePath + "/console/export/hexo",
-      type: "GET",
-      cache: false,
-      success: function (result, textStatus) {
-        // AJAX 下载文件的话这里会发两次请求，用 sc 来判断是否是文件，如果没有 sc 说明文件可以下载（实际上就是 result）
-        if (!result.sc) {
-          // 再发一次请求进行正式下载
-          window.location = Label.servePath + "/console/export/hexo";
-        } else {
-          $("#tipMsg").text(result.msg);
-        }
-      }
-    });
+    $("#tipMsg").text("正在准备 Markdown 导出归档，浏览器将直接开始下载…");
+    window.location.href = Label.servePath + "/console/export/hexo";
   },
   /*
    * 获取未使用的标签。
@@ -341,6 +300,7 @@ admin.others = {
 
   loadLocalBackups: function () {
     var that = this;
+    this.loadRemoteBackupConfig();
     $.ajax({
       url: Label.servePath + '/console/backups/local',
       type: 'GET',
@@ -373,6 +333,7 @@ admin.others = {
         '<td>' + that._fmtBytes(it.size) + '</td>' +
         '<td>' + that._escape(dt) + '</td>' +
         '<td class="is-right"><div class="console-row-actions is-right">' +
+        '  <a href="javascript:void(0)" data-name="' + safeName + '" onclick="admin.others.inspectLocalBackup(this)">预览恢复</a>' +
         '  <a href="' + that._escape(dlUrl) + '" data-no-pjax="true">下载 ZIP</a>' +
         '  <a href="javascript:void(0)" data-name="' + safeName + '" onclick="admin.others.deleteLocalBackup(this)">删除</a>' +
         '</div></td></tr>';
@@ -574,6 +535,373 @@ admin.others = {
       data: '{}',
       success: function (res) { $('#tipMsg').text(res.msg || '测试推送成功'); },
       error: function (xhr) { $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '测试推送失败'); }
+    });
+  },
+
+  _pendingRestoreSource: null,
+
+  _renderRestoreInspection: function (res, sourceDesc) {
+    var counts = (res && (res.counts || res.tableCounts || (res.summary && res.summary.counts))) || {};
+    var keys = Object.keys(counts);
+    var badges = [];
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      badges.push('<span class="console-stat-pill"><code>' + this._escape(k) + '</code> <strong>' + Number(counts[k] || 0) + '</strong></span>');
+    }
+    var mdCount = Number((res && (res.markdownCount || (res.summary && res.summary.markdownCount))) || 0);
+    if (mdCount > 0) {
+      badges.push('<span class="console-stat-pill">Markdown 文稿 <strong>' + mdCount + '</strong></span>');
+    }
+    var header = '<div style="margin-bottom:8px;"><strong>待恢复归档：</strong><code>' + this._escape(sourceDesc) + '</code></div>';
+    var body = badges.length
+      ? ('<div class="console-stat-pill-row">' + badges.join('') + '</div>')
+      : '<div class="console-form-help">归档校验通过，已识别标准 JSON 数据结构。</div>';
+    $('#backupRestoreSummaryMeta').html(header + body);
+    $('#backupRestoreOverwriteAuth').prop('checked', false);
+    $('#backupRestoreConfirmBox').show();
+  },
+
+  inspectLocalBackup: function (el) {
+    var that = this;
+    var name = el && el.getAttribute ? (el.getAttribute('data-name') || '') : '';
+    if (!name) return;
+    $('#tipMsg').text('正在校验归档结构…');
+    $.ajax({
+      url: Label.servePath + '/console/backups/local/inspect',
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ fileName: name, name: name }),
+      success: function (res) {
+        if (!res || res.sc === false) {
+          $('#tipMsg').text((res && res.msg) || '备份包校验未通过');
+          return;
+        }
+        that._pendingRestoreSource = { type: 'local', fileName: name };
+        that._renderRestoreInspection(res, name);
+        $('#tipMsg').text(res.msg || '备份包校验通过，请确认恢复选项。');
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '备份包校验失败');
+      }
+    });
+  },
+
+  inspectUploadedBackup: function (btn) {
+    var that = this;
+    var input = typeof document !== 'undefined' ? document.getElementById('restoreZipUploadInput') : null;
+    var file = input && input.files && input.files[0];
+    if (!file) {
+      $('#tipMsg').text('请先选择需要恢复的备份 .zip 文件。');
+      return;
+    }
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    var fd = new FormData();
+    fd.append('file', file);
+    $.ajax({
+      url: Label.servePath + '/console/backups/local/inspect',
+      type: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      timeout: 60000,
+      success: function (res) {
+        if (!res || res.sc === false) {
+          $('#tipMsg').text((res && res.msg) || '外部备份包校验未通过');
+          return;
+        }
+        that._pendingRestoreSource = { type: 'upload', file: file };
+        that._renderRestoreInspection(res, file.name);
+        $('#tipMsg').text(res.msg || '外部备份包校验通过，请确认恢复选项。');
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '外部备份包解析失败');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
+    });
+  },
+
+  cancelBackupRestore: function () {
+    this._pendingRestoreSource = null;
+    $('#backupRestoreConfirmBox').hide();
+  },
+
+  executeBackupRestore: function (btn) {
+    var that = this;
+    var src = this._pendingRestoreSource;
+    if (!src) return;
+    var overwriteAuth = $('#backupRestoreOverwriteAuth').prop('checked');
+    var warnText = overwriteAuth
+      ? '您勾选了“强制覆盖管理员凭据”，恢复完成后可能需要使用备份包中的密码/密钥重新登录。确认立即恢复整站数据吗？'
+      : '执行恢复前系统会自动保存一份 pre-restore 本地备份，并保留当前管理员登录凭据。确认立即恢复整站数据吗？';
+    if (!window.confirm(warnText)) return;
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    $('#tipMsg').text('正在生成安全快照并恢复整站数据，请勿关闭页面…');
+    var ajaxOpts = {
+      url: Label.servePath + '/console/backups/local/restore',
+      type: 'POST',
+      timeout: 120000,
+      success: function (res) {
+        if (!res || res.sc === false) {
+          $('#tipMsg').text((res && res.msg) || '恢复未完成');
+          return;
+        }
+        that.cancelBackupRestore();
+        that.loadLocalBackups();
+        $('#tipMsg').text(res.msg || '整站数据恢复已完成！');
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '恢复过程发生异常，已保留恢复前快照');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
+    };
+    if (src.type === 'local') {
+      ajaxOpts.contentType = 'application/json';
+      ajaxOpts.data = JSON.stringify({ fileName: src.fileName, name: src.fileName, overwriteAuth: overwriteAuth });
+    } else {
+      var fd = new FormData();
+      fd.append('file', src.file);
+      fd.append('overwriteAuth', String(overwriteAuth));
+      ajaxOpts.data = fd;
+      ajaxOpts.processData = false;
+      ajaxOpts.contentType = false;
+    }
+    $.ajax(ajaxOpts);
+  },
+
+  onRemoteProtocolChange: function () {
+    var proto = $('#remoteBackupProtocol').val() || 'webdav';
+    if (proto === 's3') {
+      $('#remoteWebdavFields').hide();
+      $('#remoteS3Fields').show();
+    } else {
+      $('#remoteS3Fields').hide();
+      $('#remoteWebdavFields').show();
+    }
+  },
+
+  loadRemoteBackupConfig: function () {
+    var that = this;
+    $.ajax({
+      url: Label.servePath + '/console/backups/remote',
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (!res || !res.sc) return;
+        var cfg = res.config || res.remoteBackup || res;
+        $('#remoteBackupEnabled').val(String(cfg.enabled) === 'true' ? 'true' : 'false');
+        $('#remoteBackupProtocol').val(cfg.protocol === 's3' ? 's3' : 'webdav');
+        $('#remoteBackupKeepCount').val(cfg.keepCount || 14);
+        var resolvedPrefix = cfg.prefix !== undefined ? cfg.prefix : (cfg.protocol === 's3' ? (cfg.s3Prefix || cfg.remoteDir) : (cfg.remoteDir || cfg.s3Prefix));
+        $('#remoteBackupPrefix').val(resolvedPrefix !== undefined ? resolvedPrefix : 'volo-backups');
+        $('#remoteWebdavUrl').val(cfg.webdavUrl || '');
+        $('#remoteWebdavUsername').val(cfg.webdavUser || cfg.webdavUsername || '');
+        $('#remoteWebdavPassword').val('').attr('placeholder', (cfg.webdavPasswordSet || cfg.passwordSet) ? '已设置，留空保留原密码' : '应用密码');
+        $('#remoteS3Endpoint').val(cfg.s3Endpoint || '');
+        $('#remoteS3Bucket').val(cfg.s3Bucket || '');
+        $('#remoteS3Region').val(cfg.s3Region || 'auto');
+        $('#remoteS3PathStyle').val(String(cfg.s3PathStyle) === 'true' ? 'true' : 'false');
+        $('#remoteS3AccessKey').val(cfg.s3AccessKey || '');
+        $('#remoteS3SecretKey').val('').attr('placeholder', (cfg.s3SecretKeySet || cfg.secretKeySet) ? '已设置，留空保留原密钥' : 'SecretAccessKey');
+        that.onRemoteProtocolChange();
+      }
+    });
+  },
+
+  _collectRemoteBackupPayload: function () {
+    return {
+      enabled: $('#remoteBackupEnabled').val() === 'true',
+      protocol: $('#remoteBackupProtocol').val() === 's3' ? 's3' : 'webdav',
+      keepCount: parseInt($('#remoteBackupKeepCount').val() || '14', 10) || 14,
+      prefix: $.trim($('#remoteBackupPrefix').val() || ''),
+      remoteDir: $.trim($('#remoteBackupPrefix').val() || ''),
+      s3Prefix: $.trim($('#remoteBackupPrefix').val() || ''),
+      webdavUrl: $.trim($('#remoteWebdavUrl').val() || ''),
+      webdavUser: $.trim($('#remoteWebdavUsername').val() || ''),
+      webdavUsername: $.trim($('#remoteWebdavUsername').val() || ''),
+      webdavPassword: $('#remoteWebdavPassword').val() || '',
+      s3Endpoint: $.trim($('#remoteS3Endpoint').val() || ''),
+      s3Bucket: $.trim($('#remoteS3Bucket').val() || ''),
+      s3Region: $.trim($('#remoteS3Region').val() || 'auto'),
+      s3PathStyle: $('#remoteS3PathStyle').val() === 'true',
+      s3AccessKey: $.trim($('#remoteS3AccessKey').val() || ''),
+      s3SecretKey: $('#remoteS3SecretKey').val() || ''
+    };
+  },
+
+  saveRemoteBackupConfig: function (btn) {
+    var that = this;
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    var payload = this._collectRemoteBackupPayload();
+    $.ajax({
+      url: Label.servePath + '/console/backups/remote/config',
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      success: function (res) {
+        $('#tipMsg').text((res && res.msg) || '异地备份同步配置已保存');
+        that.loadRemoteBackupConfig();
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '异地备份配置保存失败');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
+    });
+  },
+
+  testRemoteBackup: function (btn) {
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    $('#tipMsg').text('正在测试远端存储连通性…');
+    $.ajax({
+      url: Label.servePath + '/console/backups/remote/test',
+      type: 'POST',
+      contentType: 'application/json',
+      timeout: 30000,
+      data: JSON.stringify(this._collectRemoteBackupPayload()),
+      success: function (res) {
+        $('#tipMsg').text((res && res.msg) || '远端存储连接正常');
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '远端存储连接测试失败');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
+    });
+  },
+
+  syncRemoteBackupNow: function (btn) {
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    $('#tipMsg').text('正在上传最新备份归档至远端存储…');
+    $.ajax({
+      url: Label.servePath + '/console/backups/remote/sync',
+      type: 'POST',
+      contentType: 'application/json',
+      timeout: 120000,
+      data: '{}',
+      success: function (res) {
+        $('#tipMsg').text((res && res.msg) || '最新归档已同步至远端存储');
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '远端同步未完成');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
+    });
+  },
+
+  _batchFiles: [],
+
+  _bindBatchDropzone: function () {
+    if (typeof document === 'undefined' || !document.getElementById) return;
+    var zone = document.getElementById('batchImportDropzone');
+    if (!zone || zone._voloBound) return;
+    zone._voloBound = true;
+    var that = this;
+    zone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      zone.classList.add('is-dragover');
+    });
+    zone.addEventListener('dragleave', function () {
+      zone.classList.remove('is-dragover');
+    });
+    zone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      zone.classList.remove('is-dragover');
+      if (e.dataTransfer && e.dataTransfer.files) {
+        that.onBatchFilesSelected(e.dataTransfer.files);
+      }
+    });
+  },
+
+  onBatchFilesSelected: function (fileList) {
+    var accepted = [];
+    for (var i = 0; i < (fileList ? fileList.length : 0); i++) {
+      var f = fileList[i];
+      if (f && /\.(md|markdown|zip)$/i.test(f.name || '')) {
+        accepted.push(f);
+      }
+    }
+    this._batchFiles = accepted;
+    var summary = $('#batchImportFileSummary');
+    if (!accepted.length) {
+      summary.text('未识别到 .md 或 .zip 文件，请重新选择。').show();
+      return;
+    }
+    var totalBytes = 0;
+    var names = [];
+    for (var j = 0; j < accepted.length; j++) {
+      totalBytes += Number(accepted[j].size || 0);
+      if (j < 5) names.push(accepted[j].name);
+    }
+    var extra = accepted.length > 5 ? (' 等共 ' + accepted.length + ' 个文件') : ('（共 ' + accepted.length + ' 个文件）');
+    summary.text('已就绪：' + names.join('、') + extra + ' · 总大小 ' + this._fmtBytes(totalBytes)).show();
+    $('#batchImportResultBox').hide();
+  },
+
+  clearBatchImport: function () {
+    this._batchFiles = [];
+    var input = typeof document !== 'undefined' ? document.getElementById('batchImportFileInput') : null;
+    if (input) input.value = '';
+    $('#batchImportFileSummary').hide().text('');
+    $('#batchImportResultBox').hide().html('');
+  },
+
+  submitBatchImport: function (btn) {
+    var that = this;
+    if (!this._batchFiles || !this._batchFiles.length) {
+      $('#tipMsg').text('请先拖入或选择至少一个 .md 或 .zip 文件。');
+      return;
+    }
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    var fd = new FormData();
+    for (var i = 0; i < this._batchFiles.length; i++) {
+      fd.append('files', this._batchFiles[i]);
+    }
+    var pubStatus = $('#batchImportPublishStatus').val() || 'published';
+    var dupMode = $('#batchImportDuplicateMode').val() || 'skip';
+    fd.append('publishStatus', pubStatus);
+    fd.append('publishImmediately', String(pubStatus === 'published'));
+    fd.append('duplicateMode', dupMode);
+    fd.append('skipDuplicatePermalink', String(dupMode !== 'copy'));
+    $('#tipMsg').text('正在批量解析并导入文稿…');
+    $.ajax({
+      url: Label.servePath + '/console/import/batch',
+      type: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      timeout: 120000,
+      success: function (res) {
+        if (!res || res.sc === false) {
+          $('#tipMsg').text((res && res.msg) || '批量导入失败');
+          return;
+        }
+        var imported = Number(res.imported !== undefined ? res.imported : (res.importedCount || 0));
+        var skipped = Number(res.skipped !== undefined ? res.skipped : (res.skippedCount || 0));
+        var failed = Number(res.failed !== undefined ? res.failed : (res.failedCount || 0));
+        var html = '<div class="console-stat-pill-row">' +
+          '<span class="console-stat-pill">成功导入 <strong>' + imported + '</strong> 篇</span>' +
+          '<span class="console-stat-pill">重复跳过 <strong>' + skipped + '</strong> 篇</span>' +
+          '<span class="console-stat-pill">异常失败 <strong>' + failed + '</strong> 篇</span>' +
+          '</div>';
+        var errs = res.errors || [];
+        if (errs.length) {
+          html += '<ul style="margin:8px 0 0 18px;font-size:12px;">';
+          for (var k = 0; k < Math.min(errs.length, 10); k++) {
+            html += '<li>' + that._escape(errs[k]) + '</li>';
+          }
+          html += '</ul>';
+        }
+        $('#batchImportResultBox').html(html).show();
+        $('#tipMsg').text(res.msg || ('批量导入完成：成功 ' + imported + ' 篇'));
+      },
+      error: function (xhr) {
+        $('#tipMsg').text((xhr.responseJSON && xhr.responseJSON.msg) || '批量导入请求失败');
+      },
+      complete: function () { if (btn) btn.disabled = false; }
     });
   }
 };

@@ -188,7 +188,7 @@ public class PreferenceConsole {
 
                 return;
             }
-            final JSONObject preference = new JSONObject(storedPreference.toString());
+            final JSONObject preference = org.b3log.solo.util.Solos.clone(storedPreference);
 
             String footerContent = "";
             final JSONObject opt = optionQueryService.getOptionById(Option.ID_C_FOOTER_CONTENT);
@@ -215,6 +215,11 @@ public class PreferenceConsole {
             final String rawTuChuang = preference.optString(Option.ID_C_TUCHUANG_CONFIG);
             preference.put("tuChuangSecretSet", PreferenceMgmtService.hasTuChuangSecret(rawTuChuang));
             preference.put(Option.ID_C_TUCHUANG_CONFIG, PreferenceMgmtService.redactTuChuangConfig(rawTuChuang));
+            preference.put(Option.ID_C_IMAGE_WEBP_ADAPTIVE,
+                    Boolean.toString(Option.optBooleanSwitch(preference, Option.ID_C_IMAGE_WEBP_ADAPTIVE, false)));
+            preference.put(Option.ID_C_INDEXNOW_ENABLED,
+                    Boolean.toString(Option.optBooleanSwitch(preference, Option.ID_C_INDEXNOW_ENABLED, false)));
+            preference.put(Option.ID_C_INDEXNOW_KEY, preference.optString(Option.ID_C_INDEXNOW_KEY, ""));
             ret.put(Option.CATEGORY_C_PREFERENCE, preference);
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
@@ -308,6 +313,7 @@ public class PreferenceConsole {
                 }
             }
 
+            ret.put(Option.ID_C_INDEXNOW_KEY, preference.optString(Option.ID_C_INDEXNOW_KEY, ""));
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
         } catch (final IllegalArgumentException invalid) {
@@ -318,7 +324,8 @@ public class PreferenceConsole {
 
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
+            final String errMsg = e.getMessage();
+            jsonObject.put(Keys.MSG, (null != errMsg && !errMsg.isBlank()) ? errMsg : langPropsService.get("updateFailLabel"));
         }
     }
 

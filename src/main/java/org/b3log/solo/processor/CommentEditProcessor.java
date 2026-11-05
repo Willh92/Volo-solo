@@ -6,6 +6,8 @@ import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
+import org.b3log.solo.cache.CommentCache;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Comment;
 import org.b3log.solo.model.Option;
@@ -32,6 +34,17 @@ public class CommentEditProcessor {
     @Inject private CommentMgmtService commentMgmtService;
     @Inject private org.b3log.solo.service.CommentFilterService commentFilterService;
     @Inject private OptionQueryService optionQueryService;
+    @Inject private CommentCache commentCache;
+    @Inject private PublicViewCache publicViewCache;
+
+    private void invalidateCaches(final String articleId) {
+        if (null != commentCache) {
+            commentCache.invalidateArticleComments(articleId);
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
 
     private static boolean ownsByAccount(final JSONObject currentUser, final JSONObject comment) {
         if (currentUser == null || comment == null || comment.optBoolean("commentDeleted")) {
@@ -133,8 +146,9 @@ public class CommentEditProcessor {
         try {
             final JSONObject comment = commentRepository.get(context.pathVar("id"));
             if (comment == null || !owns(context, comment, delete)) { AdminRequests.reject(context, 403, "当前身份或 IP 无法修改这条评论。"); return; }
+            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
             if (!adminLoggedIn) {
-                final var attempt = edits.acquire(LoginThrottle.clientAddress(context.getRequest()), comment.optString(Comment.COMMENT_ON_ID),
+                final var attempt = edits.acquire(LoginThrottle.clientAddress(context.getRequest()), articleId,
                         context.method() + context.pathVar("id") + (delete ? "" : context.requestJSON().optString("commentContent")));
                 if (!attempt.allowed()) { context.setHeader("Retry-After", String.valueOf(attempt.retryAfter())); AdminRequests.reject(context, 429, "修改操作过于频繁，请稍后再试。"); return; }
             }
@@ -143,6 +157,7 @@ public class CommentEditProcessor {
                     if (!adminLoggedIn) { AdminRequests.reject(context, 403, "游客不能删除其他人的回复。"); return; }
                     commentMgmtService.removeArticleCommentThread(context.pathVar("id"));
                 } else commentMgmtService.removeArticleComment(context.pathVar("id"));
+                invalidateCaches(articleId);
                 context.renderJSON(new JSONObject().put("sc", true));
             } else {
                 final JSONObject payload = context.requestJSON();
@@ -161,6 +176,7 @@ public class CommentEditProcessor {
                     final int nextStatus = commentMgmtService.resolveInitialStatus(preference, false, userId, content);
                     if (nextStatus == Comment.COMMENT_STATUS_C_PENDING) {
                         commentMgmtService.updateCommentContentAndStatus(context.pathVar("id"), content, Comment.COMMENT_STATUS_C_PENDING);
+                        invalidateCaches(articleId);
                         context.renderJSON(new JSONObject()
                                 .put("sc", true)
                                 .put("pending", true)
@@ -169,6 +185,7 @@ public class CommentEditProcessor {
                     }
                 }
                 commentMgmtService.updateCommentContent(context.pathVar("id"), content);
+                invalidateCaches(articleId);
                 context.renderJSON(new JSONObject().put("sc", true).put("commentHTML", Markdowns.clean(Markdowns.toHTML(content))));
             }
         } catch (org.json.JSONException invalid) { AdminRequests.reject(context, 400, "评论请求格式不正确。"); }

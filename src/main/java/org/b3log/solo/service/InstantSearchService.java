@@ -26,11 +26,9 @@ import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CategoryRepository;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.repository.TagRepository;
-import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.jsoup.Jsoup;
 import org.owasp.encoder.Encode;
 
 import java.util.ArrayList;
@@ -48,7 +46,9 @@ import java.util.regex.Pattern;
 
 /**
  * In-memory zero-leak public article snapshot for {@code Ctrl/Cmd + K} instant search.
- * Strips all {@code :::lock:::} blocks and password-protected/draft articles before indexing.
+ * Strips all {@code :::lock:::} blocks and password-protected/draft articles before indexing,
+ * reuses per-article plain-text extractions across edits, and stores a single case-preserving
+ * {@code plainText} string per document matched case-insensitively.
  *
  * @author <a href="https://github.com/Willh92">Willh92</a>
  * @since 3.0.0
@@ -57,8 +57,9 @@ import java.util.regex.Pattern;
 public class InstantSearchService {
 
     private static final Logger LOGGER = Logger.getLogger(InstantSearchService.class);
-    private static final long SNAPSHOT_TTL_MS = 60_000L;
     private static final int MAX_INDEXED_ARTICLES = 2000;
+    private static final int MAX_PLAIN_TEXT_CACHE_ENTRIES = 2500;
+    private static final int MAX_PLAIN_TEXT_CHARS = 16_384;
     private static final int SNIPPET_RADIUS = 56;
 
     @Inject
@@ -73,6 +74,9 @@ public class InstantSearchService {
     @Inject
     private TagRepository tagRepository;
 
+    private record CachedPlainText(long updated, String text) {
+    }
+
     private record SearchDoc(
             String id,
             String title,
@@ -83,7 +87,6 @@ public class InstantSearchService {
             String category,
             String categoryLower,
             String plainText,
-            String plainLower,
             long updatedAt) {
     }
 
@@ -94,10 +97,21 @@ public class InstantSearchService {
             List<String> categories) {
     }
 
+    private final Object buildLock = new Object();
+    private final Map<String, CachedPlainText> plainTextCache = new LinkedHashMap<>(256, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(final Map.Entry<String, CachedPlainText> eldest) {
+            return size() > MAX_PLAIN_TEXT_CACHE_ENTRIES;
+        }
+    };
+
     private volatile Snapshot cachedSnapshot;
+    private volatile Snapshot lastGoodSnapshot;
 
     /**
-     * Invalidates the cached snapshot after article mutations.
+     * Invalidates the cached snapshot after article/category/tag mutations.
+     * Per-article plain-text extractions remain cached by {@code (articleId, articleUpdated)}
+     * so editing one article only re-extracts plain text for that changed article.
      */
     public void invalidate() {
         cachedSnapshot = null;
@@ -153,7 +167,7 @@ public class InstantSearchService {
                 if (!doc.categoryLower().isEmpty() && doc.categoryLower().contains(term)) {
                     termScore += 5;
                 }
-                if (doc.plainLower().contains(term)) {
+                if (StringUtils.indexOfIgnoreCase(doc.plainText(), term) >= 0) {
                     termScore += 3;
                 }
                 if (termScore == 0) {
@@ -181,7 +195,7 @@ public class InstantSearchService {
                     .put("id", doc.id())
                     .put("title", doc.title())
                     .put("titleHtml", highlightSafeHtml(doc.title(), terms))
-                    .put("snippetHtml", buildHighlightedSnippet(doc.plainText(), doc.plainLower(), terms))
+                    .put("snippetHtml", buildHighlightedSnippet(doc.plainText(), terms))
                     .put("url", url)
                     .put("tags", new JSONArray(doc.tags()))
                     .put("category", doc.category())
@@ -198,19 +212,29 @@ public class InstantSearchService {
     }
 
     private Snapshot getOrBuildSnapshot() {
-        final long now = System.currentTimeMillis();
         final Snapshot current = cachedSnapshot;
-        if (current != null && (now - current.builtAtMs()) < SNAPSHOT_TTL_MS) {
+        if (current != null) {
             return current;
         }
-        synchronized (this) {
+        if (articleRepository == null) {
+            return new Snapshot(System.currentTimeMillis(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+        }
+        synchronized (buildLock) {
             final Snapshot recheck = cachedSnapshot;
-            if (recheck != null && (now - recheck.builtAtMs()) < SNAPSHOT_TTL_MS) {
+            if (recheck != null) {
                 return recheck;
             }
+            final long now = System.currentTimeMillis();
             final Snapshot fresh = buildSnapshot(now);
-            cachedSnapshot = fresh;
-            return fresh;
+            if (fresh != null) {
+                cachedSnapshot = fresh;
+                lastGoodSnapshot = fresh;
+                return fresh;
+            }
+            final Snapshot fallback = lastGoodSnapshot;
+            return fallback != null
+                    ? fallback
+                    : new Snapshot(now, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         }
     }
 
@@ -223,6 +247,15 @@ public class InstantSearchService {
                             new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED),
                             new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, "")
                     )))
+                    .select(Keys.OBJECT_ID,
+                            Article.ARTICLE_TITLE,
+                            Article.ARTICLE_PERMALINK,
+                            Article.ARTICLE_CONTENT,
+                            Article.ARTICLE_TAGS_REF,
+                            Article.ARTICLE_VIEW_PWD,
+                            Article.ARTICLE_STATUS,
+                            Article.ARTICLE_UPDATED,
+                            Article.ARTICLE_CREATED)
                     .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING);
 
             final JSONArray rows = QueryResults.array(articleRepository.get(query));
@@ -233,14 +266,27 @@ public class InstantSearchService {
 
             for (int i = 0; i < rows.length(); i++) {
                 final JSONObject row = rows.optJSONObject(i);
-                if (row == null || StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
+                if (row == null
+                        || row.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                        || StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
                     continue;
                 }
                 final String id = row.optString(Keys.OBJECT_ID);
                 final String title = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_TITLE));
                 final String permalink = row.optString(Article.ARTICLE_PERMALINK);
-                final String rawMd = Article.sanitizePublicMarkdown(row.optString(Article.ARTICLE_CONTENT));
-                final String plain = extractPlainText(rawMd);
+                final long updatedAt = row.optLong(Article.ARTICLE_UPDATED, row.optLong(Article.ARTICLE_CREATED, 0L));
+
+                final String plain;
+                final CachedPlainText cachedPlain = (!id.isEmpty() && updatedAt > 0L) ? plainTextCache.get(id) : null;
+                if (cachedPlain != null && cachedPlain.updated() == updatedAt) {
+                    plain = cachedPlain.text();
+                } else {
+                    final String rawMd = Article.sanitizePublicMarkdown(row.optString(Article.ARTICLE_CONTENT));
+                    plain = extractPlainText(rawMd);
+                    if (!id.isEmpty() && updatedAt > 0L) {
+                        plainTextCache.put(id, new CachedPlainText(updatedAt, plain));
+                    }
+                }
 
                 final List<String> tags = new ArrayList<>();
                 final List<String> tagsLower = new ArrayList<>();
@@ -274,8 +320,7 @@ public class InstantSearchService {
                         category,
                         category.toLowerCase(Locale.ROOT),
                         plain,
-                        plain.toLowerCase(Locale.ROOT),
-                        row.optLong(Article.ARTICLE_UPDATED, row.optLong(Article.ARTICLE_CREATED, 0L))
+                        updatedAt
                 ));
             }
 
@@ -288,7 +333,7 @@ public class InstantSearchService {
             return new Snapshot(now, docs, topTags, new ArrayList<>(categorySet));
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Builds instant search snapshot failed", e);
-            return new Snapshot(now, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+            return null;
         }
     }
 
@@ -299,7 +344,8 @@ public class InstantSearchService {
         }
         try {
             final Map<String, String> catTitles = new HashMap<>();
-            final JSONArray cats = QueryResults.array(categoryRepository.get(new Query().setPageCount(1)));
+            final JSONArray cats = QueryResults.array(
+                    categoryRepository.get(new Query().select(Keys.OBJECT_ID, Category.CATEGORY_TITLE).setPageCount(1)));
             for (int i = 0; i < cats.length(); i++) {
                 final JSONObject c = cats.optJSONObject(i);
                 if (c != null) {
@@ -310,14 +356,18 @@ public class InstantSearchService {
                 return map;
             }
             final Map<String, String> tagIdToTitle = new HashMap<>();
-            final JSONArray tags = QueryResults.array(tagRepository.get(new Query().setPageCount(1)));
+            final JSONArray tags = QueryResults.array(
+                    tagRepository.get(new Query().select(Keys.OBJECT_ID, Tag.TAG_TITLE).setPageCount(1)));
             for (int i = 0; i < tags.length(); i++) {
                 final JSONObject t = tags.optJSONObject(i);
                 if (t != null) {
                     tagIdToTitle.put(t.optString(Keys.OBJECT_ID), t.optString(Tag.TAG_TITLE));
                 }
             }
-            final JSONArray rels = QueryResults.array(categoryTagRepository.get(new Query().setPageCount(1)));
+            final JSONArray rels = QueryResults.array(
+                    categoryTagRepository.get(new Query()
+                            .select(Category.CATEGORY + "_" + Keys.OBJECT_ID, Tag.TAG + "_" + Keys.OBJECT_ID)
+                            .setPageCount(1)));
             for (int i = 0; i < rels.length(); i++) {
                 final JSONObject r = rels.optJSONObject(i);
                 if (r == null) {
@@ -339,19 +389,453 @@ public class InstantSearchService {
         return map;
     }
 
-    private static String extractPlainText(final String sanitizedMarkdown) {
+    /**
+     * Single-pass Markdown-to-plain-text extractor capped at {@value #MAX_PLAIN_TEXT_CHARS} characters.
+     * Strips code fence lines, inline code backticks, HTML comments/scripts/styles/tags, link/image URLs,
+     * and block/emphasis markers without allocating a CommonMark AST or Jsoup DOM.
+     */
+    static String extractPlainText(final String sanitizedMarkdown) {
         if (StringUtils.isBlank(sanitizedMarkdown)) {
             return "";
         }
-        try {
-            final String html = Markdowns.toHTMLLocally(sanitizedMarkdown);
-            return Jsoup.parse(html).text().replaceAll("\\s+", " ").trim();
-        } catch (final Exception e) {
-            return sanitizedMarkdown.replaceAll("[#*`>\\[\\]()!_~-]", " ").replaceAll("\\s+", " ").trim();
+        final int len = sanitizedMarkdown.length();
+        final StringBuilder out = new StringBuilder(Math.min(len, MAX_PLAIN_TEXT_CHARS + 64));
+
+        boolean inFence = false;
+        char fenceChar = 0;
+        int fenceLen = 0;
+
+        int cursor = 0;
+        while (cursor < len && out.length() < MAX_PLAIN_TEXT_CHARS) {
+            int lineEnd = sanitizedMarkdown.indexOf('\n', cursor);
+            if (lineEnd < 0) {
+                lineEnd = len;
+            }
+            final int nextCursor = lineEnd < len ? lineEnd + 1 : len;
+            if (lineEnd > cursor && sanitizedMarkdown.charAt(lineEnd - 1) == '\r') {
+                lineEnd--;
+            }
+
+            int p = cursor;
+            while (p < lineEnd && (sanitizedMarkdown.charAt(p) == ' ' || sanitizedMarkdown.charAt(p) == '\t')) {
+                p++;
+            }
+
+            // Check fenced code delimiter (``` or ~~~)
+            if (p + 3 <= lineEnd) {
+                final char fc = sanitizedMarkdown.charAt(p);
+                if (fc == '`' || fc == '~') {
+                    int ticks = 0;
+                    while (p + ticks < lineEnd && sanitizedMarkdown.charAt(p + ticks) == fc) {
+                        ticks++;
+                    }
+                    if (ticks >= 3) {
+                        if (!inFence) {
+                            inFence = true;
+                            fenceChar = fc;
+                            fenceLen = ticks;
+                            cursor = nextCursor;
+                            continue;
+                        } else if (fc == fenceChar && ticks >= fenceLen && isOnlySpaces(sanitizedMarkdown, p + ticks, lineEnd)) {
+                            inFence = false;
+                            appendSpaceIfNeeded(out);
+                            cursor = nextCursor;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            if (inFence) {
+                appendCollapsedRange(out, sanitizedMarkdown, p, lineEnd);
+                appendSpaceIfNeeded(out);
+                cursor = nextCursor;
+                continue;
+            }
+
+            // Skip empty lines and horizontal rules (---, ***, ___)
+            if (p >= lineEnd || isHorizontalRule(sanitizedMarkdown, p, lineEnd) || isReferenceLinkDef(sanitizedMarkdown, p, lineEnd)) {
+                appendSpaceIfNeeded(out);
+                cursor = nextCursor;
+                continue;
+            }
+
+            // Strip leading blockquotes (> > ...)
+            while (p < lineEnd && sanitizedMarkdown.charAt(p) == '>') {
+                p++;
+                while (p < lineEnd && (sanitizedMarkdown.charAt(p) == ' ' || sanitizedMarkdown.charAt(p) == '\t')) {
+                    p++;
+                }
+            }
+
+            // Strip ATX heading prefix (#{1,6} )
+            if (p < lineEnd && sanitizedMarkdown.charAt(p) == '#') {
+                int hashes = 0;
+                while (p + hashes < lineEnd && hashes < 6 && sanitizedMarkdown.charAt(p + hashes) == '#') {
+                    hashes++;
+                }
+                if (p + hashes == lineEnd || Character.isWhitespace(sanitizedMarkdown.charAt(p + hashes))) {
+                    p += hashes;
+                    while (p < lineEnd && Character.isWhitespace(sanitizedMarkdown.charAt(p))) {
+                        p++;
+                    }
+                    // Trim optional closing ATX hashes
+                    while (lineEnd > p && Character.isWhitespace(sanitizedMarkdown.charAt(lineEnd - 1))) {
+                        lineEnd--;
+                    }
+                    int tail = lineEnd;
+                    while (tail > p && sanitizedMarkdown.charAt(tail - 1) == '#') {
+                        tail--;
+                    }
+                    if (tail == p || Character.isWhitespace(sanitizedMarkdown.charAt(tail - 1))) {
+                        lineEnd = tail;
+                    }
+                }
+            } else {
+                // Strip unordered/ordered/task list prefixes
+                p = skipListMarker(sanitizedMarkdown, p, lineEnd);
+            }
+
+            // Scan inline tokens on the line (handling multi-line HTML comments/script/style if encountered)
+            int advancedNext = scanInlineLine(out, sanitizedMarkdown, p, lineEnd, len);
+            appendSpaceIfNeeded(out);
+            cursor = Math.max(nextCursor, advancedNext);
+        }
+
+        int finalLen = out.length();
+        while (finalLen > 0 && out.charAt(finalLen - 1) == ' ') {
+            finalLen--;
+        }
+        if (finalLen > MAX_PLAIN_TEXT_CHARS) {
+            finalLen = MAX_PLAIN_TEXT_CHARS;
+            while (finalLen > 0 && out.charAt(finalLen - 1) == ' ') {
+                finalLen--;
+            }
+        }
+        return finalLen == 0 ? "" : out.substring(0, finalLen);
+    }
+
+    private static int scanInlineLine(final StringBuilder out,
+                                      final String md,
+                                      final int start,
+                                      final int lineEnd,
+                                      final int totalLen) {
+        int i = start;
+        while (i < lineEnd && out.length() < MAX_PLAIN_TEXT_CHARS) {
+            final char c = md.charAt(i);
+
+            // Backslash escape
+            if (c == '\\' && i + 1 < lineEnd && isAsciiPunctuation(md.charAt(i + 1))) {
+                appendChar(out, md.charAt(i + 1));
+                i += 2;
+                continue;
+            }
+
+            // Inline code span `...`
+            if (c == '`') {
+                int ticks = 1;
+                while (i + ticks < lineEnd && md.charAt(i + ticks) == '`') {
+                    ticks++;
+                }
+                final int contentStart = i + ticks;
+                final int closeIdx = findBacktickRun(md, contentStart, lineEnd, ticks);
+                if (closeIdx >= 0) {
+                    appendCollapsedRange(out, md, contentStart, closeIdx);
+                    i = closeIdx + ticks;
+                } else {
+                    i = contentStart;
+                }
+                continue;
+            }
+
+            // HTML comment / script / style / tag
+            if (c == '<' && i + 1 < lineEnd) {
+                if (md.startsWith("<!--", i)) {
+                    final int endComment = md.indexOf("-->", i + 4);
+                    appendSpaceIfNeeded(out);
+                    return endComment < 0 ? totalLen : endComment + 3;
+                }
+                if (md.regionMatches(true, i, "<script", 0, 7)
+                        && (i + 7 >= totalLen || !Character.isLetterOrDigit(md.charAt(i + 7)))) {
+                    final int endScript = StringUtils.indexOfIgnoreCase(md, "</script>", i + 7);
+                    appendSpaceIfNeeded(out);
+                    if (endScript < 0) {
+                        return totalLen;
+                    }
+                    final int afterScript = endScript + 9;
+                    if (afterScript < lineEnd) {
+                        i = afterScript;
+                        continue;
+                    }
+                    return afterScript;
+                }
+                if (md.regionMatches(true, i, "<style", 0, 6)
+                        && (i + 6 >= totalLen || !Character.isLetterOrDigit(md.charAt(i + 6)))) {
+                    final int endStyle = StringUtils.indexOfIgnoreCase(md, "</style>", i + 6);
+                    appendSpaceIfNeeded(out);
+                    if (endStyle < 0) {
+                        return totalLen;
+                    }
+                    final int afterStyle = endStyle + 8;
+                    if (afterStyle < lineEnd) {
+                        i = afterStyle;
+                        continue;
+                    }
+                    return afterStyle;
+                }
+                final char next = md.charAt(i + 1);
+                if (Character.isLetter(next) || next == '/' || next == '!') {
+                    final int gt = md.indexOf('>', i + 2);
+                    if (gt > i && gt < lineEnd) {
+                        appendSpaceIfNeeded(out);
+                        i = gt + 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Markdown image ![alt](url) or link [label](url) / [label][ref]
+            if ((c == '!' && i + 1 < lineEnd && md.charAt(i + 1) == '[') || c == '[') {
+                final int openBracket = c == '!' ? i + 1 : i;
+                final int closeBracket = findMatchingBracket(md, openBracket, lineEnd);
+                if (closeBracket > openBracket) {
+                    final int afterBracket = closeBracket + 1;
+                    if (afterBracket < lineEnd && md.charAt(afterBracket) == '(') {
+                        final int closeParen = findMatchingParen(md, afterBracket, lineEnd);
+                        if (closeParen > afterBracket) {
+                            scanInlineLine(out, md, openBracket + 1, closeBracket, closeBracket);
+                            i = closeParen + 1;
+                            continue;
+                        }
+                    } else if (afterBracket < lineEnd && md.charAt(afterBracket) == '[') {
+                        final int closeRef = findMatchingBracket(md, afterBracket, lineEnd);
+                        if (closeRef >= afterBracket) {
+                            scanInlineLine(out, md, openBracket + 1, closeBracket, closeBracket);
+                            i = closeRef + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Common HTML entities
+            if (c == '&') {
+                final int semi = md.indexOf(';', i + 1);
+                if (semi > i + 1 && semi - i <= 10 && semi < lineEnd) {
+                    final char decoded = decodeCommonEntity(md, i, semi + 1);
+                    if (decoded != 0) {
+                        appendChar(out, decoded);
+                        i = semi + 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Markdown emphasis / table pipe delimiters
+            if (c == '*' || c == '~') {
+                while (i < lineEnd && md.charAt(i) == c) {
+                    i++;
+                }
+                continue;
+            }
+            if (c == '|') {
+                appendSpaceIfNeeded(out);
+                i++;
+                continue;
+            }
+            if (c == '_') {
+                final boolean wordBefore = i > start && Character.isLetterOrDigit(md.charAt(i - 1));
+                int runEnd = i + 1;
+                while (runEnd < lineEnd && md.charAt(runEnd) == '_') {
+                    runEnd++;
+                }
+                final boolean wordAfter = runEnd < lineEnd && Character.isLetterOrDigit(md.charAt(runEnd));
+                if (!wordBefore || !wordAfter) {
+                    i = runEnd;
+                    continue;
+                }
+            }
+
+            appendChar(out, c);
+            i++;
+        }
+        return lineEnd;
+    }
+
+    private static void appendCollapsedRange(final StringBuilder out, final String s, final int from, final int to) {
+        for (int k = from; k < to && out.length() < MAX_PLAIN_TEXT_CHARS; k++) {
+            appendChar(out, s.charAt(k));
         }
     }
 
-    static String buildHighlightedSnippet(final String plainText, final String plainLower, final List<String> terms) {
+    private static void appendChar(final StringBuilder out, final char c) {
+        if (Character.isWhitespace(c)) {
+            appendSpaceIfNeeded(out);
+        } else if (out.length() < MAX_PLAIN_TEXT_CHARS) {
+            out.append(c);
+        }
+    }
+
+    private static void appendSpaceIfNeeded(final StringBuilder out) {
+        final int n = out.length();
+        if (n > 0 && n < MAX_PLAIN_TEXT_CHARS && out.charAt(n - 1) != ' ') {
+            out.append(' ');
+        }
+    }
+
+    private static boolean isOnlySpaces(final String s, final int from, final int to) {
+        for (int i = from; i < to; i++) {
+            if (!Character.isWhitespace(s.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isHorizontalRule(final String s, final int from, final int to) {
+        final char first = s.charAt(from);
+        if (first != '-' && first != '*' && first != '_') {
+            return false;
+        }
+        int count = 0;
+        for (int i = from; i < to; i++) {
+            final char c = s.charAt(i);
+            if (c == first) {
+                count++;
+            } else if (c != ' ' && c != '\t') {
+                return false;
+            }
+        }
+        return count >= 3;
+    }
+
+    private static boolean isReferenceLinkDef(final String s, final int from, final int to) {
+        if (s.charAt(from) != '[') {
+            return false;
+        }
+        final int close = findMatchingBracket(s, from, to);
+        return close > from + 1 && close + 2 < to && s.charAt(close + 1) == ':' && Character.isWhitespace(s.charAt(close + 2));
+    }
+
+    private static int skipListMarker(final String s, final int from, final int to) {
+        int p = from;
+        if (p + 1 < to) {
+            final char c = s.charAt(p);
+            if ((c == '-' || c == '*' || c == '+') && Character.isWhitespace(s.charAt(p + 1))) {
+                p += 2;
+                while (p < to && Character.isWhitespace(s.charAt(p))) {
+                    p++;
+                }
+            } else if (Character.isDigit(c)) {
+                int d = p;
+                while (d < to && d - p < 9 && Character.isDigit(s.charAt(d))) {
+                    d++;
+                }
+                if (d + 1 < to && (s.charAt(d) == '.' || s.charAt(d) == ')') && Character.isWhitespace(s.charAt(d + 1))) {
+                    p = d + 2;
+                    while (p < to && Character.isWhitespace(s.charAt(p))) {
+                        p++;
+                    }
+                }
+            }
+        }
+        if (p + 3 < to && s.charAt(p) == '['
+                && (s.charAt(p + 1) == ' ' || s.charAt(p + 1) == 'x' || s.charAt(p + 1) == 'X')
+                && s.charAt(p + 2) == ']' && Character.isWhitespace(s.charAt(p + 3))) {
+            p += 4;
+            while (p < to && Character.isWhitespace(s.charAt(p))) {
+                p++;
+            }
+        }
+        return p;
+    }
+
+    private static int findBacktickRun(final String s, final int from, final int to, final int targetTicks) {
+        int i = from;
+        while (i < to) {
+            if (s.charAt(i) == '`') {
+                int run = 1;
+                while (i + run < to && s.charAt(i + run) == '`') {
+                    run++;
+                }
+                if (run == targetTicks) {
+                    return i;
+                }
+                i += run;
+            } else {
+                i++;
+            }
+        }
+        return -1;
+    }
+
+    private static int findMatchingBracket(final String s, final int openPos, final int to) {
+        int depth = 0;
+        for (int i = openPos; i < to; i++) {
+            final char c = s.charAt(i);
+            if (c == '\\' && i + 1 < to) {
+                i++;
+                continue;
+            }
+            if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static int findMatchingParen(final String s, final int openPos, final int to) {
+        int depth = 0;
+        for (int i = openPos; i < to; i++) {
+            final char c = s.charAt(i);
+            if (c == '\\' && i + 1 < to) {
+                i++;
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static boolean isAsciiPunctuation(final char c) {
+        return (c >= '!' && c <= '/') || (c >= ':' && c <= '@') || (c >= '[' && c <= '`') || (c >= '{' && c <= '~');
+    }
+
+    private static char decodeCommonEntity(final String s, final int from, final int to) {
+        if (s.regionMatches(true, from, "&nbsp;", 0, to - from)) {
+            return ' ';
+        }
+        if (s.regionMatches(true, from, "&amp;", 0, to - from)) {
+            return '&';
+        }
+        if (s.regionMatches(true, from, "&lt;", 0, to - from)) {
+            return '<';
+        }
+        if (s.regionMatches(true, from, "&gt;", 0, to - from)) {
+            return '>';
+        }
+        if (s.regionMatches(true, from, "&quot;", 0, to - from)) {
+            return '"';
+        }
+        if (s.regionMatches(true, from, "&#39;", 0, to - from) || s.regionMatches(true, from, "&apos;", 0, to - from)) {
+            return '\'';
+        }
+        return 0;
+    }
+
+    static String buildHighlightedSnippet(final String plainText, final List<String> terms) {
         if (StringUtils.isBlank(plainText)) {
             return "";
         }
@@ -361,7 +845,7 @@ public class InstantSearchService {
         }
         int firstPos = -1;
         for (final String term : terms) {
-            final int idx = plainLower.indexOf(term);
+            final int idx = StringUtils.indexOfIgnoreCase(plainText, term);
             if (idx >= 0 && (firstPos < 0 || idx < firstPos)) {
                 firstPos = idx;
             }
@@ -372,6 +856,10 @@ public class InstantSearchService {
         final String prefix = start > 0 ? "…" : "";
         final String suffix = end < plainText.length() ? "…" : "";
         return prefix + highlightSafeHtml(window, terms) + suffix;
+    }
+
+    static String buildHighlightedSnippet(final String plainText, final String ignoredPlainLower, final List<String> terms) {
+        return buildHighlightedSnippet(plainText, terms);
     }
 
     static String highlightSafeHtml(final String raw, final List<String> terms) {

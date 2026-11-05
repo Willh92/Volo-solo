@@ -28,6 +28,24 @@ public class CaptchaService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
     private static final long TTL = 180_000;
+    private static final java.util.concurrent.Semaphore RENDER_PERMITS =
+            new java.util.concurrent.Semaphore(Math.max(2, Runtime.getRuntime().availableProcessors()));
+    private static final Color BG_COLOR = new Color(237, 243, 239);
+    private static final Color BACK_CURVE_COLOR = new Color(167, 185, 173, 150);
+    private static final Color FRONT_CURVE_COLOR = new Color(96, 125, 106, 175);
+    private static final BasicStroke CURVE_STROKE = new BasicStroke(1.1f);
+    private static final Font[][] GLYPH_FONTS = initGlyphFonts();
+
+    private static Font[][] initGlyphFonts() {
+        final String[] families = {Font.SANS_SERIF, Font.SERIF, Font.MONOSPACED};
+        final Font[][] matrix = new Font[families.length][4];
+        for (int f = 0; f < families.length; f++) {
+            for (int s = 0; s < 4; s++) {
+                matrix[f][s] = new Font(families[f], Font.BOLD, 32 + s);
+            }
+        }
+        return matrix;
+    }
     private record Entry(String purpose, String address, byte[] digest, long expires) { }
     private record Rate(long start, int count) { }
     public record Challenge(String id, String image, long expiresAt) { }
@@ -90,62 +108,67 @@ public class CaptchaService {
                 && value.address.equals(IpAddresses.canonical(address)) && MessageDigest.isEqual(value.digest, digest(id, answer));
     }
     private static String image(final String answer) throws Exception {
-        final BufferedImage image = new BufferedImage(180, 64, BufferedImage.TYPE_INT_RGB);
-        final var graphics = image.createGraphics();
+        if (!RENDER_PERMITS.tryAcquire(2, java.util.concurrent.TimeUnit.SECONDS)) {
+            throw new IllegalStateException("验证码服务繁忙，请稍后重试。");
+        }
         try {
-            graphics.setColor(new Color(237, 243, 239)); graphics.fillRect(0, 0, 180, 64);
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            curves(graphics, 4, new Color(167, 185, 173, 150));
-            final BufferedImage letters = new BufferedImage(180, 64, BufferedImage.TYPE_INT_ARGB);
-            final var glyphs = letters.createGraphics();
+            final BufferedImage image = new BufferedImage(180, 64, BufferedImage.TYPE_INT_RGB);
+            final var graphics = image.createGraphics();
             try {
-                glyphs.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                final String[] fonts = {Font.SANS_SERIF, Font.SERIF, Font.MONOSPACED};
-                for (int i = 0; i < answer.length(); i++) {
-                    final var transform = glyphs.getTransform();
-                    glyphs.setFont(new Font(fonts[RANDOM.nextInt(fonts.length)], Font.BOLD, 32 + RANDOM.nextInt(4)));
-                    glyphs.translate(25 + i * 31 + RANDOM.nextInt(5) - 2, 33 + RANDOM.nextInt(7) - 3);
-                    glyphs.rotate((RANDOM.nextDouble() - .5) * .56);
-                    glyphs.shear((RANDOM.nextDouble() - .5) * .32, 0);
-                    glyphs.scale(.92 + RANDOM.nextDouble() * .16, .94 + RANDOM.nextDouble() * .12);
-                    glyphs.setColor(new Color(30 + RANDOM.nextInt(35), 50 + RANDOM.nextInt(35), 43 + RANDOM.nextInt(35)));
-                    final String letter = answer.substring(i, i + 1);
-                    glyphs.drawString(letter, -glyphs.getFontMetrics().stringWidth(letter) / 2f, 12);
-                    glyphs.setTransform(transform);
-                }
-            } finally { glyphs.dispose(); }
-            final var jitter = java.util.concurrent.ThreadLocalRandom.current();
-            final double phaseX = jitter.nextDouble() * Math.PI * 2, phaseY = jitter.nextDouble() * Math.PI * 2;
-            final int[] dx = new int[64];
-            for (int y = 0; y < 64; y++) dx[y] = (int) Math.round(2.8 * Math.sin(y / 11.0 + phaseX));
-            final int[] dy = new int[180];
-            for (int x = 0; x < 180; x++) dy[x] = (int) Math.round(2.2 * Math.sin(x / 17.0 + phaseY));
-            final int[] srcPixels = letters.getRGB(0, 0, 180, 64, null, 0, 180);
-            final int[] dstPixels = new int[180 * 64];
-            for (int y = 0; y < 64; y++) {
-                final int shiftX = dx[y], rowOffset = y * 180;
-                for (int x = 0; x < 180; x++) {
-                    final int sourceX = x + shiftX, sourceY = y + dy[x];
-                    if (sourceX >= 0 && sourceX < 180 && sourceY >= 0 && sourceY < 64) {
-                        dstPixels[rowOffset + x] = srcPixels[sourceY * 180 + sourceX];
+                graphics.setColor(BG_COLOR); graphics.fillRect(0, 0, 180, 64);
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                curves(graphics, 4, BACK_CURVE_COLOR);
+                final BufferedImage letters = new BufferedImage(180, 64, BufferedImage.TYPE_INT_ARGB);
+                final var glyphs = letters.createGraphics();
+                try {
+                    glyphs.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    for (int i = 0; i < answer.length(); i++) {
+                        final var transform = glyphs.getTransform();
+                        glyphs.setFont(GLYPH_FONTS[RANDOM.nextInt(GLYPH_FONTS.length)][RANDOM.nextInt(4)]);
+                        glyphs.translate(25 + i * 31 + RANDOM.nextInt(5) - 2, 33 + RANDOM.nextInt(7) - 3);
+                        glyphs.rotate((RANDOM.nextDouble() - .5) * .56);
+                        glyphs.shear((RANDOM.nextDouble() - .5) * .32, 0);
+                        glyphs.scale(.92 + RANDOM.nextDouble() * .16, .94 + RANDOM.nextDouble() * .12);
+                        glyphs.setColor(new Color(30 + RANDOM.nextInt(35), 50 + RANDOM.nextInt(35), 43 + RANDOM.nextInt(35)));
+                        final String letter = answer.substring(i, i + 1);
+                        glyphs.drawString(letter, -glyphs.getFontMetrics().stringWidth(letter) / 2f, 12);
+                        glyphs.setTransform(transform);
+                    }
+                } finally { glyphs.dispose(); }
+                final var jitter = java.util.concurrent.ThreadLocalRandom.current();
+                final double phaseX = jitter.nextDouble() * Math.PI * 2, phaseY = jitter.nextDouble() * Math.PI * 2;
+                final int[] dx = new int[64];
+                for (int y = 0; y < 64; y++) dx[y] = (int) Math.round(2.8 * Math.sin(y / 11.0 + phaseX));
+                final int[] dy = new int[180];
+                for (int x = 0; x < 180; x++) dy[x] = (int) Math.round(2.2 * Math.sin(x / 17.0 + phaseY));
+                final int[] srcPixels = letters.getRGB(0, 0, 180, 64, null, 0, 180);
+                final int[] dstPixels = new int[180 * 64];
+                for (int y = 0; y < 64; y++) {
+                    final int shiftX = dx[y], rowOffset = y * 180;
+                    for (int x = 0; x < 180; x++) {
+                        final int sourceX = x + shiftX, sourceY = y + dy[x];
+                        if (sourceX >= 0 && sourceX < 180 && sourceY >= 0 && sourceY < 64) {
+                            dstPixels[rowOffset + x] = srcPixels[sourceY * 180 + sourceX];
+                        }
                     }
                 }
-            }
-            final BufferedImage warped = new BufferedImage(180, 64, BufferedImage.TYPE_INT_ARGB);
-            warped.setRGB(0, 0, 180, 64, dstPixels, 0, 180);
-            graphics.drawImage(warped, 0, 0, null);
-            curves(graphics, 2, new Color(96, 125, 106, 175));
-            for (int i = 0; i < 90; i++) {
-                graphics.setColor(new Color(80 + RANDOM.nextInt(80), 110 + RANDOM.nextInt(65), 90 + RANDOM.nextInt(75), 150));
-                graphics.fillOval(RANDOM.nextInt(180), RANDOM.nextInt(64), 1 + RANDOM.nextInt(2), 1 + RANDOM.nextInt(2));
-            }
-        } finally { graphics.dispose(); }
-        final ByteArrayOutputStream output = new ByteArrayOutputStream(); ImageIO.write(image, "png", output);
-        return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
+                letters.setRGB(0, 0, 180, 64, dstPixels, 0, 180);
+                graphics.drawImage(letters, 0, 0, null);
+                curves(graphics, 2, FRONT_CURVE_COLOR);
+                for (int i = 0; i < 90; i++) {
+                    graphics.setColor(new Color(80 + RANDOM.nextInt(80), 110 + RANDOM.nextInt(65), 90 + RANDOM.nextInt(75), 150));
+                    graphics.fillOval(RANDOM.nextInt(180), RANDOM.nextInt(64), 1 + RANDOM.nextInt(2), 1 + RANDOM.nextInt(2));
+                }
+            } finally { graphics.dispose(); }
+            final ByteArrayOutputStream output = new ByteArrayOutputStream(8192); ImageIO.write(image, "png", output);
+            return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
+        } finally {
+            RENDER_PERMITS.release();
+        }
     }
     private static void curves(final java.awt.Graphics2D graphics, final int count, final Color color) {
         graphics.setColor(color);
-        graphics.setStroke(new BasicStroke(1.1f));
+        graphics.setStroke(CURVE_STROKE);
         for (int i = 0; i < count; i++) graphics.draw(new CubicCurve2D.Double(0, 12 + RANDOM.nextInt(40),
                 45, RANDOM.nextInt(64), 120, RANDOM.nextInt(64), 180, 12 + RANDOM.nextInt(40)));
     }

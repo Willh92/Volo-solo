@@ -22,7 +22,7 @@
     <div id="comment-${comment.oId?html}" class="comment-body">
         <div class="comment-avatar">
             <a href="" rel="nofollow" target="_blank">
-                <img data-avatar-seed="${comment.commentName?html}" alt="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" class="avatar">
+                <img data-avatar-seed="${comment.commentName?html}" alt="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" class="avatar" loading="lazy" decoding="async">
             </a>
         </div>
         <div class="contain-main">

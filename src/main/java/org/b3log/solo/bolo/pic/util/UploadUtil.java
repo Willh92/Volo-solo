@@ -41,32 +41,27 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.ssl.SSLContextBuilder;
-import org.apache.http.ssl.TrustStrategy;
 import org.apache.http.util.EntityUtils;
-import org.b3log.latke.Latkes;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.Latkes;
+import org.b3log.solo.bolo.pic.PicUploadProcessor;
 import org.b3log.solo.bolo.tool.PassSSL;
+import org.b3log.solo.logging.Logger;
+import org.b3log.solo.util.S3CompatibleUploader;
 import org.json.JSONObject;
 
-import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.IOException;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -82,12 +77,40 @@ public class UploadUtil {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(UploadUtil.class);
+    private static final Object LOCAL_NAME_LOCK = new Object();
 
     public static String upload(String config, File file) throws Exception {
         String result = "";
-        String type = config.split("<<>>")[0];
+        String type = config == null ? "" : config.split("<<>>", 2)[0].strip().toLowerCase(Locale.ROOT);
         String localFilePath = file.getAbsolutePath();
         switch (type) {
+            case "s3":
+                final S3CompatibleUploader.S3Config s3Cfg = S3CompatibleUploader.parseTuChuangConfig(config);
+                final Date s3Now = new Date();
+                final String s3MonthDir = new SimpleDateFormat("yyyy/MM").format(s3Now);
+                final String s3Timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(s3Now);
+                String s3RawName = file.getName() == null ? "image" : file.getName().replaceAll("[^A-Za-z0-9._-]", "_");
+                while (s3RawName.contains("..")) {
+                    s3RawName = s3RawName.replace("..", "_");
+                }
+                s3RawName = s3RawName.replaceAll("^[^A-Za-z0-9]+", "");
+                if (s3RawName.isEmpty()) {
+                    s3RawName = "image";
+                }
+                if (s3RawName.length() > 80) {
+                    s3RawName = s3RawName.substring(s3RawName.length() - 80);
+                }
+                final String s3Leaf = s3Timestamp + "_" + s3RawName;
+                final String s3Key = s3Cfg.subDir().isEmpty()
+                        ? (s3MonthDir + "/" + s3Leaf)
+                        : (s3Cfg.subDir() + "/" + s3MonthDir + "/" + s3Leaf);
+                String s3ContentType = PicUploadProcessor.safeImageContentType(file.getName());
+                if (s3ContentType == null) {
+                    s3ContentType = PicUploadProcessor.safeImageContentType("img_" + s3RawName);
+                }
+                // Stream directly from staged file Path without loading full file bytes into heap.
+                result = S3CompatibleUploader.uploadObject(s3Cfg, s3Key, file.toPath(), s3ContentType);
+                break;
             case "local":
                 String localImagePath = config.split("<<>>")[1];
                 File localImageBedDir = new File(localImagePath);
@@ -95,17 +118,31 @@ public class UploadUtil {
                     localImageBedDir.mkdirs();
                 }
 
-                // 组建目录
-                String localDate = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-                String localFilename;
+                // 组建目录（并发安全防同毫秒覆盖）
+                String localExt = "";
                 try {
-                    localFilename = localDate + file.getName().substring(file.getName().lastIndexOf(".")).replace(" ", "_");
-                } catch (Exception e) {
-                    localFilename = localDate;
+                    final int dotIdx = file.getName().lastIndexOf(".");
+                    if (dotIdx >= 0) {
+                        localExt = file.getName().substring(dotIdx).replace(" ", "_");
+                    }
+                } catch (Exception ignored) {
+                }
+                String localFilename;
+                File localNewFile;
+                synchronized (LOCAL_NAME_LOCK) {
+                    final String localDate = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+                    localFilename = localDate + localExt;
+                    localNewFile = new File(localImageBedDir, localFilename);
+                    int seq = 0;
+                    while (localNewFile.exists()) {
+                        seq++;
+                        localFilename = localDate + "_" + seq + localExt;
+                        localNewFile = new File(localImageBedDir, localFilename);
+                    }
+                    localNewFile.createNewFile();
                 }
 
                 // 传入文件
-                File localNewFile = new File(localImagePath + "/" + localFilename);
                 FileUtils.copyFile(file, localNewFile);
                 result = Latkes.getContextPath() + "/image/" + localFilename;
                 LOGGER.log(Level.INFO, "An image has been uploaded to local [path=" + localNewFile.getAbsolutePath() + "]");

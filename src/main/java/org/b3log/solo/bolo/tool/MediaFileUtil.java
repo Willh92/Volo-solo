@@ -49,6 +49,8 @@ public class MediaFileUtil {
     public static final int FILE_TYPE_PNG = 33;
     public static final int FILE_TYPE_BMP = 34;
     public static final int FILE_TYPE_WBMP = 35;
+    public static final int FILE_TYPE_WEBP = 36;
+    public static final int FILE_TYPE_AVIF = 37;
     // Playlist
     public static final int FILE_TYPE_M3U = 41;
     public static final int FILE_TYPE_PLS = 42;
@@ -61,7 +63,7 @@ public class MediaFileUtil {
     private static final int FIRST_VIDEO_FILE_TYPE = FILE_TYPE_MP4;
     private static final int LAST_VIDEO_FILE_TYPE = FILE_TYPE_WMV;
     private static final int FIRST_IMAGE_FILE_TYPE = FILE_TYPE_JPEG;
-    private static final int LAST_IMAGE_FILE_TYPE = FILE_TYPE_WBMP;
+    private static final int LAST_IMAGE_FILE_TYPE = FILE_TYPE_AVIF;
     private static final int FIRST_PLAYLIST_FILE_TYPE = FILE_TYPE_M3U;
     private static final int LAST_PLAYLIST_FILE_TYPE = FILE_TYPE_WPL;
     private static final HashMap<String, MediaFileType> sFileTypeMap
@@ -99,6 +101,8 @@ public class MediaFileUtil {
         addFileType("PNG", FILE_TYPE_PNG, "image/png");
         addFileType("BMP", FILE_TYPE_BMP, "image/x-ms-bmp");
         addFileType("WBMP", FILE_TYPE_WBMP, "image/vnd.wap.wbmp");
+        addFileType("WEBP", FILE_TYPE_WEBP, "image/webp");
+        addFileType("AVIF", FILE_TYPE_AVIF, "image/avif");
 
         addFileType("M3U", FILE_TYPE_M3U, "audio/x-mpegurl");
         addFileType("PLS", FILE_TYPE_PLS, "audio/x-scpls");
@@ -119,7 +123,7 @@ public class MediaFileUtil {
 
     static void addFileType(String extension, int fileType, String mimeType) {
         sFileTypeMap.put(extension, new MediaFileType(fileType, mimeType));
-        sMimeTypeMap.put(mimeType, new Integer(fileType));
+        sMimeTypeMap.put(mimeType, Integer.valueOf(fileType));
     }
 
     public static boolean isAudioFileType(int fileType) {

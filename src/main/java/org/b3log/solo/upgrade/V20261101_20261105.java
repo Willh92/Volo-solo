@@ -40,6 +40,7 @@ public final class V20261101_20261105 {
             ensureCommentColumns(connection, p + "comment");
             ensureArticleColumns(connection, p + "article");
             ensureArticleRevisionTable(connection, p + "article_revision");
+            DatabaseIndexMigration.ensureCoreIndexes(connection, p);
             if (!connection.getAutoCommit()) {
                 connection.commit();
             }
@@ -57,16 +58,19 @@ public final class V20261101_20261105 {
     }
 
     private static void ensureDefaultOptions(final OptionQueryService query, final OptionMgmtService mgmt) throws Exception {
-        final Map<String, String> defaults = Map.of(
-                Option.ID_C_ALLOW_REGISTER, "false",
-                Option.ID_C_COMMENT_ACCESS_MODE, "all",
-                Option.ID_C_COMMENT_MODERATION_MODE, "off",
-                Option.ID_C_ARTICLE_OUTDATED_DAYS, "365",
-                Option.ID_C_ENABLE_READING_STATS, "true",
-                Option.ID_C_ENABLE_INSTANT_SEARCH, "true",
-                Option.ID_C_LOCAL_BACKUP_AUTO, "false",
-                Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, "7",
-                Option.ID_C_LOCAL_BACKUP_DIR, ""
+        final Map<String, String> defaults = Map.ofEntries(
+                Map.entry(Option.ID_C_ALLOW_REGISTER, "false"),
+                Map.entry(Option.ID_C_COMMENT_ACCESS_MODE, "all"),
+                Map.entry(Option.ID_C_COMMENT_MODERATION_MODE, "off"),
+                Map.entry(Option.ID_C_ARTICLE_OUTDATED_DAYS, "365"),
+                Map.entry(Option.ID_C_ENABLE_READING_STATS, "true"),
+                Map.entry(Option.ID_C_ENABLE_INSTANT_SEARCH, "true"),
+                Map.entry(Option.ID_C_LOCAL_BACKUP_AUTO, "false"),
+                Map.entry(Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, "7"),
+                Map.entry(Option.ID_C_LOCAL_BACKUP_DIR, ""),
+                Map.entry(Option.ID_C_IMAGE_WEBP_ADAPTIVE, "false"),
+                Map.entry(Option.ID_C_INDEXNOW_ENABLED, "false"),
+                Map.entry(Option.ID_C_INDEXNOW_KEY, "")
         );
         for (final Map.Entry<String, String> entry : defaults.entrySet()) {
             if (query.getOptionById(entry.getKey()) == null) {
@@ -112,7 +116,9 @@ public final class V20261101_20261105 {
                 Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB,
                 Option.ID_C_ENABLE_AUTO_FLUSH_BLOG_TO_GITHUB_PROFILE,
                 Option.ID_C_HELP_IMPROVE_PLAN,
-                Option.ID_C_LOCAL_BACKUP_AUTO
+                Option.ID_C_LOCAL_BACKUP_AUTO,
+                Option.ID_C_IMAGE_WEBP_ADAPTIVE,
+                Option.ID_C_INDEXNOW_ENABLED
         }) {
             booleanDefaults.put(falseKey, Boolean.FALSE);
         }
@@ -264,9 +270,9 @@ public final class V20261101_20261105 {
         }
         final Set<String> columns = new HashSet<>();
         final Map<String, String> actualColumns = new HashMap<>();
-        try (ResultSet result = connection.getMetaData().getColumns(connection.getCatalog(), schema, null, null)) {
+        try (ResultSet result = connection.getMetaData().getColumns(connection.getCatalog(), schema, table, null)) {
             while (result.next()) {
-                if (table.equals(result.getString("TABLE_NAME"))) {
+                if (table.equalsIgnoreCase(result.getString("TABLE_NAME"))) {
                     final String colName = result.getString("COLUMN_NAME");
                     columns.add(colName.toLowerCase(Locale.ROOT));
                     actualColumns.put(colName.toLowerCase(Locale.ROOT), colName);

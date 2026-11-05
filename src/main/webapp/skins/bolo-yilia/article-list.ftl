@@ -44,7 +44,7 @@
             </header>
             <#if article.articleAbstractText==''>
                 <a class="abstract" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
-                    <img src="${article.articleImg1URL?html}" />
+                    <img src="${article.articleImg1URL?html}"<#if article_index gt 0> loading="lazy"</#if> decoding="async" />
                 </a>
                 <#else>
                     <a class="abstract vditor-reset" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}">
@@ -85,12 +85,12 @@
                 <#if article.authorId?? && article.authorId !="">
                     <a rel="nofollow" href="${servePath}/authors/${article.authorId}" class="fn__flex-center">
                         <img class="avatar" title="${article.authorName}" alt="${article.authorName}"
-                            src="${article.authorThumbnailURL}" />
+                            src="${article.authorThumbnailURL}" loading="lazy" decoding="async" />
                     </a>
                     <#else>
                         <a rel="nofollow" href="${servePath}/follow/articles/${article.articleAuthorId}" class="fn__flex-center">
                             <img class="avatar" title="${article.articleAuthorId}" alt="${article.articleAuthorId}"
-                                src="${article.authorThumbnailURL}" />
+                                src="${article.authorThumbnailURL}" loading="lazy" decoding="async" />
                         </a>
                 </#if>
             </footer>

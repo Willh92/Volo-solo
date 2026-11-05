@@ -29,7 +29,7 @@
     by <a href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
 </footer>
 <button class="icon-up" type="button" onclick="Util.goTop()" aria-label="${goTopLabel?html}" title="${goTopLabel?html}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
-<script src="${staticServePath}/js/lib/compress/pjax.min.js"></script>
+<script src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
 <#include "../../common-template/label.ftl">

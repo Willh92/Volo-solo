@@ -29,6 +29,10 @@ import org.b3log.solo.repository.ArchiveDateArticleRepository;
 import org.b3log.solo.repository.ArchiveDateRepository;
 import org.json.JSONObject;
 
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,6 +44,8 @@ import java.util.List;
  */
 @Service
 public class ArchiveDateQueryService {
+
+    public static final String MONTH_ARCHIVE_IDS = "monthArchiveIds";
 
     /**
      * Logger.
@@ -89,35 +95,49 @@ public class ArchiveDateQueryService {
     }
 
     /**
-     * Gets an archive date by the specified archive date string.
+     * Gets an archive date by the specified archive date string, resolving all month {@code oId}s
+     * and the published article count without repeating month-range lookups.
      *
      * @param archiveDateString the specified archive date string (yyyy/MM)
-     * @return for example,
-     * <pre>
-     * {
-     *     "archiveDate": {
-     *         "oId": "",
-     *         "archiveTime": "",
-     *         "archiveDatePublishedArticleCount": int
-     *     }
-     * }
-     * </pre>, returns {@code null} if not found
+     * @return wrapper containing {@code archiveDate} and {@code monthArchiveIds}, or {@code null} if not found
      * @throws ServiceException service exception
      */
     public JSONObject getByArchiveDateString(final String archiveDateString) throws ServiceException {
-        final JSONObject ret = new JSONObject();
+        if (null == archiveDateString || !archiveDateString.matches("\\d{4}/(0[1-9]|1[0-2])")) {
+            return null;
+        }
 
         try {
-            final JSONObject archiveDate = archiveDateRepository.getByArchiveDate(archiveDateString);
-            if (null == archiveDate) {
+            final YearMonth month = YearMonth.parse(archiveDateString.replace('/', '-'));
+            final ZoneId zone = ZoneId.systemDefault();
+            final long start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+            final long end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+            final List<JSONObject> dates = archiveDateRepository.select(
+                    "SELECT oId, archiveTime FROM " + archiveDateRepository.getName()
+                            + " WHERE archiveTime >= ? AND archiveTime < ? ORDER BY archiveTime, oId",
+                    start, end);
+            if (null == dates || dates.isEmpty()) {
                 return null;
             }
 
-            final int articleCount = getArchiveDatePublishedArticleCount(archiveDate.optString(Keys.OBJECT_ID));
-            archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, articleCount);
-            ret.put(ArchiveDate.ARCHIVE_DATE, archiveDate);
+            final JSONObject archiveDate = dates.get(0);
+            final List<String> monthIds = new ArrayList<>(dates.size());
+            for (final JSONObject row : dates) {
+                final String id = row.optString(Keys.OBJECT_ID);
+                if (!id.isEmpty()) {
+                    monthIds.add(id);
+                }
+            }
 
+            final int articleCount = archiveDateArticleRepository.getPublishedArticleCount(monthIds);
+            archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, articleCount);
+
+            final JSONObject ret = new JSONObject();
+            ret.put(ArchiveDate.ARCHIVE_DATE, archiveDate);
+            ret.put(MONTH_ARCHIVE_IDS, (Object) monthIds);
             return ret;
+        } catch (final DateTimeParseException e) {
+            return null;
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Gets archive date[string=" + archiveDateString + "] failed", e);
             throw new ServiceException("Gets archive date[string=" + archiveDateString + "] failed");

@@ -28,7 +28,9 @@ import org.b3log.solo.model.Comment;
 import org.json.JSONObject;
 
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Comment repository.
@@ -97,7 +99,7 @@ public class CommentRepository extends AbstractRepository {
 
     @Override
     public JSONObject get(final String id) throws RepositoryException {
-        JSONObject ret = commentCache.getComment(id);
+        JSONObject ret = null == commentCache ? null : commentCache.getComment(id);
         if (null != ret) {
             return ret;
         }
@@ -107,7 +109,9 @@ public class CommentRepository extends AbstractRepository {
             return null;
         }
 
-        commentCache.putComment(ret);
+        if (null != commentCache) {
+            commentCache.putComment(ret);
+        }
 
         return org.b3log.solo.util.Solos.clone(ret);
     }
@@ -118,7 +122,38 @@ public class CommentRepository extends AbstractRepository {
 
         comment.put(Keys.OBJECT_ID, id);
         if (null != commentCache) {
-            commentCache.putComment(comment);
+            if (null != propertyNames && propertyNames.length > 0 && !comment.has(Comment.COMMENT_CONTENT)) {
+                final JSONObject cached = commentCache.getComment(id);
+                if (null != cached) {
+                    final String prevOnId = cached.optString(Comment.COMMENT_ON_ID);
+                    for (final String prop : propertyNames) {
+                        if (comment.has(prop)) {
+                            cached.put(prop, comment.opt(prop));
+                        }
+                    }
+                    if (!prevOnId.equals(cached.optString(Comment.COMMENT_ON_ID))) {
+                        commentCache.removeComment(id);
+                    }
+                    commentCache.putComment(cached);
+                } else {
+                    String onId = comment.optString(Comment.COMMENT_ON_ID);
+                    if (onId.isEmpty()) {
+                        final JSONObject persisted = super.get(id);
+                        if (null != persisted) {
+                            onId = persisted.optString(Comment.COMMENT_ON_ID);
+                        }
+                    }
+                    if (!onId.isEmpty()) {
+                        final JSONObject carrier = new JSONObject();
+                        carrier.put(Keys.OBJECT_ID, id);
+                        carrier.put(Comment.COMMENT_ON_ID, onId);
+                        commentCache.putComment(carrier);
+                    }
+                    commentCache.removeComment(id);
+                }
+            } else {
+                commentCache.putComment(comment);
+            }
         }
         if (null != statisticCache) {
             statisticCache.invalidateCounts();
@@ -201,26 +236,38 @@ public class CommentRepository extends AbstractRepository {
     }
 
     /**
-     * Removes comments of unpublished articles for the specified comments.
+     * Removes comments of unpublished articles for the specified comments using batched article status resolution.
      *
      * @param comments the specified comments
      * @throws RepositoryException repository exception
      */
     private void removeForUnpublishedArticles(final List<JSONObject> comments) throws RepositoryException {
+        if (null == comments || comments.isEmpty()) {
+            return;
+        }
         LOGGER.debug("Removing unpublished articles' comments....");
-        final Iterator<JSONObject> iterator = comments.iterator();
-
+        final Set<String> candidateArticleIds = new LinkedHashSet<>();
+        Iterator<JSONObject> iterator = comments.iterator();
         while (iterator.hasNext()) {
             final JSONObject comment = iterator.next();
-            if (comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
+            if (null == comment
+                    || comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
                 iterator.remove();
                 continue;
             }
             final String articleId = comment.optString(Comment.COMMENT_ON_ID);
-            if (!articleRepository.isPublished(articleId)) {
+            if (articleId.isBlank()) {
                 iterator.remove();
+                continue;
             }
+            candidateArticleIds.add(articleId);
         }
+        if (comments.isEmpty() || null == articleRepository) {
+            return;
+        }
+
+        final Set<String> publishedArticleIds = articleRepository.filterPublishedArticleIds(candidateArticleIds);
+        comments.removeIf(comment -> !publishedArticleIds.contains(comment.optString(Comment.COMMENT_ON_ID)));
 
         LOGGER.debug("Removed unpublished articles' comments....");
     }

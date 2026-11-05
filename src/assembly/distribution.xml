@@ -15,7 +15,15 @@
         <fileSet>
             <directory>src/main/webapp</directory>
             <outputDirectory>/</outputDirectory>
-            <excludes><exclude>WEB-INF/**</exclude><exclude>META-INF/**</exclude></excludes>
+            <excludes>
+                <exclude>WEB-INF/**</exclude>
+                <exclude>META-INF/**</exclude>
+                <exclude>scss/**/*.scss</exclude>
+                <exclude>skins/**/*.scss</exclude>
+                <exclude>**/*.map</exclude>
+                <exclude>${kanbanniang.exclude.1}</exclude>
+                <exclude>${kanbanniang.exclude.2}</exclude>
+            </excludes>
         </fileSet>
         <fileSet>
             <directory>${project.build.outputDirectory}</directory>

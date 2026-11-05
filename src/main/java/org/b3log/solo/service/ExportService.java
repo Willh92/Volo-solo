@@ -17,11 +17,12 @@
  */
 package org.b3log.solo.service;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,9 +35,12 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -60,7 +64,6 @@ import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.util.Execs;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
@@ -68,6 +71,7 @@ import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Comment;
+import org.b3log.solo.model.Follow;
 import org.b3log.solo.model.Link;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Page;
@@ -75,6 +79,8 @@ import org.b3log.solo.model.Tag;
 import org.b3log.solo.repository.ArchiveDateArticleRepository;
 import org.b3log.solo.repository.ArchiveDateRepository;
 import org.b3log.solo.repository.ArticleRepository;
+import org.b3log.solo.repository.ArticleRevisionRepository;
+import org.b3log.solo.repository.FollowRepository;
 import org.b3log.solo.repository.CategoryRepository;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.repository.CommentRepository;
@@ -88,6 +94,7 @@ import org.b3log.solo.repository.UserRepository;
 import org.b3log.solo.util.GitHubs;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.yaml.snakeyaml.Yaml;
 
@@ -109,6 +116,8 @@ public class ExportService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(ExportService.class);
+
+    private static final int EXPORT_PAGE_SIZE = 200;
 
     /**
      * Archive date repository.
@@ -188,6 +197,12 @@ public class ExportService {
     @Inject
     private UserRepository userRepository;
 
+    @Inject
+    private FollowRepository followRepository;
+
+    @Inject
+    private ArticleRevisionRepository articleRevisionRepository;
+
     /**
      * Option query service.
      */
@@ -228,90 +243,91 @@ public class ExportService {
         final String dbUser = Latkes.getLocalProperty("jdbc.username");
         final String dbPwd = Latkes.getLocalProperty("jdbc.password");
         final String dbURL = Latkes.getLocalProperty("jdbc.URL");
-        String sql = ""; // exported SQL script
-
-        if (Latkes.RuntimeDatabase.MYSQL == runtimeDatabase) {
-            String db = StringUtils.substringAfterLast(dbURL, "/");
-            db = StringUtils.substringBefore(db, "?");
-
-            try {
-                final ProcessBuilder pb = new ProcessBuilder("mysqldump", "-u" + dbUser, "--databases", db);
-                if (StringUtils.isNotBlank(dbPwd)) {
-                    pb.environment().put("MYSQL_PWD", dbPwd);
-                }
-                pb.redirectErrorStream(false);
-                final Process process = pb.start();
-                process.getOutputStream().close();
-                final java.util.concurrent.atomic.AtomicReference<String> stdoutHolder =
-                        new java.util.concurrent.atomic.AtomicReference<>("");
-                final java.util.concurrent.atomic.AtomicReference<String> stderrHolder =
-                        new java.util.concurrent.atomic.AtomicReference<>("");
-                final Thread outReader = new Thread(() -> {
-                    try (var stdout = process.getInputStream()) {
-                        stdoutHolder.set(IOUtils.toString(stdout, StandardCharsets.UTF_8));
-                    } catch (final IOException ignored) { }
-                }, "volo-mysqldump-stdout");
-                outReader.setDaemon(true);
-                final Thread errReader = new Thread(() -> {
-                    try (var stderr = process.getErrorStream()) {
-                        final byte[] errBytes = stderr.readNBytes(8192);
-                        stderrHolder.set(new String(errBytes, StandardCharsets.UTF_8));
-                    } catch (final IOException ignored) { }
-                }, "volo-mysqldump-stderr");
-                errReader.setDaemon(true);
-                outReader.start();
-                errReader.start();
-                if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
-                    process.destroyForcibly();
-                    LOGGER.log(Level.ERROR, "Export failed, mysqldump timed out after 5 minutes");
-                    return null;
-                }
-                outReader.join(5000L);
-                errReader.join(2000L);
-                if (process.exitValue() != 0) {
-                    LOGGER.log(Level.ERROR, "Export failed, mysqldump exited with code "
-                            + process.exitValue() + ": " + stderrHolder.get());
-                    return null;
-                }
-                sql = stdoutHolder.get();
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Export failed, please check command \"mysqldump\" is on your system", e);
-
-                return null;
-            }
-        } else if (Latkes.RuntimeDatabase.H2 == runtimeDatabase) {
-            try (final Connection connection = Connections.getConnection();
-                    final Statement statement = connection.createStatement()) {
-                final StringBuilder sqlBuilder = new StringBuilder();
-                final ResultSet resultSet = statement.executeQuery("SCRIPT");
-                while (resultSet.next()) {
-                    final String stmt = resultSet.getString(1);
-                    sqlBuilder.append(stmt).append(Strings.LINE_SEPARATOR);
-                }
-                resultSet.close();
-
-                sql = sqlBuilder.toString();
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Export failed", e);
-
-                return null;
-            }
-        }
-
-        if (StringUtils.isBlank(sql)) {
-            LOGGER.log(Level.ERROR, "Export failed, executing export script returns empty");
-
-            return null;
-        }
-
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
+
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory("volo-export-sql-");
-            final File localFile = tempDir.resolve("solo-" + date + ".sql").toFile();
-            final byte[] data = sql.getBytes(StandardCharsets.UTF_8);
-            try (final OutputStream output = new FileOutputStream(localFile)) {
-                IOUtils.write(data, output);
+            final Path sqlPath = tempDir.resolve("solo-" + date + ".sql");
+            final File localFile = sqlPath.toFile();
+
+            if (Latkes.RuntimeDatabase.MYSQL == runtimeDatabase) {
+                String db = StringUtils.substringAfterLast(dbURL, "/");
+                db = StringUtils.substringBefore(db, "?");
+
+                try {
+                    final ProcessBuilder pb = new ProcessBuilder("mysqldump", "-u" + dbUser, "--databases", db);
+                    if (StringUtils.isNotBlank(dbPwd)) {
+                        pb.environment().put("MYSQL_PWD", dbPwd);
+                    }
+                    pb.redirectErrorStream(false);
+                    final Process process = pb.start();
+                    process.getOutputStream().close();
+                    final java.util.concurrent.atomic.AtomicReference<IOException> stdoutErrHolder =
+                            new java.util.concurrent.atomic.AtomicReference<>();
+                    final java.util.concurrent.atomic.AtomicReference<String> stderrHolder =
+                            new java.util.concurrent.atomic.AtomicReference<>("");
+                    final Thread outReader = new Thread(() -> {
+                        try (var stdout = process.getInputStream();
+                             OutputStream fileOut = Files.newOutputStream(sqlPath)) {
+                            stdout.transferTo(fileOut);
+                        } catch (final IOException ioe) {
+                            stdoutErrHolder.set(ioe);
+                        }
+                    }, "volo-mysqldump-stdout");
+                    outReader.setDaemon(true);
+                    final Thread errReader = new Thread(() -> {
+                        try (var stderr = process.getErrorStream()) {
+                            final byte[] errBytes = stderr.readNBytes(8192);
+                            stderrHolder.set(new String(errBytes, StandardCharsets.UTF_8));
+                        } catch (final IOException ignored) { }
+                    }, "volo-mysqldump-stderr");
+                    errReader.setDaemon(true);
+                    outReader.start();
+                    errReader.start();
+                    if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
+                        process.destroyForcibly();
+                        LOGGER.log(Level.ERROR, "Export failed, mysqldump timed out after 5 minutes");
+                        return null;
+                    }
+                    outReader.join(5000L);
+                    errReader.join(2000L);
+                    if (process.exitValue() != 0) {
+                        LOGGER.log(Level.ERROR, "Export failed, mysqldump exited with code "
+                                + process.exitValue() + ": " + stderrHolder.get());
+                        return null;
+                    }
+                    if (stdoutErrHolder.get() != null) {
+                        throw stdoutErrHolder.get();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Export failed, please check command \"mysqldump\" is on your system", e);
+
+                    return null;
+                }
+            } else if (Latkes.RuntimeDatabase.H2 == runtimeDatabase) {
+                try (final Connection connection = Connections.getConnection();
+                     final Statement statement = connection.createStatement();
+                     final ResultSet resultSet = statement.executeQuery("SCRIPT");
+                     final BufferedWriter writer = Files.newBufferedWriter(sqlPath, StandardCharsets.UTF_8)) {
+                    while (resultSet.next()) {
+                        final String stmt = resultSet.getString(1);
+                        if (stmt != null) {
+                            writer.write(stmt);
+                            writer.write(Strings.LINE_SEPARATOR);
+                        }
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Export failed", e);
+
+                    return null;
+                }
+            }
+
+            if (!localFile.isFile() || localFile.length() == 0L) {
+                LOGGER.log(Level.ERROR, "Export failed, executing export script returns empty");
+
+                return null;
             }
 
             final File zipFile = ZipUtil.zip(localFile);
@@ -771,25 +787,17 @@ public class ExportService {
         final List<JSONObject> drafts = new ArrayList<>();
         ret.put("drafts", (Object) drafts);
 
+        final Yaml yaml = new Yaml();
         final JSONArray articles = getJSONs(articleRepository);
         for (int i = 0; i < articles.length(); i++) {
             final JSONObject article = articles.optJSONObject(i);
-            final Map<String, Object> front = new LinkedHashMap<>();
-            final String title = article.optString(Article.ARTICLE_TITLE);
-            front.put("title", title);
-            final String date = DateFormatUtils.format(article.optLong(Article.ARTICLE_CREATED), "yyyy-MM-dd HH:mm:ss");
-            front.put("date", date);
-            front.put("updated",
-                    DateFormatUtils.format(article.optLong(Article.ARTICLE_UPDATED), "yyyy-MM-dd HH:mm:ss"));
-            final List<String> tags = Arrays.stream(article.optString(Article.ARTICLE_TAGS_REF).split(","))
-                    .filter(StringUtils::isNotBlank).map(String::trim).collect(Collectors.toList());
-            if (tags.isEmpty()) {
-                tags.add("Solo");
+            if (article == null) {
+                continue;
             }
-            front.put("tags", tags);
-            front.put("permalink", article.optString(Article.ARTICLE_PERMALINK));
+            final String title = article.optString(Article.ARTICLE_TITLE);
+            final Map<String, Object> front = buildHexoFrontMatter(article, title);
             final JSONObject one = new JSONObject();
-            one.put("front", new Yaml().dump(front));
+            one.put("front", yaml.dump(front));
             one.put("title", title);
             final String rawContent = article.optString(Article.ARTICLE_CONTENT);
             one.put("content", stripLockedContent ? HiddenContentService.stripForFeed(rawContent) : rawContent);
@@ -808,6 +816,88 @@ public class ExportService {
     }
 
     /**
+     * Streams Hexo Markdown entries ({@code posts/}, {@code drafts/}, {@code passwords/}) in pages directly into
+     * {@code zos} without materializing a full-database {@link JSONObject} in heap.
+     */
+    public void writeHexoMDsToZip(final ZipOutputStream zos) throws IOException {
+        if (zos == null || articleRepository == null) {
+            return;
+        }
+        final Yaml yaml = new Yaml();
+        final int[] counters = {1, 1, 1}; // [0]=posts, [1]=drafts, [2]=passwords
+        streamRepositoryRows(articleRepository, article -> {
+            final String folder;
+            final int idx;
+            if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                folder = "passwords";
+                idx = counters[2]++;
+            } else if (Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS)) {
+                folder = "posts";
+                idx = counters[0]++;
+            } else {
+                folder = "drafts";
+                idx = counters[1]++;
+            }
+
+            final String rawTitle = article.optString(Article.ARTICLE_TITLE, "untitled");
+            final Map<String, Object> front = buildHexoFrontMatter(article, article.optString(Article.ARTICLE_TITLE));
+            String safeTitle = rawTitle.replaceAll("[\\\\/:*?\"<>|\\s]+", "-");
+            safeTitle = StringUtils.strip(safeTitle, "-.");
+            if (safeTitle.isEmpty()) {
+                safeTitle = "article-" + idx;
+            }
+            if (safeTitle.length() > 60) {
+                safeTitle = safeTitle.substring(0, 60);
+            }
+            final String entryName = folder + "/" + String.format(Locale.ROOT, "%04d-", idx) + safeTitle + ".md";
+            final String md = "---\n" + yaml.dump(front) + "---\n\n" + article.optString(Article.ARTICLE_CONTENT, "");
+            zos.putNextEntry(new ZipEntry(entryName));
+            zos.write(md.getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        });
+    }
+
+    private static Map<String, Object> buildHexoFrontMatter(final JSONObject article, final String title) {
+        final Map<String, Object> front = new LinkedHashMap<>();
+        front.put("title", title);
+        front.put("date", DateFormatUtils.format(article.optLong(Article.ARTICLE_CREATED), "yyyy-MM-dd HH:mm:ss"));
+        front.put("updated", DateFormatUtils.format(article.optLong(Article.ARTICLE_UPDATED), "yyyy-MM-dd HH:mm:ss"));
+        final List<String> tags = Arrays.stream(article.optString(Article.ARTICLE_TAGS_REF).split(","))
+                .filter(StringUtils::isNotBlank).map(String::trim).collect(Collectors.toList());
+        if (tags.isEmpty()) {
+            tags.add("Solo");
+        }
+        front.put("tags", tags);
+        front.put("permalink", article.optString(Article.ARTICLE_PERMALINK));
+        return front;
+    }
+
+    /**
+     * Streams all 15 database tables in pages directly to {@code writer} in the exact {@link #getJSONs()} schema
+     * with secret redaction/masking applied, avoiding full-DB DOM allocation in heap.
+     */
+    public void writeJSONsToStream(final Writer writer) throws IOException {
+        writer.write("{\n");
+        writeTableEntry(writer, ArchiveDate.ARCHIVE_DATES, archiveDateRepository, false, true);
+        writeTableEntry(writer, ArchiveDate.ARCHIVE_DATE + "_" + Article.ARTICLE, archiveDateArticleRepository, false, false);
+        writeTableEntry(writer, Article.ARTICLES, articleRepository, false, false);
+        writeTableEntry(writer, "articleRevisions", articleRevisionRepository, false, false);
+        writeTableEntry(writer, Category.CATEGORIES, categoryRepository, false, false);
+        writeTableEntry(writer, Category.CATEGORY + "_" + Tag.TAG, categoryTagRepository, false, false);
+        writeTableEntry(writer, Comment.COMMENTS, commentRepository, false, false);
+        writeTableEntry(writer, Link.LINKS, linkRepository, false, false);
+        writeTableEntry(writer, Follow.FOLLOWS, followRepository, false, false);
+        writeTableEntry(writer, Option.OPTIONS, optionRepository, true, false);
+        writeTableEntry(writer, Page.PAGES, pageRepository, false, false);
+        writeTableEntry(writer, Plugin.PLUGINS, pluginRepository, false, false);
+        writeTableEntry(writer, Tag.TAGS, tagRepository, false, false);
+        writeTableEntry(writer, Tag.TAG + "_" + Article.ARTICLES, tagArticleRepository, false, false);
+        writeTableEntry(writer, User.USERS, userRepository, false, false);
+        writer.write("\n}");
+        writer.flush();
+    }
+
+    /**
      * Gets all data as JSON format.
      */
     public JSONObject getJSONs() {
@@ -820,6 +910,7 @@ public class ExportService {
 
         final JSONArray articles = getJSONs(articleRepository);
         ret.put(Article.ARTICLES, articles);
+        ret.put("articleRevisions", getJSONs(articleRevisionRepository));
 
         final JSONArray categories = getJSONs(categoryRepository);
         ret.put(Category.CATEGORIES, categories);
@@ -832,25 +923,15 @@ public class ExportService {
 
         final JSONArray links = getJSONs(linkRepository);
         ret.put(Link.LINKS, links);
+        ret.put(Follow.FOLLOWS, getJSONs(followRepository));
 
         final JSONArray rawOptions = getJSONs(optionRepository);
         final JSONArray options = new JSONArray();
         for (int i = 0; i < rawOptions.length(); i++) {
-            final JSONObject option = rawOptions.optJSONObject(i);
-            if (option == null) {
-                continue;
-            }
-            final String optId = option.optString(Keys.OBJECT_ID);
-            if (TotpService.isProtectedOptionId(optId) || ShareTokenService.OPTION_ID_SECRET.equals(optId)) {
-                continue;
-            }
-            if (Option.ID_C_VOLO_WEBHOOKS.equals(optId)) {
-                final JSONObject masked = new JSONObject(option.toString());
-                masked.put(Option.OPTION_VALUE, WebhookNotifyService.maskJsonArrayString(option.optString(Option.OPTION_VALUE)));
+            final JSONObject masked = filterAndMaskExportOption(rawOptions.optJSONObject(i));
+            if (masked != null) {
                 options.put(masked);
-                continue;
             }
-            options.put(option);
         }
         ret.put(Option.OPTIONS, options);
 
@@ -872,13 +953,137 @@ public class ExportService {
         return ret;
     }
 
-    private JSONArray getJSONs(final Repository repository) {
-        try {
-            return org.b3log.solo.util.QueryResults.array(repository.get(new Query()));
-        } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Gets data from repository [" + repository.getName() + "] failed", e);
+    private static JSONObject filterAndMaskExportOption(final JSONObject option) {
+        if (option == null) {
+            return null;
+        }
+        final String optId = option.optString(Keys.OBJECT_ID);
+        if (TotpService.isProtectedOptionId(optId)
+                || ShareTokenService.OPTION_ID_SECRET.equals(optId)
+                || Option.ID_C_VOLO_PASSKEY_AUTH.equals(optId)
+                || optId.startsWith(Option.ID_C_VOLO_PASSKEY_AUTH + ".")
+                || optId.startsWith(Option.ID_C_VOLO_REMOTE_BACKUP + ".")) {
+            return null;
+        }
+        if (Option.ID_C_VOLO_REMOTE_BACKUP.equals(optId)) {
+            final JSONObject masked = org.b3log.solo.util.Solos.clone(option);
+            masked.put(Option.OPTION_VALUE, RemoteBackupSyncService.maskJsonString(option.optString(Option.OPTION_VALUE)));
+            return masked;
+        }
+        if (Option.ID_C_VOLO_WEBHOOKS.equals(optId)) {
+            final JSONObject masked = org.b3log.solo.util.Solos.clone(option);
+            masked.put(Option.OPTION_VALUE, WebhookNotifyService.maskJsonArrayString(option.optString(Option.OPTION_VALUE)));
+            return masked;
+        }
+        return option;
+    }
 
-            return new JSONArray();
+    @FunctionalInterface
+    private interface IOConsumer<T> {
+        void accept(T item) throws IOException;
+    }
+
+    private void writeTableEntry(final Writer writer,
+                                 final String tableKey,
+                                 final Repository repository,
+                                 final boolean maskOptions,
+                                 final boolean firstTable) throws IOException {
+        if (!firstTable) {
+            writer.write(",\n");
+        }
+        writer.write("  ");
+        writer.write(JSONObject.quote(tableKey));
+        writer.write(": [");
+        final boolean[] hasAny = {false};
+        streamRepositoryRows(repository, row -> {
+            final JSONObject effective = maskOptions ? filterAndMaskExportOption(row) : row;
+            if (effective == null) {
+                return;
+            }
+            if (hasAny[0]) {
+                writer.write(",\n    ");
+            } else {
+                writer.write("\n    ");
+                hasAny[0] = true;
+            }
+            try {
+                effective.write(writer);
+            } catch (final JSONException je) {
+                if (je.getCause() instanceof IOException ioe) {
+                    throw ioe;
+                }
+                throw je;
+            }
+        });
+        if (hasAny[0]) {
+            writer.write("\n  ]");
+        } else {
+            writer.write("]");
+        }
+    }
+
+    private void streamRepositoryRows(final Repository repository, final IOConsumer<JSONObject> consumer)
+            throws IOException {
+        if (repository == null) {
+            return;
+        }
+        final Set<String> seenIds = new HashSet<>();
+        String page1FirstSig = null;
+        for (int page = 1; ; page++) {
+            final JSONArray rows;
+            try {
+                final Query query = new Query()
+                        .addSort(Keys.OBJECT_ID, SortDirection.ASCENDING)
+                        .setPage(page, EXPORT_PAGE_SIZE)
+                        .setPageCount(1);
+                rows = org.b3log.solo.util.QueryResults.array(repository.get(query));
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Gets data from repository [" + safeRepoName(repository) + "] failed", e);
+                break;
+            }
+            if (rows.isEmpty()) {
+                break;
+            }
+            final JSONObject firstRow = rows.optJSONObject(0);
+            final String firstSig = firstRow == null ? "" : firstRow.optString(Keys.OBJECT_ID, firstRow.toString());
+            if (page == 1) {
+                page1FirstSig = firstSig;
+            } else if (firstSig.equals(page1FirstSig)) {
+                break;
+            }
+            int emittedInPage = 0;
+            for (int i = 0; i < rows.length(); i++) {
+                final JSONObject row = rows.optJSONObject(i);
+                if (row == null) {
+                    continue;
+                }
+                final String oid = row.optString(Keys.OBJECT_ID);
+                if (!oid.isEmpty() && !seenIds.add(oid)) {
+                    continue;
+                }
+                emittedInPage++;
+                consumer.accept(row);
+            }
+            if (rows.length() < EXPORT_PAGE_SIZE || emittedInPage == 0) {
+                break;
+            }
+        }
+    }
+
+    private JSONArray getJSONs(final Repository repository) {
+        final JSONArray result = new JSONArray();
+        try {
+            streamRepositoryRows(repository, result::put);
+        } catch (final IOException ignored) {
+        }
+        return result;
+    }
+
+    private static String safeRepoName(final Repository repository) {
+        try {
+            return String.valueOf(repository.getName());
+        } catch (final Exception ignored) {
+            return repository.getClass().getSimpleName();
         }
     }
 }

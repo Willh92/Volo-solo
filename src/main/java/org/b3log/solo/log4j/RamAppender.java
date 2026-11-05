@@ -28,16 +28,43 @@ public final class RamAppender extends AbstractAppender {
     private static final FastDateFormat DATE_FORMAT = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss:SS");
     private static final FixSizeLinkedList<Map<String,Object>> list = new FixSizeLinkedList<>(100);
     private static long id;
-    private static final LogJournal journal = System.getProperty("base.dir", "").isBlank() ? null
-            : new LogJournal(java.nio.file.Path.of(System.getProperty("base.dir"), "logs"));
+    private static String journalBaseDir = "";
+    private static LogJournal journal = initJournal();
+
+    private static LogJournal initJournal() {
+        final String baseDir = System.getProperty("base.dir", "");
+        journalBaseDir = baseDir == null ? "" : baseDir;
+        return journalBaseDir.isBlank() ? null : new LogJournal(java.nio.file.Path.of(journalBaseDir, "logs"));
+    }
+
+    private static LogJournal currentJournal() {
+        final String baseDir = System.getProperty("base.dir", "");
+        final String normalized = baseDir == null ? "" : baseDir;
+        if (!normalized.equals(journalBaseDir)) {
+            if (journal != null) {
+                journal.close();
+            }
+            journalBaseDir = normalized;
+            journal = normalized.isBlank() ? null : new LogJournal(java.nio.file.Path.of(normalized, "logs"));
+        }
+        return journal;
+    }
+
+    public static synchronized void close() {
+        if (journal != null) {
+            journal.close();
+        }
+    }
+
     public static String bounded(final String value) {
         if (value == null) return "";
         return value.length() <= 4096 ? value : value.substring(0, 4096) + " …[truncated]";
     }
     public static synchronized org.json.JSONObject page(final int requestedPage, final int pageSize, final long through) {
         final long snapshot = through == Long.MAX_VALUE ? Math.max(id, System.currentTimeMillis()) : through;
-        if (journal != null && journal.isAvailable()) {
-            try { return journal.page(requestedPage, pageSize, snapshot); }
+        final LogJournal activeJournal = currentJournal();
+        if (activeJournal != null && activeJournal.isAvailable()) {
+            try { return activeJournal.page(requestedPage, pageSize, snapshot); }
             catch (java.io.IOException | RuntimeException ignored) { /* Fall back to recent memory. */ }
         }
         final List<Map<String,Object>> rows = new ArrayList<>();
@@ -56,12 +83,13 @@ public final class RamAppender extends AbstractAppender {
     }
     @Override public void append(final LogEvent event) {
         final Map<String,Object> map = new HashMap<>();
-        map.put("name", event.getLoggerName());
+        final String loggerName = event.getLoggerName() == null ? "" : event.getLoggerName();
+        map.put("name", loggerName);
         map.put("date", DATE_FORMAT.format(event.getTimeMillis()));
         map.put("level", event.getLevel().toString());
-        map.put("message", bounded(event.getMessage().getFormattedMessage()));
+        map.put("message", bounded(event.getMessage() == null ? "" : event.getMessage().getFormattedMessage()));
         final StackTraceElement source = event.getSource();
-        map.put("methodName", source == null ? "" : source.getMethodName());
+        map.put("methodName", source == null ? loggerName : source.getMethodName());
         map.put("lineNumber", source == null ? "" : String.valueOf(source.getLineNumber()));
         map.put("throwable", null);
         if (event.getThrown() != null) {
@@ -73,7 +101,8 @@ public final class RamAppender extends AbstractAppender {
         }
         synchronized (RamAppender.class) {
             id = Math.max(id + 1, System.currentTimeMillis()); map.put("id", id); list.add(map);
-            if (journal != null) journal.append(map);
+            final LogJournal activeJournal = currentJournal();
+            if (activeJournal != null) activeJournal.append(map);
         }
     }
 }

@@ -26,6 +26,7 @@ import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.repository.Query;
@@ -69,31 +70,20 @@ public class FollowService {
     @Inject
     private EventManager eventManager;
 
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidatePublicCommon() {
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     /**
      * Gets follows by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10
-     *                          see {@follow Pagination} for more details
-     * @return for example,
-     * 
-     *         <pre>
-     * {
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "follows": [{
-     *         "oId": "",
-     *         "followTitle": "",
-     *         "followAddress": "",
-     *         ""followDescription": ""
-     *      }, ....]
-     * }
-     *         </pre>
-     * 
+     * @param requestJSONObject the specified request json object
+     * @return follows result JSON
      * @throws ServiceException service exception
      * @see Pagination
      */
@@ -133,20 +123,7 @@ public class FollowService {
      * Gets a follow by the specified follow id.
      *
      * @param followId the specified follow id
-     * @return for example,
-     * 
-     *         <pre>
-     * {
-     *     "follow": {
-     *         "oId": "",
-     *         "followTitle": "",
-     *         "followAddress": "",
-     *         "followDescription": ""
-     *     }
-     * }
-     *         </pre>
-     * 
-     *         , returns {@code null} if not found
+     * @return follow wrapper JSON, returns {@code null} if not found
      * @throws ServiceException service exception
      */
     public JSONObject getFollow(final String followId) throws ServiceException {
@@ -198,7 +175,10 @@ public class FollowService {
             final JSONObject follow = followRepository.get(followId);
             followRepository.remove(followId);
             transaction.commit();
-            eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_FOLLOW, follow));
+            invalidatePublicCommon();
+            if (null != eventManager) {
+                eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_FOLLOW, follow));
+            }
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -212,15 +192,7 @@ public class FollowService {
     /**
      * Updates a follow by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "follow": {
-     *                          "oId": "",
-     *                          "followTitle": "",
-     *                          "followAddress": "",
-     *                          "followDescription": "",
-     *                          "followIcon": ""
-     *                          }
-     *                          see {@link follow} for more details
+     * @param requestJSONObject the specified request json object
      * @throws ServiceException service exception
      */
     public void updateFollow(final JSONObject requestJSONObject) throws ServiceException {
@@ -245,10 +217,13 @@ public class FollowService {
 
             followRepository.update(followId, follow);
             transaction.commit();
-            if (!oldfollow.optString(Follow.FOLLOW_TITLE).equals(follow.optString(Follow.FOLLOW_TITLE))) {
+            invalidatePublicCommon();
+            if (null != articleCache && !oldfollow.optString(Follow.FOLLOW_TITLE).equals(follow.optString(Follow.FOLLOW_TITLE))) {
                 articleCache.removeFollowArticles(oldfollow.optString(Follow.FOLLOW_TITLE));
             }
-            eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
+            if (null != eventManager) {
+                eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
+            }
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -303,6 +278,7 @@ public class FollowService {
             followRepository.update(targetFollow.getString(Keys.OBJECT_ID), targetFollow);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -317,15 +293,7 @@ public class FollowService {
     /**
      * Adds a follow with the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          {
-     *                          "follow": {
-     *                          "followTitle": "",
-     *                          "followAddress": "",
-     *                          "followDescription": "",
-     *                          "followIcon": ""
-     *                          }
-     *                          }, see {@follow Follow} for more details
+     * @param requestJSONObject the specified request json object
      * @return generated follow id
      * @throws ServiceException service exception
      */
@@ -350,7 +318,10 @@ public class FollowService {
             final String ret = followRepository.add(follow);
 
             transaction.commit();
-            eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
+            invalidatePublicCommon();
+            if (null != eventManager) {
+                eventManager.fireEventAsynchronously(new Event<>(EventTypes.FOLLOW_ARTICLE_REFRESH, follow));
+            }
             return ret;
         } catch (final Exception e) {
             if (transaction.isActive()) {
@@ -368,7 +339,7 @@ public class FollowService {
     public void syncAllFollowArticles() {
         try {
             LOGGER.log(Level.DEBUG, "Syncs all follow articles");
-            final List<JSONObject> res = followRepository.getList(new Query());
+            final List<JSONObject> res = followRepository.getList(new Query().setPageCount(1));
             // Feed downloads must not retain this scheduler thread's database connection.
             org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
             if (null == res || res.isEmpty()) {
@@ -386,7 +357,6 @@ public class FollowService {
         } finally {
             org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
         }
-
     }
 
     public void syncFollowArticles(final JSONObject follow) {

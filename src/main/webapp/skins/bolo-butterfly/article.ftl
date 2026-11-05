@@ -113,7 +113,6 @@
         charset="utf-8"></script>
 <#include "footer.ftl">
 <#if pjax><!---- pjax {#pjax} start ----></#if>
-<script src="${staticServePath}/js/lib/jquery/jquery.min.js" charset="utf-8"></script>
 <@comment_script oId=article.oId commentable=article.commentable>
     <#if 0 != randomArticlesDisplayCount>
         page.loadRandomArticles('<h3>${randomArticlesLabel}</h3>');

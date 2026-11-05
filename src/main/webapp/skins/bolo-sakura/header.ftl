@@ -25,7 +25,7 @@
               rel="stylesheet"/>
         <link media="all" href="${staticServePath}/skins/${skinDirName}/css/style.css?${staticResourceVersion}"
               rel="stylesheet"/>
-        <link rel="stylesheet" href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css"/>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css?${staticResourceVersion}"/>
         <style type="text/css">
             tr th, tr td {
                 border: 1px solid #1d1f21;
@@ -73,8 +73,6 @@
         <script type="text/javascript">if (!!window.ActiveXObject || "ActiveXObject" in window) { //is IE?
                 alert('朋友，IE浏览器未适配哦~（QQ、360浏览器请关闭 IE 模式访问~）');
             }</script>
-        <script src="${staticServePath}/js/lib/jquery/jquery.min.js"></script>
-        <link rel="stylesheet" href="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.css"/>
-        <script src="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.js"></script>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.css?${staticResourceVersion}"/>
     </@head>
 </head>

@@ -23,15 +23,14 @@ import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
-import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.util.Strings;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.bolo.tool.MD5Utils;
 import org.b3log.solo.model.Common;
@@ -103,6 +102,15 @@ public class UserMgmtService {
     @Inject
     private OptionRepository optionRepository;
 
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidatePublicCommon() {
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     /**
      * Refresh usite. 展示站点连接 https://github.com/b3log/solo/issues/12719
      */
@@ -154,24 +162,17 @@ public class UserMgmtService {
         usiteOpt.put(Option.OPTION_VALUE, usite.toString());
         try {
             optionMgmtService.addOrUpdateOption(usiteOpt);
+            invalidatePublicCommon();
             LOGGER.log(Level.INFO, "Community contact settings refreshed");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates usite option failed", e);
-
-            return;
         }
     }
 
     /**
      * Updates a user by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "oId": "",
-     *                          "userName": "",
-     *                          "userRole": "",
-     *                          "userURL": "",
-     *                          "userB3Key": "",
-     *                          "userGitHubId": "" // optional
+     * @param requestJSONObject the specified request json object
      * @throws ServiceException service exception
      */
     public void updateUser(final JSONObject requestJSONObject, boolean changePassword) throws ServiceException {
@@ -235,6 +236,7 @@ public class UserMgmtService {
 
             userRepository.update(oldUserId, oldUser);
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -276,6 +278,7 @@ public class UserMgmtService {
             userRepository.update(userId, oldUser, User.USER_ROLE);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -292,13 +295,7 @@ public class UserMgmtService {
     /**
      * Adds a user with the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "userName": "",
-     *                          "userURL": "", // optional, uses 'servePath' instead if not specified
-     *                          "userRole": "", // optional, uses {@value Role#DEFAULT_ROLE} instead if not specified
-     *                          "userAvatar": "", // optional, users generated gravatar url instead if not specified
-     *                          "userGitHubId": "",
-     *                          "userB3Key": ""
+     * @param requestJSONObject the specified request json object
      * @return generated user id
      * @throws ServiceException service exception
      */
@@ -348,6 +345,7 @@ public class UserMgmtService {
 
             userRepository.add(user);
             transaction.commit();
+            invalidatePublicCommon();
 
             return user.optString(Keys.OBJECT_ID);
         } catch (final Exception e) {
@@ -363,12 +361,6 @@ public class UserMgmtService {
         }
     }
 
-    /**
-     * Removes a user specified by the given user id.
-     *
-     * @param userId the given user id
-     * @throws ServiceException service exception
-     */
     /**
      * Registers a verified public reader account strictly isolated to {@link Role#VISITOR_ROLE}.
      */
@@ -405,6 +397,7 @@ public class UserMgmtService {
             final String id = userRepository.add(user);
             user.put(Keys.OBJECT_ID, id);
             transaction.commit();
+            invalidatePublicCommon();
             return user;
         } catch (final Exception e) {
             if (transaction.isActive()) {
@@ -461,6 +454,7 @@ public class UserMgmtService {
                 userRepository.update(userId, user, UserExt.USER_STATUS);
             }
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -484,6 +478,7 @@ public class UserMgmtService {
             userRepository.remove(userId);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();

@@ -157,7 +157,6 @@ admin.commentList = {
         Util.bindCommentAvatars(document.getElementById('commentTable'))
 
         Util.parseMarkdown()
-        Util.parseLanguage()
         $('#loadMsg').text('')
       },
     })

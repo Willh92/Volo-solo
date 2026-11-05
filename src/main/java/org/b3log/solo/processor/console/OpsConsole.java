@@ -6,15 +6,20 @@
  */
 package org.b3log.solo.processor.console;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Level;
+import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.FileUpload;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.http.Response;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.repository.AbstractRepository;
 import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.SortDirection;
 import org.b3log.solo.bolo.pic.PicUploadProcessor;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
@@ -35,23 +40,37 @@ import org.b3log.solo.repository.LinkRepository;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.service.BackupRestoreService;
+import org.b3log.solo.service.ImportService;
 import org.b3log.solo.service.LocalRollingBackupService;
+import org.b3log.solo.service.OptionQueryService;
+import org.b3log.solo.service.PreferenceMgmtService;
+import org.b3log.solo.service.RemoteBackupSyncService;
 import org.b3log.solo.service.WebhookNotifyService;
 import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.QueryResults;
+import org.b3log.solo.util.S3CompatibleUploader;
+import org.b3log.solo.util.Uploads;
 import org.b3log.solo.web.annotation.Before;
 import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -66,6 +85,10 @@ import java.util.stream.Stream;
 public class OpsConsole {
 
     private static final Logger LOGGER = Logger.getLogger(OpsConsole.class);
+    private static final int ORPHAN_SCAN_PAGE_SIZE = 200;
+
+    @Inject
+    private OptionQueryService optionQueryService;
 
     @Inject
     private OptionRepository optionRepository;
@@ -98,6 +121,15 @@ public class OpsConsole {
     private LocalRollingBackupService localRollingBackupService;
 
     @Inject
+    private BackupRestoreService backupRestoreService;
+
+    @Inject
+    private RemoteBackupSyncService remoteBackupSyncService;
+
+    @Inject
+    private ImportService importService;
+
+    @Inject
     private WebhookNotifyService webhookNotifyService;
 
     // =========================================================================
@@ -123,7 +155,13 @@ public class OpsConsole {
             if (Files.isDirectory(baseDir) && !Files.isSymbolicLink(baseDir)) {
                 try (Stream<Path> stream = Files.list(baseDir)) {
                     for (final Path p : stream.toList()) {
-                        if (!Files.isRegularFile(p) || Files.isSymbolicLink(p)) {
+                        final BasicFileAttributes attrs;
+                        try {
+                            attrs = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                        } catch (final IOException ignored) {
+                            continue;
+                        }
+                        if (!attrs.isRegularFile() || attrs.isSymbolicLink()) {
                             continue;
                         }
                         final String name = p.getFileName().toString();
@@ -133,8 +171,8 @@ public class OpsConsole {
                         if (!keyword.isEmpty() && !name.toLowerCase(Locale.ROOT).contains(keyword)) {
                             continue;
                         }
-                        final long size = Files.size(p);
-                        final long modified = Files.getLastModifiedTime(p).toMillis();
+                        final long size = attrs.size();
+                        final long modified = attrs.lastModifiedTime().toMillis();
                         final String publicUrl = Latkes.getContextPath() + "/image/" + name;
                         totalBytes += size;
                         list.add(new JSONObject()
@@ -175,24 +213,30 @@ public class OpsConsole {
                         .put("orphanBytes", 0L));
                 return;
             }
-            final List<Path> candidates = new ArrayList<>();
+            final Map<String, Long> candidateSizes = new LinkedHashMap<>();
             try (Stream<Path> stream = Files.list(baseDir)) {
                 for (final Path p : stream.toList()) {
-                    if (Files.isRegularFile(p) && !Files.isSymbolicLink(p)
-                            && PicUploadProcessor.safeImageContentType(p.getFileName().toString()) != null) {
-                        candidates.add(p);
+                    final BasicFileAttributes attrs;
+                    try {
+                        attrs = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                    } catch (final IOException ignored) {
+                        continue;
+                    }
+                    if (!attrs.isRegularFile() || attrs.isSymbolicLink()) {
+                        continue;
+                    }
+                    final String name = p.getFileName().toString();
+                    if (PicUploadProcessor.safeImageContentType(name) != null) {
+                        candidateSizes.put(name, attrs.size());
                     }
                 }
             }
-            final String corpus = buildReferenceCorpus();
+            final Set<String> orphanSet = findOrphanMediaNames(candidateSizes.keySet());
             final JSONArray orphanNames = new JSONArray();
             long orphanBytes = 0L;
-            for (final Path p : candidates) {
-                final String name = p.getFileName().toString();
-                if (!isMediaReferenced(corpus, name)) {
-                    orphanNames.put(name);
-                    orphanBytes += Files.size(p);
-                }
+            for (final String name : orphanSet) {
+                orphanNames.put(name);
+                orphanBytes += candidateSizes.getOrDefault(name, 0L);
             }
             context.renderJSON(new JSONObject()
                     .put("sc", true)
@@ -247,6 +291,9 @@ public class OpsConsole {
                     deleted++;
                 }
             }
+            if (deleted > 0) {
+                PicUploadProcessor.clearCache();
+            }
             context.renderJSON(new JSONObject()
                     .put("sc", true)
                     .put("deletedCount", deleted)
@@ -280,8 +327,15 @@ public class OpsConsole {
         return realTarget;
     }
 
+    private JSONObject getOptionById(final String optionId) throws Exception {
+        if (optionQueryService != null) {
+            return optionQueryService.getOptionById(optionId);
+        }
+        return optionRepository == null ? null : optionRepository.get(optionId);
+    }
+
     private Path resolveLocalImageBedDir() throws Exception {
-        final JSONObject opt = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG);
+        final JSONObject opt = getOptionById(Option.ID_C_TUCHUANG_CONFIG);
         if (opt == null) {
             return null;
         }
@@ -293,88 +347,125 @@ public class OpsConsole {
         return Path.of(parts[1].strip()).toAbsolutePath().normalize();
     }
 
-    private String buildReferenceCorpus() throws Exception {
-        final StringBuilder sb = new StringBuilder(65536);
-        final JSONArray articles = QueryResults.array(articleRepository.get(new Query()));
-        for (int i = 0; i < articles.length(); i++) {
-            final JSONObject a = articles.optJSONObject(i);
-            if (a != null) {
-                sb.append(a.optString(Article.ARTICLE_CONTENT)).append('\n')
-                        .append(a.optString(Article.ARTICLE_ABSTRACT)).append('\n')
-                        .append(a.optString(Article.ARTICLE_IMG1_URL)).append('\n')
-                        .append(a.optString(Article.ARTICLE_AUDIO_URL)).append('\n');
+    /**
+     * Scans all 9 content/metadata repositories in bounded 200-row pages (selecting only text/URL columns),
+     * eliminating referenced image candidates on the fly and short-circuiting as soon as none remain.
+     */
+    private Set<String> findOrphanMediaNames(final Set<String> candidateNames) throws Exception {
+        if (candidateNames == null || candidateNames.isEmpty()) {
+            return Set.of();
+        }
+        final Map<String, String[]> remaining = new LinkedHashMap<>(candidateNames.size() * 2);
+        for (final String name : candidateNames) {
+            if (name != null && !name.isEmpty()) {
+                remaining.put(name, buildMatchTokens(name));
             }
         }
-        final JSONArray pages = QueryResults.array(pageRepository.get(new Query()));
-        for (int i = 0; i < pages.length(); i++) {
-            final JSONObject p = pages.optJSONObject(i);
-            if (p != null) {
-                sb.append(p.optString(Page.PAGE_ICON)).append('\n')
-                        .append(p.optString(Page.PAGE_PERMALINK)).append('\n');
-            }
+        if (remaining.isEmpty()) {
+            return Set.of();
         }
-        final JSONArray links = QueryResults.array(linkRepository.get(new Query()));
-        for (int i = 0; i < links.length(); i++) {
-            final JSONObject l = links.optJSONObject(i);
-            if (l != null) {
-                sb.append(l.optString(Link.LINK_ICON)).append('\n')
-                        .append(l.optString(Link.LINK_ADDRESS)).append('\n');
-            }
+
+        eliminateReferencedInRepo(remaining, articleRepository,
+                Article.ARTICLE_CONTENT, Article.ARTICLE_ABSTRACT, Article.ARTICLE_IMG1_URL, Article.ARTICLE_AUDIO_URL);
+        eliminateReferencedInRepo(remaining, pageRepository,
+                Page.PAGE_ICON, Page.PAGE_PERMALINK);
+        eliminateReferencedInRepo(remaining, optionRepository,
+                Option.OPTION_VALUE);
+        eliminateReferencedInRepo(remaining, userRepository,
+                UserExt.USER_AVATAR);
+        eliminateReferencedInRepo(remaining, linkRepository,
+                Link.LINK_ICON, Link.LINK_ADDRESS);
+        eliminateReferencedInRepo(remaining, categoryRepository,
+                Category.CATEGORY_DESCRIPTION);
+        eliminateReferencedInRepo(remaining, followRepository,
+                Follow.FOLLOW_ICON, Follow.FOLLOW_DESCRIPTION);
+        eliminateReferencedInRepo(remaining, commentRepository,
+                Comment.COMMENT_CONTENT, Comment.COMMENT_THUMBNAIL_URL);
+        eliminateReferencedInRepo(remaining, articleRevisionRepository,
+                ArticleRevision.REVISION_CONTENT, ArticleRevision.REVISION_ABSTRACT);
+
+        return remaining.keySet();
+    }
+
+    private static void eliminateReferencedInRepo(final Map<String, String[]> remaining,
+                                                  final AbstractRepository repository,
+                                                  final String... textColumns) throws Exception {
+        if (remaining.isEmpty() || repository == null || textColumns == null || textColumns.length == 0) {
+            return;
         }
-        final JSONArray users = QueryResults.array(userRepository.get(new Query()));
-        for (int i = 0; i < users.length(); i++) {
-            final JSONObject u = users.optJSONObject(i);
-            if (u != null) {
-                sb.append(u.optString(UserExt.USER_AVATAR)).append('\n');
+
+
+        final Set<String> seenIds = new HashSet<>();
+        String page1FirstSig = null;
+
+        for (int page = 1; !remaining.isEmpty(); page++) {
+            final Query query = new Query()
+                    .select(Keys.OBJECT_ID, textColumns)
+                    .addSort(Keys.OBJECT_ID, SortDirection.ASCENDING)
+                    .setPage(page, ORPHAN_SCAN_PAGE_SIZE)
+                    .setPageCount(1);
+            final JSONArray rows = QueryResults.array(repository.get(query));
+            if (rows.isEmpty()) {
+                break;
             }
-        }
-        final JSONArray options = QueryResults.array(optionRepository.get(new Query()));
-        for (int i = 0; i < options.length(); i++) {
-            final JSONObject o = options.optJSONObject(i);
-            if (o != null) {
-                sb.append(o.optString(Option.OPTION_VALUE)).append('\n');
+            final JSONObject firstObj = rows.optJSONObject(0);
+            final String firstSig = firstObj == null
+                    ? ""
+                    : (firstObj.has(Keys.OBJECT_ID) ? firstObj.optString(Keys.OBJECT_ID) : firstObj.toString());
+            if (page == 1) {
+                page1FirstSig = firstSig;
+            } else if (!firstSig.isEmpty() && firstSig.equals(page1FirstSig)) {
+                break;
             }
-        }
-        if (categoryRepository != null) {
-            final JSONArray categories = QueryResults.array(categoryRepository.get(new Query()));
-            for (int i = 0; i < categories.length(); i++) {
-                final JSONObject c = categories.optJSONObject(i);
-                if (c != null) {
-                    sb.append(c.optString(Category.CATEGORY_DESCRIPTION)).append('\n');
+
+            int newRowsInPage = 0;
+            for (int i = 0; i < rows.length(); i++) {
+                final JSONObject row = rows.optJSONObject(i);
+                if (row == null) {
+                    continue;
+                }
+                final String oId = row.optString(Keys.OBJECT_ID, "");
+                if (!oId.isEmpty() && !seenIds.add(oId)) {
+                    continue;
+                }
+                newRowsInPage++;
+
+                for (final String col : textColumns) {
+                    final String text = row.optString(col, "");
+                    if (text.isEmpty()) {
+                        continue;
+                    }
+                    final Iterator<Map.Entry<String, String[]>> it = remaining.entrySet().iterator();
+                    while (it.hasNext()) {
+                        final String[] tokens = it.next().getValue();
+                        for (final String token : tokens) {
+                            if (text.contains(token)) {
+                                it.remove();
+                                break;
+                            }
+                        }
+                    }
+                    if (remaining.isEmpty()) {
+                        return;
+                    }
                 }
             }
-        }
-        if (followRepository != null) {
-            final JSONArray follows = QueryResults.array(followRepository.get(new Query()));
-            for (int i = 0; i < follows.length(); i++) {
-                final JSONObject f = follows.optJSONObject(i);
-                if (f != null) {
-                    sb.append(f.optString(Follow.FOLLOW_ICON)).append('\n')
-                            .append(f.optString(Follow.FOLLOW_DESCRIPTION)).append('\n');
-                }
+            if (rows.length() < ORPHAN_SCAN_PAGE_SIZE || (page > 1 && newRowsInPage == 0)) {
+                break;
             }
         }
-        if (commentRepository != null) {
-            final JSONArray comments = QueryResults.array(commentRepository.get(new Query()));
-            for (int i = 0; i < comments.length(); i++) {
-                final JSONObject cm = comments.optJSONObject(i);
-                if (cm != null) {
-                    sb.append(cm.optString(Comment.COMMENT_CONTENT)).append('\n')
-                            .append(cm.optString(Comment.COMMENT_THUMBNAIL_URL)).append('\n');
-                }
-            }
+    }
+
+    private static String[] buildMatchTokens(final String filename) {
+        final String formEncoded = URLEncoder.encode(filename, StandardCharsets.UTF_8);
+        final String pathEncoded = formEncoded.replace("+", "%20");
+        if (filename.equals(formEncoded)) {
+            return new String[]{filename};
         }
-        if (articleRevisionRepository != null) {
-            final JSONArray revisions = QueryResults.array(articleRevisionRepository.get(new Query()));
-            for (int i = 0; i < revisions.length(); i++) {
-                final JSONObject r = revisions.optJSONObject(i);
-                if (r != null) {
-                    sb.append(r.optString(ArticleRevision.REVISION_CONTENT)).append('\n')
-                            .append(r.optString(ArticleRevision.REVISION_ABSTRACT)).append('\n');
-                }
-            }
+        if (formEncoded.equals(pathEncoded)) {
+            return new String[]{filename, formEncoded};
         }
-        return sb.toString();
+        return new String[]{filename, formEncoded, pathEncoded};
     }
 
     public static boolean isMediaReferenced(final String corpus, final String filename) {
@@ -384,7 +475,7 @@ public class OpsConsole {
         if (corpus.contains(filename)) {
             return true;
         }
-        final String formEncoded = java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8);
+        final String formEncoded = URLEncoder.encode(filename, StandardCharsets.UTF_8);
         if (corpus.contains(formEncoded)) {
             return true;
         }
@@ -562,5 +653,401 @@ public class OpsConsole {
         } catch (final Exception e) {
             AdminRequests.reject(context, 502, "测试推送失败：" + e.getMessage());
         }
+    }
+
+    // =========================================================================
+    // 4. S3 Image Bed Connectivity Check
+    // =========================================================================
+
+    @RequestProcessing(value = "/console/s3/check", method = HttpMethod.POST)
+    public void checkS3ImageBed(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        try {
+            final JSONObject req = tryRequestJson(context);
+            final JSONObject storedOpt = getOptionById(Option.ID_C_TUCHUANG_CONFIG);
+            final String storedRaw = storedOpt == null ? "" : storedOpt.optString(Option.OPTION_VALUE, "");
+
+            final String rawTuple = req != null && req.has("config")
+                    ? req.optString("config", "")
+                    : StringUtils.trimToEmpty(context.param("config"));
+
+            final S3CompatibleUploader.S3Config s3Cfg;
+            if (!rawTuple.isEmpty()) {
+                final String merged = PreferenceMgmtService.mergeTuChuangConfig(rawTuple, storedRaw);
+                s3Cfg = S3CompatibleUploader.parseTuChuangConfig(merged);
+            } else {
+                final String endpoint = optField(req, context, "endpoint");
+                final String accessKey = optField(req, context, "accessKey");
+                String secretKey = optField(req, context, "secretKey");
+                final String bucket = optField(req, context, "bucket");
+                final String region = optField(req, context, "region");
+                final String publicDomain = optField(req, context, "publicDomain");
+                final String subDir = optField(req, context, "subDir");
+                final Object rawPathStyle = (req != null && req.has("pathStyle"))
+                        ? req.opt("pathStyle")
+                        : context.param("pathStyle");
+                final boolean pathStyle = "true".equals(Option.normalizeBooleanSwitch(
+                        rawPathStyle, false, "S3 Path-Style 开关配置不正确。"));
+
+                if (PreferenceMgmtService.CLEAR_SECRET_SENTINEL.equals(secretKey)) {
+                    secretKey = "";
+                } else if (secretKey.isEmpty() && !storedRaw.isEmpty()) {
+                    final String[] parts = storedRaw.split("<<>>", -1);
+                    if (parts.length > 3 && "s3".equalsIgnoreCase(parts[0].strip())) {
+                        secretKey = parts[3].strip();
+                    }
+                }
+                s3Cfg = new S3CompatibleUploader.S3Config(
+                        endpoint, accessKey, secretKey, bucket, region, publicDomain, subDir, pathStyle);
+            }
+
+            S3CompatibleUploader.verifyConnectivity(s3Cfg);
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("code", 200)
+                    .put("msg", "S3 连通性测试成功 :)"));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            AdminRequests.reject(context, 502, e.getMessage() == null ? "S3 连接测试失败。" : e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // 5. Backup Archive Inspection & Transactional Restore
+    // =========================================================================
+
+    @RequestProcessing(value = "/console/backups/local/inspect", method = HttpMethod.POST)
+    public void inspectLocalOrUploadedBackup(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        Path tempDir = null;
+        try {
+            final Path targetZip;
+            if (isMultipart(context)) {
+                tempDir = Files.createTempDirectory("volo-backup-inspect-");
+                targetZip = stageUploadedBackupZip(context, tempDir);
+            } else {
+                final JSONObject req = tryRequestJson(context);
+                String fileName = optField(req, context, "fileName");
+                if (fileName.isEmpty()) {
+                    fileName = optField(req, context, "name");
+                }
+                targetZip = localRollingBackupService.resolveValidatedBackupFile(fileName);
+            }
+            final JSONObject summary = backupRestoreService.inspectBackupZip(targetZip);
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("summary", summary)
+                    .put("sourceName", summary.optString("sourceName"))
+                    .put("version", summary.optString("version"))
+                    .put("counts", summary.optJSONObject("counts"))
+                    .put("hasAdminUser", summary.optBoolean("hasAdminUser")));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARN, "Inspect backup archive failed", e);
+            AdminRequests.reject(context, 400, e.getMessage() == null ? "解析备份归档失败。" : e.getMessage());
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+        }
+    }
+
+    @RequestProcessing(value = "/console/backups/local/restore", method = HttpMethod.POST)
+    public void restoreFromLocalOrUploadedBackup(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        Path tempDir = null;
+        try {
+            final Path targetZip;
+            final boolean overwriteAuth;
+            if (isMultipart(context)) {
+                tempDir = Files.createTempDirectory("volo-backup-restore-");
+                targetZip = stageUploadedBackupZip(context, tempDir);
+                overwriteAuth = "true".equals(Option.normalizeBooleanSwitch(
+                        context.param("overwriteAuth"), false, "覆盖账号凭证开关配置不正确。"));
+            } else {
+                final JSONObject req = tryRequestJson(context);
+                String fileName = optField(req, context, "fileName");
+                if (fileName.isEmpty()) {
+                    fileName = optField(req, context, "name");
+                }
+                targetZip = localRollingBackupService.resolveValidatedBackupFile(fileName);
+                final Object rawOverwrite = (req != null && req.has("overwriteAuth"))
+                        ? req.opt("overwriteAuth")
+                        : context.param("overwriteAuth");
+                overwriteAuth = "true".equals(Option.normalizeBooleanSwitch(
+                        rawOverwrite, false, "覆盖账号凭证开关配置不正确。"));
+            }
+
+            final JSONObject result = backupRestoreService.restoreFromBackupZip(targetZip, overwriteAuth);
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("result", result)
+                    .put("preRestoreBackup", result.optString("preRestoreBackup"))
+                    .put("reloginRequired", result.optBoolean("reloginRequired"))
+                    .put("restoredCounts", result.optJSONObject("restoredCounts"))
+                    .put("items", localRollingBackupService.listBackups())
+                    .put("msg", "全量数据恢复完成（已自动保存回滚快照：" + result.optString("preRestoreBackup") + "）。"));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Restore from backup archive failed", e);
+            AdminRequests.reject(context, 503, "执行数据恢复失败：" + (e.getMessage() == null ? "内部错误" : e.getMessage()));
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+        }
+    }
+
+    // =========================================================================
+    // 6. Off-Site Backup Sync (WebDAV & S3)
+    // =========================================================================
+
+    @RequestProcessing(value = "/console/backups/remote", method = HttpMethod.GET)
+    public void getRemoteBackupConfig(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        try {
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("config", remoteBackupSyncService.getRedactedConfig()));
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Get remote backup config failed", e);
+            AdminRequests.reject(context, 503, "读取异地备份配置失败。");
+        }
+    }
+
+    @RequestProcessing(value = "/console/backups/remote/config", method = HttpMethod.POST)
+    public void updateRemoteBackupConfig(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        try {
+            final JSONObject saved = remoteBackupSyncService.updateConfig(tryRequestJson(context));
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("config", saved)
+                    .put("msg", "异地备份同步配置已保存。"));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Save remote backup config failed", e);
+            AdminRequests.reject(context, 503, "保存异地备份配置失败。");
+        }
+    }
+
+    @RequestProcessing(value = "/console/backups/remote/test", method = HttpMethod.POST)
+    public void testRemoteBackupConnection(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        try {
+            final JSONObject result = remoteBackupSyncService.testConnection(tryRequestJson(context));
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("result", result)
+                    .put("msg", "异地备份远端连接测试成功。"));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            AdminRequests.reject(context, 502, e.getMessage() == null ? "远端连接测试失败。" : e.getMessage());
+        }
+    }
+
+    @RequestProcessing(value = "/console/backups/remote/sync", method = HttpMethod.POST)
+    public void syncRemoteBackupNow(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        try {
+            final JSONObject req = tryRequestJson(context);
+            String targetName = optField(req, context, "fileName");
+            if (targetName.isEmpty()) {
+                targetName = optField(req, context, "name");
+            }
+            if (targetName.isEmpty()) {
+                final JSONArray existing = localRollingBackupService.listBackups();
+                if (!existing.isEmpty()) {
+                    targetName = existing.getJSONObject(0).optString("name");
+                } else {
+                    targetName = localRollingBackupService.runBackup(true).optString("name");
+                }
+            }
+            final Path localZip = localRollingBackupService.resolveValidatedBackupFile(targetName);
+            final JSONObject syncResult = remoteBackupSyncService.syncBackupFile(localZip);
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("result", syncResult)
+                    .put("config", remoteBackupSyncService.getRedactedConfig())
+                    .put("msg", "异地备份同步成功：" + targetName));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARN, "Manual remote backup sync failed", e);
+            AdminRequests.reject(context, 502, e.getMessage() == null ? "异地备份同步失败。" : e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // 7. Batch Markdown / ZIP Drag-Drop Import
+    // =========================================================================
+
+    @RequestProcessing(value = "/console/import/batch", method = HttpMethod.POST)
+    public void importBatchMarkdownOrZip(final RequestContext context) {
+        if (!AdminRequests.allowWrite(context)) {
+            return;
+        }
+        Path tempDir = null;
+        try {
+            final String rawPublish = context.param("publishImmediately");
+            final String rawStatus = StringUtils.trimToEmpty(context.param("publishStatus"));
+            final boolean defaultPublish = "published".equalsIgnoreCase(rawStatus);
+            final boolean publishImmediately = "true".equals(Option.normalizeBooleanSwitch(
+                    rawPublish, defaultPublish, "直接发布开关配置不正确。"));
+            final String rawSkip = context.param("skipDuplicatePermalink");
+            final String rawDupMode = StringUtils.trimToEmpty(context.param("duplicateMode"));
+            final boolean defaultSkip = !"copy".equalsIgnoreCase(rawDupMode);
+            final boolean skipDuplicatePermalink = "true".equals(Option.normalizeBooleanSwitch(
+                    rawSkip, defaultSkip, "跳过重复链接开关配置不正确。"));
+
+            tempDir = Files.createTempDirectory("volo-console-batch-import-");
+            final List<FileUpload> uploads = collectMultipartUploads(context, 100L * 1024L * 1024L, 200L * 1024L * 1024L);
+            if (uploads.isEmpty()) {
+                AdminRequests.reject(context, 400, "请选择至少一个 .md 或 .zip 文件进行导入。");
+                return;
+            }
+
+            final List<Path> stagedPaths = new ArrayList<>(uploads.size());
+            int seq = 0;
+            for (final FileUpload upload : uploads) {
+                final String rawName = upload.getFilename();
+                final String ext = Uploads.extension(rawName, "md", "markdown", "zip");
+                final Path slotDir = Files.createDirectories(tempDir.resolve("item-" + (++seq)));
+                final String safeFileName = sanitizeBatchUploadFilename(rawName, ext, seq);
+                final Path target = slotDir.resolve(safeFileName).normalize();
+                if (!target.startsWith(slotDir)) {
+                    throw new IllegalArgumentException("上传文件名不合法。");
+                }
+                Files.write(target, upload.getData());
+                stagedPaths.add(target);
+            }
+
+            final JSONObject summary = importService.importBatchFiles(
+                    stagedPaths, publishImmediately, skipDuplicatePermalink);
+            final int imported = summary.optInt("imported");
+            final int skipped = summary.optInt("skipped");
+            final int failed = summary.optInt("failed");
+            context.renderJSON(new JSONObject()
+                    .put("sc", true)
+                    .put("result", summary)
+                    .put("imported", imported)
+                    .put("skipped", skipped)
+                    .put("failed", failed)
+                    .put("errors", summary.optJSONArray("errors"))
+                    .put("msg", String.format(Locale.ROOT,
+                            "批量导入完成：成功 %d 篇，跳过 %d 篇，失败 %d 篇。", imported, skipped, failed)));
+        } catch (final IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, invalid.getMessage());
+        } catch (final IOException ioErr) {
+            AdminRequests.reject(context, 400, ioErr.getMessage() == null ? "上传文件校验失败。" : ioErr.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Batch markdown/zip import failed", e);
+            AdminRequests.reject(context, 503, "批量导入失败。");
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+        }
+    }
+
+    private static boolean isMultipart(final RequestContext context) {
+        final String ct = context.header("Content-Type");
+        return ct != null && ct.toLowerCase(Locale.ROOT).startsWith("multipart/");
+    }
+
+    private static JSONObject tryRequestJson(final RequestContext context) {
+        if (isMultipart(context)) {
+            return null;
+        }
+        try {
+            return context.requestJSON();
+        } catch (final Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String optField(final JSONObject req, final RequestContext context, final String key) {
+        if (req != null && req.has(key) && !req.isNull(key)) {
+            return StringUtils.trimToEmpty(String.valueOf(req.opt(key)));
+        }
+        return StringUtils.trimToEmpty(context.param(key));
+    }
+
+    private static Path stageUploadedBackupZip(final RequestContext context, final Path tempDir) throws IOException {
+        final List<FileUpload> uploads = collectMultipartUploads(context, 128L * 1024L * 1024L, 128L * 1024L * 1024L);
+        if (uploads.isEmpty()) {
+            throw new IllegalArgumentException("请上传 .zip 备份归档文件或指定本地归档文件名。");
+        }
+        final FileUpload item = uploads.get(0);
+        Uploads.extension(item.getFilename(), "zip");
+        final String safeName = sanitizeBatchUploadFilename(item.getFilename(), "zip", 1);
+        final Path dest = tempDir.resolve(safeName).normalize();
+        if (!dest.startsWith(tempDir)) {
+            throw new IllegalArgumentException("非法的备份压缩包文件名。");
+        }
+        Files.write(dest, item.getData());
+        return dest;
+    }
+
+    private static List<FileUpload> collectMultipartUploads(final RequestContext context,
+                                                            final long maxPerFileBytes,
+                                                            final long maxTotalBytes) throws IOException {
+        final List<FileUpload> files = new ArrayList<>();
+        for (final String field : List.of("file", "file[]", "files", "files[]", "backup")) {
+            final List<FileUpload> part = context.getRequest().getFileUploads(field);
+            if (part != null) {
+                files.addAll(part);
+            }
+        }
+        if (files.size() > 200) {
+            throw new IllegalArgumentException("单次上传文件数量不能超过 200 个。");
+        }
+        long total = 0L;
+        for (final FileUpload f : files) {
+            final byte[] data = f.getData();
+            final long len = data == null ? 0L : data.length;
+            if (len > maxPerFileBytes) {
+                throw new IllegalArgumentException("单个上传文件大小超出限制。");
+            }
+            total += len;
+            if (total > maxTotalBytes) {
+                throw new IllegalArgumentException("上传文件总大小超出限制。");
+            }
+        }
+        return files;
+    }
+
+    private static String sanitizeBatchUploadFilename(final String rawName, final String ext, final int seq) {
+        final int dot = rawName.lastIndexOf('.');
+        String stem = dot > 0 ? rawName.substring(0, dot) : rawName;
+        stem = stem.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]+", "_").strip();
+        while (stem.contains("..")) {
+            stem = stem.replace("..", "_");
+        }
+        stem = StringUtils.strip(stem, ". ");
+        if (stem.isEmpty()) {
+            stem = "import-" + seq;
+        }
+        if (stem.length() > 100) {
+            stem = stem.substring(0, 100);
+        }
+        return stem + "." + ext;
     }
 }

@@ -17,6 +17,7 @@
  */
 package org.b3log.solo.util;
 
+import com.vdurmont.emoji.EmojiManager;
 import com.vdurmont.emoji.EmojiParser;
 
 import java.util.regex.Pattern;
@@ -61,7 +62,10 @@ public final class Emotions {
         }
         final int firstColon = content.indexOf(':');
         if (firstColon < 0 || content.indexOf(':', firstColon + 1) < 0) {
-            return content;
+            return replaceHeartsIfPresent(content);
+        }
+        if (!hasPotentialShortcode(content, firstColon)) {
+            return replaceHeartsIfPresent(content);
         }
 
         final String ret = toUnicode(content);
@@ -107,6 +111,47 @@ public final class Emotions {
         return sb.toString();
     }
 
+    private static boolean hasPotentialShortcode(final String content, final int firstColon) {
+        final int len = content.length();
+        int open = firstColon;
+        while (open >= 0 && open + 2 < len) {
+            int p = open + 1;
+            final int limit = Math.min(len, p + 41);
+            while (p < limit) {
+                final char ch = content.charAt(p);
+                if (isShortcodeChar(ch) || ch == '|') {
+                    p++;
+                } else {
+                    break;
+                }
+            }
+            final int tokenLen = p - (open + 1);
+            if (tokenLen >= 1 && tokenLen <= 40 && p < len && content.charAt(p) == ':') {
+                final String candidate = content.substring(open + 1, p);
+                final int pipeIdx = candidate.indexOf('|');
+                final String baseAlias = pipeIdx > 0 ? candidate.substring(0, pipeIdx) : candidate;
+                if (EMOJI_SET.contains(baseAlias) || EmojiManager.getForAlias(baseAlias) != null) {
+                    return true;
+                }
+                open = p;
+                continue;
+            }
+            open = p < len && content.charAt(p) == ':' ? p : content.indexOf(':', p);
+        }
+        return false;
+    }
+
+    private static String replaceHeartsIfPresent(final String input) {
+        String ret = input;
+        if (ret.indexOf('❤') >= 0) {
+            ret = ret.replace("❤", "❤️");
+        }
+        if (ret.indexOf('♥') >= 0) {
+            ret = ret.replace("♥", "❤️");
+        }
+        return ret;
+    }
+
     /**
      * Replaces the emoji's alias by its unicode. Example: ":smile:" gives "😄".
      *
@@ -114,10 +159,6 @@ public final class Emotions {
      * @return the string with the mojis replaces by their unicode
      */
     private static String toUnicode(final String content) {
-        String ret = EmojiParser.parseToUnicode(content);
-        ret = ret.replace("❤", "❤️");
-        ret = ret.replace("♥", "❤️");
-
-        return ret;
+        return replaceHeartsIfPresent(EmojiParser.parseToUnicode(content));
     }
 }

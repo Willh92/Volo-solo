@@ -27,30 +27,50 @@
  */
 var Skin = {
   _initCommon: function ($goTop) {
+    $(window).off('scroll.bolo9iphp')
     var $banner = $('header .banner'),
-      $navbar = $('header .navbar')
+      $navbar = $('header .navbar'),
+      $mainWrapParent = $('.main-wrap').parent(),
+      lastVisible = null,
+      lastPinned = null
 
-    $(window).scroll(function () {
-      if ($(window).scrollTop() > 125) {
-        $goTop.show()
-      } else {
-        $goTop.hide()
+    function onScroll () {
+      var scrollTop = $(window).scrollTop()
+      var visible = scrollTop > 125
+      if (visible !== lastVisible) {
+        lastVisible = visible
+        if (visible) {
+          $goTop.show()
+        } else {
+          $goTop.hide()
+        }
       }
 
       if ($(window).width() < 701) {
         return false
       }
 
-      if ($(window).scrollTop() > $banner.height()) {
-        $navbar.addClass('pin')
-        $('.main-wrap').parent().css('margin-top', '81px')
-      } else {
-        $navbar.removeClass('pin')
-        $('.main-wrap').parent().css('margin-top', '0')
+      var pinned = scrollTop > $banner.height()
+      if (pinned !== lastPinned) {
+        lastPinned = pinned
+        if (pinned) {
+          $navbar.addClass('pin')
+          $mainWrapParent.css('margin-top', '81px')
+        } else {
+          $navbar.removeClass('pin')
+          $mainWrapParent.css('margin-top', '0')
+        }
       }
-    })
+    }
 
-    $(window).scroll()
+    $(window).on('scroll.bolo9iphp', onScroll)
+    if (window.BoloNavigation) {
+      BoloNavigation.onLeave(function () {
+        $(window).off('scroll.bolo9iphp')
+      })
+    }
+
+    onScroll()
   },
   init: function () {
     this._initCommon($('.icon-up'))

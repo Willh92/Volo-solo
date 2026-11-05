@@ -20,6 +20,7 @@ package org.b3log.solo.service;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.ServiceException;
@@ -50,6 +51,15 @@ public class LinkMgmtService {
     @Inject
     private LinkRepository linkRepository;
 
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidatePublicCommon() {
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     private static void validateLinkUrls(final JSONObject link) throws ServiceException {
         final String linkAddress = link.optString(Link.LINK_ADDRESS).trim();
         if (!OutboundUrls.isHttpOrHttps(linkAddress)) {
@@ -76,6 +86,7 @@ public class LinkMgmtService {
             linkRepository.remove(linkId);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -106,6 +117,7 @@ public class LinkMgmtService {
             linkRepository.update(linkId, link);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final ServiceException e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -159,6 +171,7 @@ public class LinkMgmtService {
             linkRepository.update(targetLink.getString(Keys.OBJECT_ID), targetLink);
 
             transaction.commit();
+            invalidatePublicCommon();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -189,6 +202,7 @@ public class LinkMgmtService {
             final String ret = linkRepository.add(link);
 
             transaction.commit();
+            invalidatePublicCommon();
 
             return ret;
         } catch (final ServiceException e) {

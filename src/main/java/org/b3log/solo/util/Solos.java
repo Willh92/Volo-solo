@@ -153,13 +153,13 @@ public final class Solos {
     }
 
     static {
-        String cookieNameConf = Latkes.getLatkeProperty("cookieName");
+        String cookieNameConf = safeLatkeProperty("cookieName");
         if (StringUtils.isBlank(cookieNameConf)) {
             cookieNameConf = "solo";
         }
         COOKIE_NAME = cookieNameConf;
 
-        String cookieSecret = Latkes.getLatkeProperty("cookieSecret");
+        String cookieSecret = safeLatkeProperty("cookieSecret");
         if (StringUtils.isBlank(cookieSecret)) {
             final byte[] secretBytes = new byte[32];
             new java.security.SecureRandom().nextBytes(secretBytes);
@@ -167,7 +167,23 @@ public final class Solos {
         }
         COOKIE_SECRET = cookieSecret;
 
-        COOKIE_HTTP_ONLY = !"false".equalsIgnoreCase(Latkes.getLocalProperty("cookieHttpOnly"));
+        COOKIE_HTTP_ONLY = !"false".equalsIgnoreCase(safeLocalProperty("cookieHttpOnly"));
+    }
+
+    private static String safeLatkeProperty(final String name) {
+        try {
+            return Latkes.getLatkeProperty(name);
+        } catch (final Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String safeLocalProperty(final String name) {
+        try {
+            return Latkes.getLocalProperty(name);
+        } catch (final Exception ignored) {
+            return null;
+        }
     }
 
     /**
@@ -483,6 +499,22 @@ public final class Solos {
         }
         if (null != response) {
             expireAuthCookie(response);
+            if (null != request && null != request.getSession()) {
+                expireSessionCookie(response);
+            }
+        }
+    }
+
+    private static void expireSessionCookie(final Response response) {
+        if (null != response) {
+            response.getCookies().removeIf(existing -> Session.LATKE_SESSION_ID.equals(existing.getName()));
+            final Cookie cookie = new Cookie(Session.LATKE_SESSION_ID, "");
+            cookie.setMaxAge(0);
+            cookie.setPath("/");
+            cookie.setHttpOnly(COOKIE_HTTP_ONLY);
+            cookie.setSecure("https".equalsIgnoreCase(Latkes.getServerScheme()));
+            cookie.setSameSite("Lax");
+            response.addCookie(cookie);
         }
     }
 
@@ -641,23 +673,23 @@ public final class Solos {
     }
 
     /**
-     * Clones a JSON object from the specified source object.
+     * Deep-clones a JSON object without serialization or HashMap resizing.
      *
      * @param src the specified source object
      * @return cloned object
      */
     public static JSONObject clone(final JSONObject src) {
-        if (null == src) {
-            return null;
-        }
-        if (src.isEmpty()) {
-            return new JSONObject();
-        }
-        final JSONObject copy = new JSONObject();
-        for (final String key : src.keySet()) {
-            copy.put(key, src.opt(key));
-        }
-        return copy;
+        return org.json.JsonCloneHelper.cloneObject(src);
+    }
+
+    /**
+     * Deep-clones a JSON array without serialization.
+     *
+     * @param src the specified source array
+     * @return cloned array
+     */
+    public static org.json.JSONArray cloneArray(final org.json.JSONArray src) {
+        return org.json.JsonCloneHelper.cloneArray(src);
     }
 
     /**

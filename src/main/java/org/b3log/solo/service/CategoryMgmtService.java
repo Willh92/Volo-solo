@@ -20,6 +20,7 @@ package org.b3log.solo.service;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Transactional;
@@ -58,6 +59,30 @@ public class CategoryMgmtService {
      */
     @Inject
     private CategoryTagRepository categoryTagRepository;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    @Inject
+    private InstantSearchService instantSearchService;
+
+    private void invalidatePublicOrder() {
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+        if (null != instantSearchService) {
+            instantSearchService.invalidate();
+        }
+    }
+
+    private void invalidatePublicCategoryData() {
+        if (null != publicViewCache) {
+            publicViewCache.invalidateAll();
+        }
+        if (null != instantSearchService) {
+            instantSearchService.invalidate();
+        }
+    }
 
     /**
      * Changes the order of a category specified by the given category id with the specified direction.
@@ -100,6 +125,7 @@ public class CategoryMgmtService {
             categoryRepository.update(targetCategory.getString(Keys.OBJECT_ID), targetCategory);
 
             transaction.commit();
+            invalidatePublicOrder();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -126,18 +152,20 @@ public class CategoryMgmtService {
 
             categoryRepository.update(categoryId, category);
 
-            final Query query = new Query().setFilter(
+            final Query query = new Query().setPageCount(1).setFilter(
                     CompositeFilterOperator.and(
                             new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId),
                             new PropertyFilter(Tag.TAG + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, tagId)));
 
             final JSONArray relations = org.b3log.solo.util.QueryResults.array(categoryTagRepository.get(query));
             if (relations.length() < 1) {
+                invalidatePublicCategoryData();
                 return;
             }
 
             final JSONObject relation = relations.optJSONObject(0);
             categoryTagRepository.remove(relation.optString(Keys.OBJECT_ID));
+            invalidatePublicCategoryData();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Adds a category-tag relation failed", e);
 
@@ -162,12 +190,14 @@ public class CategoryMgmtService {
             category.put(Category.CATEGORY_TAG_CNT, tagCount);
 
             categoryRepository.update(categoryId, category);
+            invalidatePublicCategoryData();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.INFO, "Adds a category-tag relation failed", e);
 
             throw new ServiceException(e);
         } catch (NullPointerException NPE) {
             LOGGER.log(Level.INFO, "Category not set.");
+            invalidatePublicCategoryData();
         }
     }
 
@@ -193,6 +223,7 @@ public class CategoryMgmtService {
             category.put(Category.CATEGORY_ORDER, order);
 
             final String ret = categoryRepository.add(record);
+            invalidatePublicCategoryData();
 
             return ret;
         } catch (final RepositoryException e) {
@@ -217,6 +248,7 @@ public class CategoryMgmtService {
             category.put(Category.CATEGORY_TAG_CNT, oldCategory.optInt(Category.CATEGORY_TAG_CNT));
 
             categoryRepository.update(categoryId, category);
+            invalidatePublicCategoryData();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Updates a category [id=" + categoryId + "] failed", e);
 
@@ -235,6 +267,7 @@ public class CategoryMgmtService {
         try {
             categoryTagRepository.removeByCategoryId(categoryId);
             categoryRepository.remove(categoryId);
+            invalidatePublicCategoryData();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Remove a category [id=" + categoryId + "] failed", e);
 
@@ -252,6 +285,7 @@ public class CategoryMgmtService {
     public void removeCategoryTags(final String categoryId) throws ServiceException {
         try {
             categoryTagRepository.removeByCategoryId(categoryId);
+            invalidatePublicCategoryData();
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Remove category-tag [categoryId=" + categoryId + "] failed", e);
 

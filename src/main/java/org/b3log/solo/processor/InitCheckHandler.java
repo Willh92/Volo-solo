@@ -17,21 +17,20 @@
  */
 package org.b3log.solo.processor;
 
-import org.b3log.solo.util.AdminPaths;
-
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.BeanManager;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.http.function.Handler;
+import org.b3log.latke.ioc.BeanManager;
 import org.b3log.solo.bolo.waf.WAF;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.service.InitService;
 import org.b3log.solo.service.UpgradeService;
-
-import org.b3log.latke.http.Response;
+import org.b3log.solo.util.AdminPaths;
+import org.b3log.solo.web.JsonResponses;
+import org.b3log.solo.web.PublicResourceHandler;
 
 /**
  * Checks initialization handler.
@@ -74,7 +73,7 @@ public class InitCheckHandler implements Handler {
             context.sendError(503); context.abort(); return;
         }
         if (AdminPaths.legacyEntry(localURI)) {
-            org.b3log.solo.service.RiskControlService.recordFailure(context, 404);
+            ErrorProcessor.recordFailureOnce(context, 404);
             context.setHeader("Cache-Control", "no-store");
             context.sendError(404);
             context.abort();
@@ -121,7 +120,7 @@ public class InitCheckHandler implements Handler {
             return;
         }
 
-        if (org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)) {
+        if (PublicResourceHandler.isPublicAssetUri(requestURI)) {
             context.handle();
 
             return;
@@ -130,11 +129,13 @@ public class InitCheckHandler implements Handler {
         if (StringUtils.startsWith(requestURI, Latkes.getContextPath() + "/oauth/bolo")) {
             // Do initialization
             context.handle();
+            JsonResponses.applyCompression(context);
 
             return;
         } else if (UpgradeService.boloFastMigration) {
             context.attr(Keys.HttpRequest.REQUEST_URI, Latkes.getContextPath() + AdminPaths.login());
             context.handle();
+            JsonResponses.applyCompression(context);
             LOGGER.log(Level.DEBUG, "Bolo Fast Migrating is enabled, so redirects to /start");
 
             return;
@@ -144,6 +145,7 @@ public class InitCheckHandler implements Handler {
         final InitService initService = beanManager.getReference(InitService.class);
         if (initService.isInited()) {
             context.handle();
+            JsonResponses.applyCompression(context);
 
             return;
         }
@@ -155,5 +157,6 @@ public class InitCheckHandler implements Handler {
 
         context.attr(Keys.HttpRequest.REQUEST_URI, Latkes.getContextPath() + AdminPaths.login());
         context.handle();
+        JsonResponses.applyCompression(context);
     }
 }

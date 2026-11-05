@@ -17,7 +17,7 @@
  */
 package org.b3log.solo.service;
 
-import java.sql.Connection;
+
 import java.sql.SQLException;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -37,7 +37,7 @@ import org.b3log.latke.plugin.PluginManager;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.repository.jdbc.JdbcFactory;
-import org.b3log.latke.repository.jdbc.util.Connections;
+
 import org.b3log.latke.repository.jdbc.util.JdbcRepositories;
 import org.b3log.latke.repository.jdbc.util.JdbcRepositories.CreateTableResult;
 import org.b3log.latke.repository.jdbc.util.RepositoryDefinition;
@@ -238,12 +238,13 @@ public class InitService {
      * Initializes database tables.
      */
     public void initTables() {
-        try (final Connection chk = Connections.getConnection()) {
+        boolean tablesAlreadyExist = false;
+        try {
             final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
             final boolean userTableExist = JdbcRepositories.existTable(tablePrefix + User.USER);
             final boolean optionTableExist = JdbcRepositories.existTable(tablePrefix + Option.OPTION);
             if (userTableExist && optionTableExist) {
-                return;
+                tablesAlreadyExist = true;
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR,
@@ -251,6 +252,11 @@ public class InitService {
                             + e.getMessage() + "]");
 
             System.exit(-1);
+        }
+
+        if (tablesAlreadyExist) {
+            ensureCoreIndexesBestEffort();
+            return;
         }
 
         LOGGER.info(
@@ -267,6 +273,15 @@ public class InitService {
         for (final CreateTableResult createTableResult : createTableResults) {
             LOGGER.log(Level.DEBUG, "Creates table result [tableName={0}, isSuccess={1}]",
                     createTableResult.getName(), createTableResult.isSuccess());
+        }
+        ensureCoreIndexesBestEffort();
+    }
+
+    private void ensureCoreIndexesBestEffort() {
+        try {
+            org.b3log.solo.upgrade.DatabaseIndexMigration.ensureCoreIndexes();
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARN, "Ensures core database indexes failed", e);
         }
     }
 

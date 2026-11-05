@@ -332,7 +332,35 @@ $.extend(Admin.prototype, {
      */
     init: function () {
         Util.killIE()
-        Util.loadVditorRuntime().catch(function () {})
+        var warmVditorRuntime = function () {
+            if (typeof Util.loadVditorRuntime === 'function') {
+                Util.loadVditorRuntime(Label.staticServePath).catch(function () {})
+            }
+        }
+        var currentHash = (window.location && window.location.hash) || ''
+        if (currentHash === '' || currentHash.indexOf('#article/article') === 0 || currentHash === '#pages') {
+            warmVditorRuntime()
+        } else if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+            var warmTargets = document.querySelectorAll('#tabArticleTitle, #tabsPanel a[href*="#article/article"], #tabsPanel a[href="#pages"], #tabs a[href*="#article/article"], #tabs a[href="#pages"]')
+            var warmed = false
+            var onWarm = function () {
+                if (warmed) return
+                warmed = true
+                for (var i = 0; i < warmTargets.length; i++) {
+                    if (typeof warmTargets[i].removeEventListener === 'function') {
+                        warmTargets[i].removeEventListener('pointerenter', onWarm)
+                        warmTargets[i].removeEventListener('focusin', onWarm)
+                    }
+                }
+                warmVditorRuntime()
+            }
+            for (var j = 0; j < warmTargets.length; j++) {
+                if (typeof warmTargets[j].addEventListener === 'function') {
+                    warmTargets[j].addEventListener('pointerenter', onWarm, { once: true })
+                    warmTargets[j].addEventListener('focusin', onWarm, { once: true })
+                }
+            }
+        }
         $('#loadMsg').text(Label.loadingLabel)
 
         // 构建 tabs

@@ -32,24 +32,54 @@ var Skin = {
   initArticle: function () {
     page.share()
 
+    $(window).off('scroll.boloCasper')
     var $articleProgress = $('.article__progress')
+    var $articleTop = $('.article__top')
+    var lastTopVisible = null
+    var rafId = 0
+
     function updateProgress () {
+      rafId = 0
       if ($articleProgress.length === 0) {
         return false
       }
 
-      $articleProgress.attr('value', parseInt($(window).scrollTop())).
-        attr('max', parseInt($('body').outerHeight() -
-          $(window).height()))
+      var scrollTop = $(window).scrollTop()
+      var max = Math.max(0, parseInt($('body').outerHeight() - $(window).height(), 10) || 0)
+      $articleProgress.attr('value', parseInt(scrollTop, 10) || 0).attr('max', max)
 
-      if ($(window).scrollTop() > 236) {
-        $('.article__top').css('top', 0)
-      } else {
-        $('.article__top').css('top', -61)
+      var visible = scrollTop > 236
+      if (visible !== lastTopVisible) {
+        lastTopVisible = visible
+        $articleTop.css('top', visible ? 0 : -61)
       }
-
     }
-    $(window).on('scroll', updateProgress)
+
+    function onScroll () {
+      var visible = $(window).scrollTop() > 236
+      if (visible !== lastTopVisible) {
+        lastTopVisible = visible
+        $articleTop.css('top', visible ? 0 : -61)
+      }
+      if (!rafId) {
+        if (window.requestAnimationFrame) {
+          rafId = window.requestAnimationFrame(updateProgress)
+        } else {
+          updateProgress()
+        }
+      }
+    }
+
+    $(window).on('scroll.boloCasper', onScroll)
+    if (window.BoloNavigation) {
+      BoloNavigation.onLeave(function () {
+        if (rafId && window.cancelAnimationFrame) {
+          window.cancelAnimationFrame(rafId)
+        }
+        rafId = 0
+        $(window).off('scroll.boloCasper')
+      })
+    }
     updateProgress()
   },
 }

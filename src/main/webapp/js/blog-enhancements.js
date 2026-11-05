@@ -65,6 +65,7 @@
     var searchResultsEl = null;
     var searchFiltersEl = null;
     var searchTimer = null;
+    var activeSearchAbort = null;
     var activeTag = '';
     var activeCategory = '';
     var activeIndex = -1;
@@ -170,6 +171,11 @@
     }
 
     function closeSearch() {
+        clearTimeout(searchTimer);
+        if (activeSearchAbort) {
+            activeSearchAbort.abort();
+            activeSearchAbort = null;
+        }
         if (searchModal) {
             searchModal.hidden = true;
         }
@@ -177,6 +183,12 @@
 
     function performSearch() {
         if (!searchResultsEl) return;
+        if (activeSearchAbort) {
+            activeSearchAbort.abort();
+            activeSearchAbort = null;
+        }
+        var controller = typeof AbortController === 'function' ? new AbortController() : null;
+        activeSearchAbort = controller;
         var cfg = getConfig();
         var q = searchInput ? searchInput.value.trim() : '';
         var params = new URLSearchParams();
@@ -185,12 +197,17 @@
         if (activeCategory) params.set('category', activeCategory);
         params.set('limit', '15');
 
-        fetch(cfg.servePath + '/api/search/instant?' + params.toString(), {
+        var fetchOpts = {
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
-        })
+        };
+        if (controller) fetchOpts.signal = controller.signal;
+
+        fetch(cfg.servePath + '/api/search/instant?' + params.toString(), fetchOpts)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (controller && activeSearchAbort !== controller) return;
+                if (activeSearchAbort === controller) activeSearchAbort = null;
                 if (!data || !data.sc) {
                     searchResultsEl.innerHTML = '<div class="volo-search-empty">' + escapeHtml((data && data.msg) || '搜索暂不可用') + '</div>';
                     return;
@@ -222,7 +239,11 @@
                 }
                 searchResultsEl.innerHTML = html;
             })
-            .catch(function () {
+            .catch(function (err) {
+                if ((err && err.name === 'AbortError') || (controller && (controller.signal.aborted || activeSearchAbort !== controller))) {
+                    return;
+                }
+                if (activeSearchAbort === controller) activeSearchAbort = null;
                 searchResultsEl.innerHTML = '<div class="volo-search-empty">网络请求失败，请稍后重试。</div>';
             });
     }
@@ -878,6 +899,13 @@
         for (var i = 0; i < nodes.length; i++) {
             var el = nodes[i];
             if (excludeRoot && excludeRoot.contains(el)) continue;
+            if (typeof el.checkVisibility === 'function') {
+                if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+                var fastRect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                if (!fastRect || fastRect.width < 4 || fastRect.height < 4) continue;
+                if (vw > 0 && (fastRect.right <= 2 || fastRect.left >= vw - 2)) continue;
+                return true;
+            }
             var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
             if (!rect || rect.width < 4 || rect.height < 4) continue;
             if (vw > 0 && (rect.right <= 2 || rect.left >= vw - 2)) continue;

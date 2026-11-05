@@ -25,6 +25,7 @@ import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.processor.ErrorProcessor;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.util.Skins;
 import org.json.JSONObject;
@@ -71,6 +72,8 @@ public class SkinMgmtService {
      * @throws Exception exception
      */
     public void loadSkins(final JSONObject skin) throws Exception {
+        Skins.invalidateSkinDirNames();
+        ErrorProcessor.clearCache();
         final Set<String> skinDirNames = Skins.getSkinDirNames();
         if (!UpgradeService.boloFastMigration) {
             final String currentSkinDirName = skin.optString(Option.ID_C_SKIN_DIR_NAME);
@@ -121,6 +124,8 @@ public class SkinMgmtService {
             optionRepository.update(Option.ID_C_MOBILE_SKIN_DIR_NAME, mobileSkinDirNameOpt);
 
             transaction.commit();
+            Skins.clearTemplateCache();
+            ErrorProcessor.clearCache();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();

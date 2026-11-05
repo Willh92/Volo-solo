@@ -309,6 +309,11 @@ public final class Option {
      */
     public static final String CATEGORY_C_SKIN = "skin";
 
+    /**
+     * Category - Volo Daily Analytics Trends (isolated from {@link #CATEGORY_C_STATISTIC} to prevent category cache thrashing).
+     */
+    public static final String CATEGORY_C_VOLO_ANALYTICS = "voloAnalytics";
+
     //// Transient ////
     /**
      * Key of statistic blog published article count.
@@ -457,6 +462,12 @@ public final class Option {
     public static final String ID_C_VOLO_BOOK_TOC_PREFIX = "voloBookToc.";
     public static final String ID_C_VOLO_WEBHOOKS = "voloWebhooks";
     public static final String ID_C_VOLO_LINK_HEALTH = "voloLinkHealth";
+    public static final String ID_C_IMAGE_WEBP_ADAPTIVE = "imageWebpAdaptive";
+    public static final String ID_C_INDEXNOW_ENABLED = "indexNowEnabled";
+    public static final String ID_C_INDEXNOW_KEY = "indexNowKey";
+    public static final String ID_C_VOLO_REMOTE_BACKUP = "voloRemoteBackup";
+    public static final String ID_C_VOLO_DAILY_STATS = "voloDailyStats";
+    public static final String ID_C_VOLO_PASSKEY_AUTH = "voloPasskeyAuth";
 
     /**
      * Computes effective comment access mode ("all", "registered", or "off") honoring legacy interactive/commentable flags.

@@ -38,7 +38,7 @@
 </footer>
 <button type="button" class="icon-up mobile-return-top" onclick="Util.goTop()" aria-label="${goTopLabel?html}" title="${goTopLabel?html}"><i class="icon__up" aria-hidden="true"></i></button>
 
-<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}" charset="utf-8"></script>
 <#include "../../common-template/label.ftl">

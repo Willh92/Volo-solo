@@ -87,6 +87,7 @@ public class SkinConsole {
         try {
             optionMgmtService.addOrUpdateOption(new JSONObject().put(org.b3log.latke.Keys.OBJECT_ID, org.b3log.solo.util.SiteAppearance.OPTION)
                     .put(Option.OPTION_CATEGORY, "appearance").put(Option.OPTION_VALUE, accent));
+            org.b3log.solo.processor.ErrorProcessor.clearCache();
             context.renderJSON(new JSONObject().put("sc", true).put("accent", accent).put("msg", "强调色已保存，前后台同步生效。"));
         } catch (ServiceException exception) {
             LOGGER.log(Level.ERROR, "Cannot save appearance", exception);

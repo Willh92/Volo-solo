@@ -39,6 +39,7 @@ import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Plugin;
@@ -62,7 +63,6 @@ import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Templates;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.Global;
-import org.b3log.solo.bolo.prop.Options;
 import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Category;
@@ -108,6 +108,11 @@ public class DataModelService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(DataModelService.class);
+
+    /**
+     * Soft TTL for {@code mostViewCountArticles} sidebar list in milliseconds.
+     */
+    private static final long MOST_VIEW_ARTICLES_TTL_MS = 60_000L;
 
     /**
      * Caches FreeMarker template AST expression lookups so Templates.hasExpression does not
@@ -201,7 +206,7 @@ public class DataModelService {
     private UserRepository userRepository;
 
     /**
-     * Option query service..
+     * Option query service.
      */
     @Inject
     private OptionQueryService optionQueryService;
@@ -211,6 +216,12 @@ public class DataModelService {
      */
     @Inject
     private ArticleQueryService articleQueryService;
+
+    /**
+     * Article management service.
+     */
+    @Inject
+    private ArticleMgmtService articleMgmtService;
 
     /**
      * Tag query service.
@@ -245,6 +256,45 @@ public class DataModelService {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private List<JSONObject> cachedWidgetList(final String key,
+                                              final long ttlMillis,
+                                              final PublicViewCache.CheckedSupplier<List<JSONObject>> loader)
+            throws Exception {
+        if (null == publicViewCache) {
+            return loader.get();
+        }
+        return publicViewCache.getOrComputeList(key, ttlMillis, loader);
+    }
+
+    private long resolvePendingViewDelta(final String articleId) {
+        if (StringUtils.isBlank(articleId)) {
+            return 0L;
+        }
+        return null != articleMgmtService
+                ? articleMgmtService.getPendingViewDelta(articleId)
+                : ArticleMgmtService.peekPendingViewDelta(articleId);
+    }
+
+    private void overlayPendingViewCounts(final List<JSONObject> articles) {
+        if (null == articles || articles.isEmpty()) {
+            return;
+        }
+        for (final JSONObject article : articles) {
+            if (null == article) {
+                continue;
+            }
+            final long delta = resolvePendingViewDelta(article.optString(Keys.OBJECT_ID));
+            if (delta > 0L) {
+                final int updated = (int) Math.min(Integer.MAX_VALUE,
+                        Math.max(0L, article.optLong(Article.ARTICLE_VIEW_COUNT) + delta));
+                article.put(Article.ARTICLE_VIEW_COUNT, updated);
+            }
+        }
+    }
+
     /**
      * Fills articles in index.ftl.
      *
@@ -265,6 +315,9 @@ public class DataModelService {
 
             final Query query = new Query().setPage(currentPageNum, pageSize).setFilter(new PropertyFilter(
                     Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
+            if (!ArticleQueryService.isFullContentListStyle(preference)) {
+                ArticleQueryService.selectWithoutContent(query);
+            }
 
             final Template template = Skins.getSkinTemplate(context, "index.ftl");
             boolean isArticles1 = false;
@@ -322,17 +375,16 @@ public class DataModelService {
     public void fillLinks(final Map<String, Object> dataModel) throws ServiceException {
         Stopwatchs.start("Fill Links");
         try {
-            final Map<String, SortDirection> sorts = new HashMap<>();
-
-            sorts.put(Link.LINK_ORDER, SortDirection.ASCENDING);
-            final Query query = new Query().addSort(Link.LINK_ORDER, SortDirection.ASCENDING).setPageCount(1);
-            final List<JSONObject> links = linkRepository.getList(query);
+            final List<JSONObject> links = cachedWidgetList("links", 0L, () -> {
+                final Query query = new Query().addSort(Link.LINK_ORDER, SortDirection.ASCENDING).setPageCount(1);
+                return linkRepository.getList(query);
+            });
 
             dataModel.put(Link.LINKS, links);
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills links failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -347,14 +399,16 @@ public class DataModelService {
     public void fillFollows(final Map<String, Object> dataModel) throws ServiceException {
         Stopwatchs.start("Fill Follows");
         try {
-            final Query query = new Query().addSort(Follow.FOLLOW_ORDER, SortDirection.ASCENDING).setPageCount(1);
-            final List<JSONObject> follows = followRepository.getList(query);
+            final List<JSONObject> follows = cachedWidgetList("follows", 0L, () -> {
+                final Query query = new Query().addSort(Follow.FOLLOW_ORDER, SortDirection.ASCENDING).setPageCount(1);
+                return followRepository.getList(query);
+            });
 
             dataModel.put(Follow.FOLLOWS, follows);
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills follows failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -369,12 +423,13 @@ public class DataModelService {
     public void fillTags(final Map<String, Object> dataModel) throws ServiceException {
         Stopwatchs.start("Fill Tags");
         try {
-            final List<JSONObject> tags = tagQueryService.getTagsOfPublishedArticles();
+            final List<JSONObject> tags = cachedWidgetList("tagsOfPublishedArticles", 0L,
+                    () -> tagQueryService.getTagsOfPublishedArticles());
             dataModel.put(Tag.TAGS, tags);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills tags failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -391,12 +446,15 @@ public class DataModelService {
 
         try {
             LOGGER.debug("Filling categories....");
-            final List<JSONObject> categories = categoryRepository.getMostUsedCategories(Integer.MAX_VALUE);
+            final List<JSONObject> categories = cachedWidgetList(
+                    "mostUsedCategories:" + Integer.MAX_VALUE,
+                    0L,
+                    () -> categoryRepository.getMostUsedCategories(Integer.MAX_VALUE));
             dataModel.put(Category.CATEGORIES, categories);
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills categories failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -416,12 +474,15 @@ public class DataModelService {
         try {
             LOGGER.debug("Filling most used categories....");
             final int mostUsedCategoryDisplayCnt = Integer.MAX_VALUE; // XXX: preference instead
-            final List<JSONObject> categories = categoryRepository.getMostUsedCategories(mostUsedCategoryDisplayCnt);
+            final List<JSONObject> categories = cachedWidgetList(
+                    "mostUsedCategories:" + mostUsedCategoryDisplayCnt,
+                    0L,
+                    () -> categoryRepository.getMostUsedCategories(mostUsedCategoryDisplayCnt));
             dataModel.put(Common.MOST_USED_CATEGORIES, categories);
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills most used categories failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -441,15 +502,37 @@ public class DataModelService {
         try {
             LOGGER.debug("Filling most used tags....");
             final int mostUsedTagDisplayCnt = preference.getInt(Option.ID_C_MOST_USED_TAG_DISPLAY_CNT);
-            final List<JSONObject> tags = tagArticleRepository.getMostUsedTags(mostUsedTagDisplayCnt);
+            final List<JSONObject> tags = cachedWidgetList(
+                    "mostUsedTags:" + mostUsedTagDisplayCnt,
+                    0L,
+                    () -> tagArticleRepository.getMostUsedTags(mostUsedTagDisplayCnt));
             dataModel.put(Common.MOST_USED_TAGS, tags);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills most used tags failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
+    }
+
+    private String readMaxArchiveRaw() {
+        try {
+            if (null != optionQueryService) {
+                final JSONObject opt = optionQueryService.getOptionById(Option.ID_C_MAX_ARCHIVE);
+                if (null != opt) {
+                    return opt.optString(Option.OPTION_VALUE, "-1");
+                }
+            }
+            final BeanManager beanManager = BeanManager.getInstance();
+            final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
+            final JSONObject maxArchiveOpt = optionRepository.get(Option.ID_C_MAX_ARCHIVE);
+            if (null != maxArchiveOpt) {
+                return maxArchiveOpt.optString(Option.OPTION_VALUE, "-1");
+            }
+        } catch (final Exception ignored) {
+        }
+        return "-1";
     }
 
     /**
@@ -465,82 +548,74 @@ public class DataModelService {
 
         try {
             LOGGER.debug("Filling archive dates....");
-            final List<JSONObject> archiveDates = archiveDateRepository.getPublishedArchiveDates();
-            archiveDates.removeIf(date -> date.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT) <= 0);
-            final List<JSONObject> archiveDates2 = new ArrayList<>();
-            dataModel.put(ArchiveDate.ARCHIVE_DATES, archiveDates2);
-            if (archiveDates.isEmpty()) {
-                return;
-            }
-
-            int maxArchiveResult = -1;
-
-            try {
-                BeanManager beanManager = BeanManager.getInstance();
-                OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
-                JSONObject maxArchiveOpt = optionRepository.get(Option.ID_C_MAX_ARCHIVE);
-                String maxArchive = (String) maxArchiveOpt.get(Option.OPTION_VALUE);
-                maxArchiveResult = Integer.parseInt(maxArchive);
-            } catch (NullPointerException | NumberFormatException NPE) {
-            }
-
-            // 合法性检查
-            if (maxArchiveResult < -1 || maxArchiveResult > archiveDates.size()) {
-                maxArchiveResult = -1;
-            }
-
-            if (maxArchiveResult == -1) {
-                maxArchiveResult = archiveDates.size();
-            }
-
-            if (maxArchiveResult != 0) {
-                archiveDates2.add(archiveDates.get(0));
-
-                if (1 < archiveDates.size()) { // XXX: Workaround, remove the duplicated archive dates
-                    for (int i = 1; i < maxArchiveResult; i++) {
-                        final JSONObject archiveDate = archiveDates.get(i);
-
-                        final long time = archiveDate.getLong(ArchiveDate.ARCHIVE_TIME);
-                        final String dateString = DateFormatUtils.format(time, "yyyy/MM");
-
-                        final JSONObject last = archiveDates2.get(archiveDates2.size() - 1);
-                        final String lastDateString = DateFormatUtils.format(last.getLong(ArchiveDate.ARCHIVE_TIME),
-                                "yyyy/MM");
-
-                        if (!dateString.equals(lastDateString)) {
-                            archiveDates2.add(archiveDate);
-                        } else {
-                            LOGGER.log(Level.DEBUG, "Found a duplicated archive date [{0}]", dateString);
-                        }
-                    }
-                }
-            }
-
             final String localeString = preference.getString(Option.ID_C_LOCALE_STRING);
-            final String language = Locales.getLanguage(localeString);
+            final String maxArchiveRaw = readMaxArchiveRaw();
+            final List<JSONObject> archiveDates2 = cachedWidgetList(
+                    "archiveDates:" + localeString + ":" + maxArchiveRaw,
+                    0L,
+                    () -> {
+                        final List<JSONObject> archiveDates = archiveDateRepository.getPublishedArchiveDates();
+                        archiveDates.removeIf(date -> date.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT) <= 0);
+                        final List<JSONObject> result = new ArrayList<>();
+                        if (archiveDates.isEmpty()) {
+                            return result;
+                        }
 
-            for (final JSONObject archiveDate : archiveDates2) {
-                final long time = archiveDate.getLong(ArchiveDate.ARCHIVE_TIME);
-                final String dateString = DateFormatUtils.format(time, "yyyy/MM");
-                final String[] dateStrings = dateString.split("/");
-                final String year = dateStrings[0];
-                final String month = dateStrings[1];
+                        int maxArchiveResult = -1;
+                        try {
+                            maxArchiveResult = Integer.parseInt(maxArchiveRaw);
+                        } catch (final NumberFormatException ignored) {
+                        }
+                        if (maxArchiveResult < -1 || maxArchiveResult > archiveDates.size()) {
+                            maxArchiveResult = -1;
+                        }
+                        if (maxArchiveResult == -1) {
+                            maxArchiveResult = archiveDates.size();
+                        }
 
-                archiveDate.put(ArchiveDate.ARCHIVE_DATE_YEAR, year);
+                        if (maxArchiveResult != 0) {
+                            result.add(archiveDates.get(0));
+                            if (1 < archiveDates.size()) {
+                                for (int i = 1; i < maxArchiveResult; i++) {
+                                    final JSONObject archiveDate = archiveDates.get(i);
+                                    final long time = archiveDate.getLong(ArchiveDate.ARCHIVE_TIME);
+                                    final String dateString = DateFormatUtils.format(time, "yyyy/MM");
 
-                archiveDate.put(ArchiveDate.ARCHIVE_DATE_MONTH, month);
-                if ("en".equals(language)) {
-                    final String monthName = Dates.EN_MONTHS.get(month);
+                                    final JSONObject last = result.get(result.size() - 1);
+                                    final String lastDateString = DateFormatUtils.format(
+                                            last.getLong(ArchiveDate.ARCHIVE_TIME), "yyyy/MM");
 
-                    archiveDate.put(Common.MONTH_NAME, monthName);
-                }
-            }
+                                    if (!dateString.equals(lastDateString)) {
+                                        result.add(archiveDate);
+                                    } else {
+                                        LOGGER.log(Level.DEBUG, "Found a duplicated archive date [{0}]", dateString);
+                                    }
+                                }
+                            }
+                        }
+
+                        final String language = Locales.getLanguage(localeString);
+                        for (final JSONObject archiveDate : result) {
+                            final long time = archiveDate.getLong(ArchiveDate.ARCHIVE_TIME);
+                            final String dateString = DateFormatUtils.format(time, "yyyy/MM");
+                            final String[] dateStrings = dateString.split("/");
+                            final String year = dateStrings[0];
+                            final String month = dateStrings[1];
+
+                            archiveDate.put(ArchiveDate.ARCHIVE_DATE_YEAR, year);
+                            archiveDate.put(ArchiveDate.ARCHIVE_DATE_MONTH, month);
+                            if ("en".equals(language)) {
+                                archiveDate.put(Common.MONTH_NAME, Dates.EN_MONTHS.get(month));
+                            }
+                        }
+                        return result;
+                    });
 
             dataModel.put(ArchiveDate.ARCHIVE_DATES, archiveDates2);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills archive dates failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -558,15 +633,17 @@ public class DataModelService {
         Stopwatchs.start("Fill Most View Articles");
         try {
             LOGGER.debug("Filling the most view count articles....");
-            final int mostCommentArticleDisplayCnt = preference.getInt(Option.ID_C_MOST_VIEW_ARTICLE_DISPLAY_CNT);
-            final List<JSONObject> mostViewCountArticles = articleRepository
-                    .getMostViewCountArticles(mostCommentArticleDisplayCnt);
+            final int mostViewArticleDisplayCnt = preference.getInt(Option.ID_C_MOST_VIEW_ARTICLE_DISPLAY_CNT);
+            final List<JSONObject> mostViewCountArticles = cachedWidgetList(
+                    "mostViewCountArticles:" + mostViewArticleDisplayCnt,
+                    MOST_VIEW_ARTICLES_TTL_MS,
+                    () -> articleRepository.getMostViewCountArticlesRaw(mostViewArticleDisplayCnt));
+            overlayPendingViewCounts(mostViewCountArticles);
 
             dataModel.put(Common.MOST_VIEW_COUNT_ARTICLES, mostViewCountArticles);
-
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills most view count articles failed", e);
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -586,13 +663,16 @@ public class DataModelService {
         try {
             LOGGER.debug("Filling most comment articles....");
             final int mostCommentArticleDisplayCnt = preference.getInt(Option.ID_C_MOST_COMMENT_ARTICLE_DISPLAY_CNT);
-            final List<JSONObject> mostCommentArticles = articleRepository
-                    .getMostCommentArticles(mostCommentArticleDisplayCnt);
+            final List<JSONObject> mostCommentArticles = cachedWidgetList(
+                    "mostCommentArticles:" + mostCommentArticleDisplayCnt,
+                    0L,
+                    () -> articleRepository.getMostCommentArticlesRaw(mostCommentArticleDisplayCnt));
+            overlayPendingViewCounts(mostCommentArticles);
 
             dataModel.put(Common.MOST_COMMENT_ARTICLES, mostCommentArticles);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills most comment articles failed", e);
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -611,12 +691,16 @@ public class DataModelService {
 
         try {
             final int recentArticleDisplayCnt = preference.getInt(Option.ID_C_RECENT_ARTICLE_DISPLAY_CNT);
-            final List<JSONObject> recentArticles = articleRepository.getRecentArticles(recentArticleDisplayCnt);
+            final List<JSONObject> recentArticles = cachedWidgetList(
+                    "recentArticles:" + recentArticleDisplayCnt,
+                    0L,
+                    () -> articleRepository.getRecentArticlesRaw(recentArticleDisplayCnt));
+            overlayPendingViewCounts(recentArticles);
             dataModel.put(Common.RECENT_ARTICLES, recentArticles);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills recent articles failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -635,27 +719,33 @@ public class DataModelService {
         try {
             LOGGER.debug("Filling recent comments....");
             final int recentCommentDisplayCnt = preference.getInt(Option.ID_C_RECENT_COMMENT_DISPLAY_CNT);
-            final List<JSONObject> recentComments = commentRepository.getRecentComments(recentCommentDisplayCnt);
-            recentComments.removeIf(comment -> comment.optBoolean("commentDeleted"));
-            for (final JSONObject comment : recentComments) {
-                org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
-                String commentContent = comment.optString(Comment.COMMENT_CONTENT);
-                commentContent = Markdowns.toHTML(commentContent);
-                commentContent = Markdowns.clean(commentContent);
-                comment.put(Comment.COMMENT_CONTENT, commentContent);
-                comment.put("commentContentText", org.jsoup.Jsoup.parse(commentContent).text());
-                org.b3log.solo.util.CommentNames.apply(comment);
-                comment.put(Comment.COMMENT_URL, comment.getString(Comment.COMMENT_URL));
-                comment.put(Common.IS_REPLY, false);
-                comment.put(Comment.COMMENT_T_DATE, new Date(comment.optLong(Comment.COMMENT_CREATED)));
-                comment.put("commentDate2", new Date(comment.optLong(Comment.COMMENT_CREATED)));
-            }
+            final List<JSONObject> recentComments = cachedWidgetList(
+                    "recentComments:" + recentCommentDisplayCnt,
+                    0L,
+                    () -> {
+                        final List<JSONObject> list = commentRepository.getRecentComments(recentCommentDisplayCnt);
+                        list.removeIf(comment -> comment.optBoolean("commentDeleted"));
+                        for (final JSONObject comment : list) {
+                            org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
+                            String commentContent = comment.optString(Comment.COMMENT_CONTENT);
+                            commentContent = Markdowns.toHTML(commentContent);
+                            commentContent = Markdowns.clean(commentContent);
+                            comment.put(Comment.COMMENT_CONTENT, commentContent);
+                            comment.put("commentContentText", org.jsoup.Jsoup.parse(commentContent).text());
+                            org.b3log.solo.util.CommentNames.apply(comment);
+                            comment.put(Comment.COMMENT_URL, comment.getString(Comment.COMMENT_URL));
+                            comment.put(Common.IS_REPLY, false);
+                            comment.put(Comment.COMMENT_T_DATE, new Date(comment.optLong(Comment.COMMENT_CREATED)));
+                            comment.put("commentDate2", new Date(comment.optLong(Comment.COMMENT_CREATED)));
+                        }
+                        return list;
+                    });
 
             dataModel.put(Common.RECENT_COMMENTS, recentComments);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills recent comments failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -758,7 +848,7 @@ public class DataModelService {
             final JSONObject preference) {
         // 每月文章数量统计
         try {
-            List<JSONObject> archiveDates = archiveDateRepository.getArchiveDates();
+            List<JSONObject> archiveDates = archiveDateRepository.getPublishedArchiveDates();
             List<JSONObject> archiveDates2 = new ArrayList<>();
             dataModel.put(ArchiveDate.ARCHIVE_DATES, archiveDates2);
             if (archiveDates.isEmpty()) {
@@ -766,14 +856,9 @@ public class DataModelService {
             }
 
             int maxArchiveResult = -1;
-
             try {
-                BeanManager beanManager = BeanManager.getInstance();
-                OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
-                JSONObject maxArchiveOpt = optionRepository.get(Option.ID_C_MAX_ARCHIVE);
-                String maxArchive = (String) maxArchiveOpt.get(Option.OPTION_VALUE);
-                maxArchiveResult = Integer.parseInt(maxArchive);
-            } catch (NullPointerException | NumberFormatException NPE) {
+                maxArchiveResult = Integer.parseInt(readMaxArchiveRaw());
+            } catch (final NumberFormatException ignored) {
             }
 
             // 合法性检查
@@ -898,13 +983,10 @@ public class DataModelService {
         }
 
         // 标签 Top5
-        // tagPublishedRefCount 总计
-        // tagTitle 标签名称
         try {
             List<JSONObject> tags = tagQueryService.getTags();
-            Collections.sort(tags,
-                    Comparator.comparingInt(o -> Integer.parseInt(o.optString(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT))));
-            Collections.reverse(tags);
+            tags.sort(Comparator.comparingInt(
+                    (final JSONObject o) -> o.optInt(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, 0)).reversed());
             if (tags.size() > 5) {
                 tags = tags.subList(0, 5);
             }
@@ -983,7 +1065,7 @@ public class DataModelService {
         Stopwatchs.start("Fill Header");
         try {
             LOGGER.debug("Filling header....");
-            final String topBarHTML = getTopBarHTML(context);
+            final String topBarHTML = getTopBarHTML(context, preference);
             dataModel.put(Common.LOGIN_URL, userQueryService.getLoginURL(Common.ADMIN_INDEX_URI));
             dataModel.put(Common.LOGOUT_URL, userQueryService.getLogoutURL());
             dataModel.put(Common.ONLINE_VISITOR_CNT, StatisticQueryService.getOnlineVisitorCount());
@@ -1033,23 +1115,29 @@ public class DataModelService {
             final String noticeBoard = preference.getString(Option.ID_C_NOTICE_BOARD);
             dataModel.put(Option.ID_C_NOTICE_BOARD, noticeBoard);
             // 皮肤不显示访客用户 https://github.com/b3log/solo/issues/12752
-            final Query query = new Query().setPageCount(1)
-                    .setFilter(new PropertyFilter(User.USER_ROLE, FilterOperator.NOT_EQUAL, Role.VISITOR_ROLE));
-            final List<JSONObject> userList = userRepository.getList(query).stream()
-                    .map(Solos::sanitizeUser).collect(Collectors.toList());
+            final List<JSONObject> userList = cachedWidgetList("adminUsers", 0L, () -> {
+                final Query query = new Query().setPageCount(1)
+                        .setFilter(new PropertyFilter(User.USER_ROLE, FilterOperator.NOT_EQUAL, Role.VISITOR_ROLE));
+                return userRepository.getList(query).stream()
+                        .map(Solos::sanitizeUser).collect(Collectors.toList());
+            });
             dataModel.put(User.USERS, userList);
-            final JSONObject admin = Solos.sanitizeUser(userRepository.getAdmin());
-            dataModel.put(Common.ADMIN_USER, admin);
+            final List<JSONObject> adminHolder = cachedWidgetList("adminUserSingle", 0L, () -> {
+                final JSONObject rawAdmin = Solos.sanitizeUser(userRepository.getAdmin());
+                return null == rawAdmin ? Collections.emptyList() : List.of(rawAdmin);
+            });
+            dataModel.put(Common.ADMIN_USER, adminHolder.isEmpty() ? null : adminHolder.get(0));
             // 返回 Bolo 设定的链滴用户名
             String userName = "";
             try {
-                BeanManager beanManager = BeanManager.getInstance();
-                UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);
-                userName = userQueryService.getB3username();
+                final UserQueryService uqs = null != this.userQueryService
+                        ? this.userQueryService
+                        : BeanManager.getInstance().getReference(UserQueryService.class);
+                userName = uqs.getB3username();
                 if (Option.DefaultPreference.DEFAULT_B3LOG_USERNAME.equals(userName)) {
                     userName = "";
                 }
-            } catch (NullPointerException NPE) {
+            } catch (final NullPointerException ignored) {
             }
             dataModel.put(Option.ID_C_HACPAI_USER, userName);
             // 交互式开关是否开启
@@ -1076,7 +1164,7 @@ public class DataModelService {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills blog header failed", e);
 
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -1228,16 +1316,19 @@ public class DataModelService {
         Stopwatchs.start("Fill Navigations");
         try {
             LOGGER.debug("Filling page navigations....");
-            final List<JSONObject> pages = pageRepository.getPages();
-            pages.forEach(org.b3log.solo.util.GitHubStats::normalizeNavigationIcon);
+            final List<JSONObject> pages = cachedWidgetList("pageNavigations", 0L, () -> {
+                final List<JSONObject> list = pageRepository.getPages();
+                list.forEach(org.b3log.solo.util.GitHubStats::normalizeNavigationIcon);
+                return list;
+            });
             final String skin = String.valueOf(dataModel.get("skinDirName"));
             final boolean fallbackNavigation = skin.equals("volo-studio");
             dataModel.put(Common.PAGE_NAVIGATIONS, org.b3log.solo.util.AdminPaths.navigation(pages,
                     fallbackNavigation && Boolean.TRUE.equals(dataModel.get("isAdminLoggedIn")),
                     fallbackNavigation && Boolean.TRUE.equals(dataModel.get(Option.ID_C_SHOW_LOGIN_ENTRY))));
-        } catch (final RepositoryException e) {
+        } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills page navigations failed", e);
-            throw new ServiceException(e);
+            throw e instanceof ServiceException se ? se : new ServiceException(e);
         } finally {
             Stopwatchs.end();
         }
@@ -1259,29 +1350,6 @@ public class DataModelService {
         }
     }
 
-    /**
-     * Sets some extra properties into the specified article with the specified
-     * preference, performs content and abstract editor processing.
-     * <p>
-     * Article ext properties:
-     * 
-     * <pre>
-     * {
-     *     ....,
-     *     "authorName": "",
-     *     "authorId": "",
-     *     "authorThumbnailURL": "",
-     *     "hasUpdated": boolean
-     * }
-     * </pre>
-     * </p>
-     *
-     * @param context    the specified HTTP servlet request context
-     * @param article    the specified article
-     * @param preference the specified preference
-     * @throws ServiceException service exception
-     * @see #setArticlesExProperties(RequestContext, List, JSONObject)
-     */
     private record CategoryPreload(
             Map<String, String> tagTitleToId,
             Map<String, String> firstCategoryByTagId,
@@ -1381,6 +1449,13 @@ public class DataModelService {
     private void setArticleExProperties(final RequestContext context, final JSONObject article,
             final JSONObject preference, final CategoryPreload preload) throws ServiceException {
         try {
+            final String articleId = article.optString(Keys.OBJECT_ID);
+            final long pendingDelta = resolvePendingViewDelta(articleId);
+            if (pendingDelta > 0L) {
+                article.put(Article.ARTICLE_VIEW_COUNT,
+                        (int) Math.min(Integer.MAX_VALUE, Math.max(0L, article.optLong(Article.ARTICLE_VIEW_COUNT) + pendingDelta)));
+            }
+
             final JSONObject author = articleQueryService.getAuthor(article);
             final String authorName = author.getString(User.USER_NAME);
             article.put(Common.AUTHOR_NAME, authorName);
@@ -1399,61 +1474,85 @@ public class DataModelService {
             }
 
             final boolean needViewPwd = Solos.needViewPwd(context, article);
-            if (needViewPwd) {
+            final boolean fullContentList = ArticleQueryService.isFullContentListStyle(preference);
+            if (needViewPwd && fullContentList) {
                 final String content = langPropsService.get("articleContentPwd");
                 article.put(ARTICLE_CONTENT, content);
             }
 
             processArticleAbstract(preference, article);
 
-            articleQueryService.markdown(article, context);
+            if (fullContentList) {
+                articleQueryService.markdown(article, context);
+            } else {
+                articleQueryService.markdownAbstractOnly(article, context);
+            }
             article.put("needViewPwd", needViewPwd);
             article.remove(Article.ARTICLE_VIEW_PWD);
 
-            if (null != preload) {
-                JSONObject tagCategory = null;
-                final String tagsStr = article.optString(Article.ARTICLE_TAGS_REF);
-                if (!tagsStr.isEmpty()) {
-                    for (final String tagTitle : tagsStr.split(",")) {
-                        final String tagId = preload.tagTitleToId().get(tagTitle);
-                        if (null != tagId) {
-                            final String catId = preload.firstCategoryByTagId().get(tagId);
-                            final JSONObject cat = null == catId ? null : preload.categoriesById().get(catId);
-                            if (null != cat) {
-                                tagCategory = Solos.clone(cat);
-                                break;
-                            }
-                        }
-                    }
-                }
-                article.put(Category.CATEGORY, tagCategory);
-
-                final String directCatId = preload.lastCategoryByRefId().get(article.optString(Keys.OBJECT_ID));
-                final JSONObject directCat = null == directCatId ? null : preload.categoriesById().get(directCatId);
-                article.put("articleCategory", null == directCat ? "" : directCat.optString(Category.CATEGORY_TITLE));
-                article.put("categoryURI", null == directCat ? "" : directCat.optString(Category.CATEGORY_URI));
-            } else {
-                fillCategory(article);
-
-                article.put("articleCategory", "");
-                article.put("categoryURI", "");
-                try {
-                    final JSONObject cate = categoryTagRepository.getByTagId(article.optString("oId"), 1, Integer.MAX_VALUE);
-                    final int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                    final JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
-                    final String categoryOId = cateS.optString("category_oId");
-                    final JSONObject categoryObj = categoryRepository.get(categoryOId);
-                    if (null != categoryObj) {
-                        article.put("articleCategory", categoryObj.optString("categoryTitle"));
-                        article.put("categoryURI", categoryObj.optString("categoryURI"));
-                    }
-                } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
-                    // Uncategorized and legacy categories retain the empty display values.
-                }
-            }
+            applyPreloadedCategory(article, preload);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Sets article extra properties failed", e);
             throw new ServiceException(e);
+        }
+    }
+
+    /**
+     * Resolves both tag-derived {@code category} and direct {@code articleCategory}/{@code categoryURI}
+     * for a single article using batched {@code IN} queries instead of per-tag N+1 lookups.
+     *
+     * @param article the specified article
+     */
+    public void fillSingleArticleCategory(final JSONObject article) {
+        if (null == article) {
+            return;
+        }
+        final CategoryPreload preload = preloadArticleCategories(Collections.singletonList(article));
+        applyPreloadedCategory(article, preload);
+    }
+
+    private void applyPreloadedCategory(final JSONObject article, final CategoryPreload preload) {
+        final String articleId = article.optString(Keys.OBJECT_ID);
+        if (null != preload) {
+            JSONObject tagCategory = null;
+            final String tagsStr = article.optString(Article.ARTICLE_TAGS_REF);
+            if (!tagsStr.isEmpty()) {
+                for (final String tagTitle : tagsStr.split(",")) {
+                    final String tagId = preload.tagTitleToId().get(tagTitle);
+                    if (null != tagId) {
+                        final String catId = preload.firstCategoryByTagId().get(tagId);
+                        final JSONObject cat = null == catId ? null : preload.categoriesById().get(catId);
+                        if (null != cat) {
+                            tagCategory = Solos.clone(cat);
+                            break;
+                        }
+                    }
+                }
+            }
+            article.put(Category.CATEGORY, tagCategory);
+
+            final String directCatId = preload.lastCategoryByRefId().get(articleId);
+            final JSONObject directCat = null == directCatId ? null : preload.categoriesById().get(directCatId);
+            article.put("articleCategory", null == directCat ? "" : directCat.optString(Category.CATEGORY_TITLE));
+            article.put("categoryURI", null == directCat ? "" : directCat.optString(Category.CATEGORY_URI));
+        } else {
+            fillCategory(article);
+
+            article.put("articleCategory", "");
+            article.put("categoryURI", "");
+            try {
+                final JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
+                final int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                final JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
+                final String categoryOId = cateS.optString("category_oId");
+                final JSONObject categoryObj = categoryRepository.get(categoryOId);
+                if (null != categoryObj) {
+                    article.put("articleCategory", categoryObj.optString("categoryTitle"));
+                    article.put("categoryURI", categoryObj.optString("categoryURI"));
+                }
+            } catch (Exception e) {
+                // Uncategorized and legacy categories retain the empty display values.
+            }
         }
     }
 
@@ -1511,22 +1610,6 @@ public class DataModelService {
     /**
      * Sets some extra properties into the specified article with the specified
      * preference.
-     * <p>
-     * The batch version of method
-     * {@linkplain #setArticleExProperties(RequestContext, JSONObject, JSONObject)}.
-     * </p>
-     * <p>
-     * Article ext properties:
-     * 
-     * <pre>
-     * {
-     *     ....,
-     *     "authorName": "",
-     *     "authorId": "",
-     *     "hasUpdated": boolean
-     * }
-     * </pre>
-     * </p>
      *
      * @param context    the specified HTTP servlet request context
      * @param articles   the specified articles
@@ -1548,12 +1631,6 @@ public class DataModelService {
     /**
      * Processes the abstract of the specified article with the specified
      * preference.
-     * <ul>
-     * <li>If the abstract is {@code null}, sets it with ""</li>
-     * <li>If user configured preference "titleOnly", sets the abstract with ""</li>
-     * <li>If user configured preference "titleAndContent", sets the abstract with
-     * the content of the article</li>
-     * </ul>
      *
      * @param preference the specified preference
      * @param article    the specified article
@@ -1565,16 +1642,16 @@ public class DataModelService {
         }
         final String articleAbstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
         if (StringUtils.isBlank(articleAbstractText)) {
-            // 发布文章时会自动提取摘要文本，其中如果文章加密且没有写摘要，则自动提取文本会返回空字符串 Article#getAbstractText()
-            // 所以当且仅当文章加密且没有摘要的情况下 articleAbstractText 会为空
-            final LangPropsService langPropsService = BeanManager.getInstance().getReference(LangPropsService.class);
-            article.put(Article.ARTICLE_ABSTRACT_TEXT, langPropsService.get("articleContentPwd"));
+            final LangPropsService lps = null != this.langPropsService
+                    ? this.langPropsService
+                    : BeanManager.getInstance().getReference(LangPropsService.class);
+            article.put(Article.ARTICLE_ABSTRACT_TEXT, lps.get("articleContentPwd"));
         }
 
         final String articleListStyle = preference.optString(Option.ID_C_ARTICLE_LIST_STYLE);
-        if ("titleOnly".equals(articleListStyle)) {
+        if ("titleOnly".equals(articleListStyle) || "0".equals(articleListStyle)) {
             article.put(Article.ARTICLE_ABSTRACT, "");
-        } else if ("titleAndContent".equals(articleListStyle)) {
+        } else if ("titleAndContent".equals(articleListStyle) || "2".equals(articleListStyle)) {
             article.put(Article.ARTICLE_ABSTRACT, article.optString(Article.ARTICLE_CONTENT));
         }
     }
@@ -1587,6 +1664,18 @@ public class DataModelService {
      * @throws ServiceException service exception
      */
     public String getTopBarHTML(final RequestContext context) throws ServiceException {
+        return getTopBarHTML(context, null);
+    }
+
+    /**
+     * Generates top bar HTML reusing an already-fetched preference object when available.
+     *
+     * @param context    the specified request context
+     * @param preference already-fetched preference (optional; fetched lazily if {@code null})
+     * @return top bar HTML
+     * @throws ServiceException service exception
+     */
+    public String getTopBarHTML(final RequestContext context, final JSONObject preference) throws ServiceException {
         Stopwatchs.start("Gens Top Bar HTML");
 
         try {
@@ -1602,11 +1691,11 @@ public class DataModelService {
             topBarModel.put("onlineVisitor1Label", langPropsService.get("onlineVisitor1Label"));
             topBarModel.put(Common.ONLINE_VISITOR_CNT, StatisticQueryService.getOnlineVisitorCount());
             if (null == currentUser) {
-            final JSONObject pref = optionQueryService.getPreference();
-            topBarModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, Option.optBooleanSwitch(pref, Option.ID_C_SHOW_LOGIN_ENTRY, false));
-            topBarModel.put(Option.ID_C_ALLOW_REGISTER, Option.optBooleanSwitch(pref, Option.ID_C_ALLOW_REGISTER, false));
-            topBarModel.put(Option.ID_C_COMMENT_ACCESS_MODE, Option.effectiveCommentAccessMode(pref));
-            topBarModel.put(Common.LOGIN_URL, Latkes.getServePath() + org.b3log.solo.util.AdminPaths.login());
+                final JSONObject pref = null != preference ? preference : optionQueryService.getPreference();
+                topBarModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, Option.optBooleanSwitch(pref, Option.ID_C_SHOW_LOGIN_ENTRY, false));
+                topBarModel.put(Option.ID_C_ALLOW_REGISTER, Option.optBooleanSwitch(pref, Option.ID_C_ALLOW_REGISTER, false));
+                topBarModel.put(Option.ID_C_COMMENT_ACCESS_MODE, Option.effectiveCommentAccessMode(pref));
+                topBarModel.put(Common.LOGIN_URL, Latkes.getServePath() + org.b3log.solo.util.AdminPaths.login());
                 topBarModel.put("startToUseLabel", langPropsService.get("startToUseLabel"));
                 topBarTemplate.process(topBarModel, stringWriter);
 

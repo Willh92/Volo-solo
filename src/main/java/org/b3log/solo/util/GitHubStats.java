@@ -58,15 +58,17 @@ public final class GitHubStats {
         document.outputSettings().prettyPrint(false);
         if (hasStatsImage) {
             final java.util.Set<String> profiles = new java.util.LinkedHashSet<>();
-            for (final var image : document.select("img[src]")) {
+            final String prefix = Latkes.getContextPath() + "/github-stats/";
+            final String serveAuthority = URI.create(Latkes.getServePath()).getAuthority();
+            final var images = document.select("img[src]");
+            for (final var image : images) {
                 final String source = localSource(image.attr("src"));
                 image.attr("src", source);
                 try {
                     final URI uri = URI.create(source);
-                    final String prefix = Latkes.getContextPath() + "/github-stats/";
                     final String path = uri.getPath();
                     if (path == null || !path.startsWith(prefix) || !path.endsWith(".svg")
-                            || (uri.getRawAuthority() != null && !java.util.Objects.equals(uri.getAuthority(), URI.create(Latkes.getServePath()).getAuthority()))) continue;
+                            || (uri.getRawAuthority() != null && !java.util.Objects.equals(uri.getAuthority(), serveAuthority))) continue;
                     final String username = path.substring(prefix.length(), path.length() - 4);
                     if (!validUser(username)) continue;
                     final String profile = "https://github.com/" + username;
@@ -76,7 +78,7 @@ public final class GitHubStats {
             }
             if (profiles.size() == 1) {
                 final String profile = profiles.iterator().next();
-                for (final var image : document.select("img[src]")) {
+                for (final var image : images) {
                     try {
                         final String path = URI.create(image.attr("src")).getPath();
                         if (path != null && path.endsWith("/images/github_repo.jpg")) profileLink(image, profile);

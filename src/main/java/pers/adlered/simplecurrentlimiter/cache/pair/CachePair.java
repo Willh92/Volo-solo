@@ -25,14 +25,32 @@ package pers.adlered.simplecurrentlimiter.cache.pair;
  * @date : 2019-10-10 22:52
  **/
 public class CachePair {
-    private long frequency;
-    private long timeStamp;
+    private volatile long frequency;
+    private volatile long timeStamp;
+
+    public CachePair() {
+    }
+
+    public CachePair(final long frequency, final long timeStamp) {
+        this.frequency = frequency;
+        this.timeStamp = timeStamp;
+    }
+
+    public synchronized long incrementAndGet(final long currentTimeStamp, final long expireTime) {
+        if (expireTime != -1 && (currentTimeStamp - this.timeStamp) > expireTime) {
+            this.frequency = 1L;
+            this.timeStamp = currentTimeStamp;
+        } else {
+            this.frequency++;
+        }
+        return this.frequency;
+    }
 
     public long getFrequency() {
         return frequency;
     }
 
-    public void setFrequency(long frequency) {
+    public synchronized void setFrequency(long frequency) {
         this.frequency = frequency;
     }
 
@@ -40,7 +58,7 @@ public class CachePair {
         return timeStamp;
     }
 
-    public void setTimeStamp(long timeStamp) {
+    public synchronized void setTimeStamp(long timeStamp) {
         this.timeStamp = timeStamp;
     }
 }

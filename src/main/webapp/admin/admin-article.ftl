@@ -18,20 +18,31 @@
 
 -->
 <div class="form">
+    <div id="articleDraftRecoveryBar" class="console-recovery-banner" style="display: none;" role="status">
+        <div class="console-recovery-banner__copy">
+            <strong>检测到未提交的本地草稿快照</strong>
+            <span id="articleDraftRecoveryMeta"></span>
+        </div>
+        <div class="console-recovery-banner__actions">
+            <button type="button" onclick="admin.article.restoreLocalDraft()">恢复草稿</button>
+            <button type="button" class="is-ghost" onclick="admin.article.discardLocalDraft()">丢弃快照</button>
+        </div>
+    </div>
     <div>
         <label>${title1Label}</label>
         <input id="title" type="text" autocomplete="off"/>
     </div>
     <div>
-        <label>${content1Label}</label>
-        <div class="fn__right">
-            <label for="articleThumbnail" style="margin-bottom: 0">
-                ${useTumbnailLabel}
-                <input type="checkbox" style="vertical-align: middle;"
-                       id="articleThumbnail" onclick="$('.article__thumbnail').slideToggle()" />
-            </label>
+        <div class="console-editor-topbar">
+            <label style="margin: 0;">${content1Label}</label>
+            <div class="console-editor-topbar__tools">
+                <button type="button" id="articleQuickInsertBtn" class="console-btn-compact" onclick="admin.article.openQuickInsert('media')">快捷插入（图库 / 书架 / 锁块 / 引用）</button>
+                <label for="articleThumbnail" class="checkbox" style="margin: 0;">
+                    <input type="checkbox" id="articleThumbnail" onclick="$('.article__thumbnail').slideToggle()" />
+                    <span>${useTumbnailLabel}</span>
+                </label>
+            </div>
         </div>
-        <div class="fn__clear"></div>
         <div class="article__thumbnail">
             <div class="thumbnail__img"></div>
             <button id="articleThumbnailBtn">${chageLabel}</button>
@@ -176,5 +187,71 @@
         <button id="submitArticle">${publishLabel}</button>
     </div>
     <div class="fn__clear"></div>
+</div>
+<div id="voloQuickInsertModal" class="console-modal-backdrop" style="display: none;" onclick="if(event.target===this)admin.article.closeQuickInsert()">
+    <div class="console-modal" role="dialog" aria-modal="true" aria-labelledby="voloQuickInsertTitle">
+        <div class="console-modal__header">
+            <div>
+                <h4 id="voloQuickInsertTitle">快捷内容插入</h4>
+                <p>可视化选择本地图库、在线书架、隐藏内容锁块或站内文章引用链接。</p>
+            </div>
+            <button type="button" class="console-modal__close" onclick="admin.article.closeQuickInsert()" aria-label="关闭">×</button>
+        </div>
+        <div class="console-modal__tabs" role="tablist">
+            <button type="button" data-qtab="media" class="is-active" onclick="admin.article.switchQuickInsertTab('media')">本地媒体库</button>
+            <button type="button" data-qtab="books" onclick="admin.article.switchQuickInsertTab('books')">电子书与书架</button>
+            <button type="button" data-qtab="lock" onclick="admin.article.switchQuickInsertTab('lock')">局部隐藏锁块</button>
+            <button type="button" data-qtab="cite" onclick="admin.article.switchQuickInsertTab('cite')">站内文章引用</button>
+        </div>
+        <div class="console-modal__body">
+            <div id="quickInsertPanel_media" class="console-modal__panel">
+                <div class="console-inline-bar console-inline-bar--fill">
+                    <input id="quickMediaSearchInput" type="search" placeholder="按文件名搜索本地图片..." onkeydown="if(event.key==='Enter'){event.preventDefault();admin.article.loadQuickMedia();}"/>
+                    <button type="button" onclick="admin.article.loadQuickMedia()">检索</button>
+                </div>
+                <div id="quickMediaGrid" class="console-quick-media-grid"></div>
+            </div>
+            <div id="quickInsertPanel_books" class="console-modal__panel" style="display: none;">
+                <div class="console-inline-bar" style="justify-content: space-between;">
+                    <span class="console-form-help" style="margin: 0;">可插入整页多书书架或单本章节阅读器短代码。</span>
+                    <button type="button" onclick="admin.article.insertQuickText('\n:::bookshelf:::\n')">插入整页在线书架</button>
+                </div>
+                <div id="quickBooksList" class="console-quick-list"></div>
+            </div>
+            <div id="quickInsertPanel_lock" class="console-modal__panel" style="display: none;">
+                <div class="console-form-grid">
+                    <div class="console-form-cell">
+                        <label for="quickLockType">解锁条件类型</label>
+                        <select id="quickLockType" onchange="document.getElementById('quickLockPwdCell').style.display=this.value==='pwd'?'':'none'">
+                            <option value="pwd">输入口令密码可见（type="pwd"）</option>
+                            <option value="user">登录读者账号可见（type="user"）</option>
+                        </select>
+                    </div>
+                    <div class="console-form-cell" id="quickLockPwdCell">
+                        <label for="quickLockPwd">局部解锁密码</label>
+                        <input id="quickLockPwd" type="text" maxlength="64" placeholder="例如 2026" />
+                    </div>
+                </div>
+                <div class="console-form-cell" style="margin-bottom: 12px;">
+                    <label for="quickLockHint">未解锁时的提示文案（可选）</label>
+                    <input id="quickLockHint" type="text" maxlength="120" placeholder="例如：请输入口令或登录账号后阅读本段核心内容" />
+                </div>
+                <div class="console-form-cell">
+                    <label for="quickLockBody">受保护的局部正文（支持完整 Markdown）</label>
+                    <textarea id="quickLockBody" rows="4" placeholder="在此输入需要保护的正文、下载链接或配置片段..."></textarea>
+                </div>
+                <div class="console-form-actions" style="margin-top: 12px;">
+                    <button type="button" onclick="admin.article.insertQuickLockBlock()">插入隐藏锁块</button>
+                </div>
+            </div>
+            <div id="quickInsertPanel_cite" class="console-modal__panel" style="display: none;">
+                <div class="console-inline-bar console-inline-bar--fill">
+                    <input id="quickCiteSearchInput" type="search" placeholder="输入文章标题关键词搜索站内文章（自动建立双向反向链接）..." onkeydown="if(event.key==='Enter'){event.preventDefault();admin.article.loadQuickArticles();}"/>
+                    <button type="button" onclick="admin.article.loadQuickArticles()">搜索</button>
+                </div>
+                <div id="quickCiteList" class="console-quick-list"></div>
+            </div>
+        </div>
+    </div>
 </div>
 ${plugins}

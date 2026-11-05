@@ -586,7 +586,7 @@
                             </form>
                         </div>
                     </section></#if>
-                    <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
+                    <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js?${staticResourceVersion}"></script>
                     <ol class="comment-nodes" id="comments">
                         <#list commentList as comment>
                             <#include "common-comment.ftl"/>

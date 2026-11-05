@@ -70,18 +70,42 @@ public final class Markdowns {
     private static final Logger LOGGER = Logger.getLogger(Markdowns.class);
 
     private static final int MAX_MD_CACHE_ENTRIES = 512;
-    private static final int MAX_CACHEABLE_MD_LENGTH = 65536;
+    private static final int MAX_MD_CACHE_CHARS = 8 * 1024 * 1024;
+    private static final int MAX_CACHEABLE_MD_LENGTH = 262144;
+    private static final int MAX_CACHEABLE_HTML_LENGTH = 524288;
+
+    private static final Object MD_LOCK = new Object();
+    private static long cachedChars = 0L;
 
     /**
      * Bounded LRU Markdown cache.
      */
-    private static final Map<String, String> MD_CACHE = Collections.synchronizedMap(
-            new LinkedHashMap<>(MAX_MD_CACHE_ENTRIES, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(final Map.Entry<String, String> eldest) {
-                    return size() > MAX_MD_CACHE_ENTRIES;
-                }
-            });
+    private static final LinkedHashMap<String, String> MD_CACHE = new LinkedHashMap<>(128, 0.75f, true);
+
+    private static String getCached(final String key) {
+        synchronized (MD_LOCK) {
+            return MD_CACHE.get(key);
+        }
+    }
+
+    private static void putCached(final String key, final String html) {
+        synchronized (MD_LOCK) {
+            final String previous = MD_CACHE.put(key, html);
+            if (null != previous) {
+                cachedChars -= previous.length();
+            }
+            cachedChars += html.length();
+            final Iterator<Map.Entry<String, String>> it = MD_CACHE.entrySet().iterator();
+            while (it.hasNext() && (MD_CACHE.size() > MAX_MD_CACHE_ENTRIES || cachedChars > MAX_MD_CACHE_CHARS)) {
+                final Map.Entry<String, String> eldest = it.next();
+                cachedChars -= eldest.getValue().length();
+                it.remove();
+            }
+            if (cachedChars < 0 || MD_CACHE.isEmpty()) {
+                cachedChars = 0L;
+            }
+        }
+    }
 
     /**
      * Shared bounded daemon pool for Markdown rendering.
@@ -101,9 +125,16 @@ public final class Markdowns {
                     thread.setDaemon(true);
                     return thread;
                 },
-                new ThreadPoolExecutor.AbortPolicy());
+                new ThreadPoolExecutor.CallerRunsPolicy());
         pool.allowCoreThreadTimeOut(true);
         return pool;
+    }
+
+    /**
+     * Shuts down the shared Markdown render pool.
+     */
+    public static void shutdown() {
+        RENDER_POOL.shutdown();
     }
 
     private static final Safelist SAFE_HTML_WHITELIST = Safelist.relaxed()
@@ -205,7 +236,10 @@ public final class Markdowns {
      * Clears cache.
      */
     public static void clearCache() {
-        MD_CACHE.clear();
+        synchronized (MD_LOCK) {
+            MD_CACHE.clear();
+            cachedChars = 0L;
+        }
     }
 
     /**
@@ -287,7 +321,7 @@ public final class Markdowns {
         final String cacheKey = markdownText.length() <= MAX_CACHEABLE_MD_LENGTH
                 ? DigestUtils.sha256Hex(markdownText) : null;
         if (null != cacheKey) {
-            final String cachedHTML = MD_CACHE.get(cacheKey);
+            final String cachedHTML = getCached(cacheKey);
             if (null != cachedHTML) {
                 return cachedHTML;
             }
@@ -332,6 +366,13 @@ public final class Markdowns {
             doc.select("img[src]").forEach(img -> {
                 if (!isSafeImageSrc(img.attr("src"))) {
                     img.removeAttr("src");
+                } else if (img.hasAttr("src")) {
+                    if (!img.hasAttr("loading")) {
+                        img.attr("loading", "lazy");
+                    }
+                    if (!img.hasAttr("decoding")) {
+                        img.attr("decoding", "async");
+                    }
                 }
             });
 
@@ -380,8 +421,8 @@ public final class Markdowns {
             ret = StringUtils.trim(ret);
             ret = Images.qiniuImgProcessing(ret);
 
-            if (null != cacheKey && ret.length() <= MAX_CACHEABLE_MD_LENGTH * 4) {
-                MD_CACHE.put(cacheKey, ret);
+            if (null != cacheKey && ret.length() <= MAX_CACHEABLE_HTML_LENGTH) {
+                putCached(cacheKey, ret);
             }
 
             return ret;

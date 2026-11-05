@@ -302,21 +302,55 @@ function shuffleArray(o) {
 }
 
 function initCanvas(canvasId) {
-  C = document.getElementById(canvasId),
-    c = C.getContext('2d'),
-    viewWidth = C.width = C.scrollWidth,
-    viewHeight = C.height  = C.scrollHeight,
-
-    initParams();
-  //document.onmousemove = handleMouseMove;
-  window.addEventListener("resize", handleResize);
-  TweenLite.ticker.addEventListener("tick", draw);
-  handleResize();
-  if (window.BoloNavigation) window.BoloNavigation.onLeave(function () {
+  if (typeof window._boloArticleCanvasCleanup === "function") {
+    window._boloArticleCanvasCleanup();
+  }
+  C = document.getElementById(canvasId);
+  if (!C) return;
+  c = C.getContext('2d');
+  viewWidth = C.width = C.scrollWidth;
+  viewHeight = C.height = C.scrollHeight;
+  initParams();
+  var cleaned = false;
+  var onVisibilityChange = function () {
+    if (document.hidden) {
+      TweenLite.ticker.removeEventListener("tick", draw);
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    } else {
+      TweenLite.ticker.removeEventListener("tick", draw);
+      TweenLite.ticker.addEventListener("tick", draw);
+      if (!interval) {
+        interval = setInterval(createTrail, trailIntervalCreation);
+      }
+    }
+  };
+  var cleanup = function () {
+    if (cleaned) return;
+    cleaned = true;
     window.removeEventListener("resize", handleResize);
+    if (typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    }
     TweenLite.ticker.removeEventListener("tick", draw);
     kill();
-  });
+    if (window._boloArticleCanvasCleanup === cleanup) {
+      window._boloArticleCanvasCleanup = null;
+    }
+  };
+  window.addEventListener("resize", handleResize);
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", onVisibilityChange);
+  }
+  TweenLite.ticker.addEventListener("tick", draw);
+  handleResize();
+  if (document.hidden) {
+    onVisibilityChange();
+  }
+  window._boloArticleCanvasCleanup = cleanup;
+  if (window.BoloNavigation) window.BoloNavigation.onLeave(cleanup);
 }
 
 
@@ -341,7 +375,10 @@ function initGrid() {
 var interval;
 
 function start(){
-  if (interval) clearInterval(interval);
+  if (interval) {
+    clearInterval(interval);
+    interval = null;
+  }
   initParams();
   initGrid();
   interval = setInterval(createTrail, trailIntervalCreation);
@@ -349,7 +386,10 @@ function start(){
 }
 
 function pause(){
-  if (interval) clearInterval(interval);
+  if (interval) {
+    clearInterval(interval);
+    interval = null;
+  }
   for (var i = 0; i < tris.length; i++) {
     if (tris[i].tweenClose) tris[i].tweenClose.kill();
   }
@@ -357,7 +397,10 @@ function pause(){
 
 function closeAll(){
   var count = 0;
-  if (interval) clearInterval(interval);
+  if (interval) {
+    clearInterval(interval);
+    interval = null;
+  }
   for (var i = 0; i < tris.length; i++) {
     if (tris[i].tweenOpen) tris[i].tweenOpen.kill();
     if (tris[i].opened || tris[i].opening){
@@ -368,7 +411,10 @@ function closeAll(){
 }
 
 function kill(){
-  if (interval) clearInterval(interval);
+  if (interval) {
+    clearInterval(interval);
+    interval = null;
+  }
   for (var i = 0; i < tris.length; i++) {
     TweenLite.killTweensOf(tris[i]);
     tris[i].alpha = 0;

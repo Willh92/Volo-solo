@@ -188,3 +188,8 @@ html[data-bolo-theme='dark'] .auth-page {
 .auth-secondary { display:flex; justify-content:center; align-items:center; width:100%; margin-top:10px; height:40px; border:1px solid var(--bolo-line); border-radius:9px; background:transparent; color:var(--bolo-muted); cursor:pointer; font:inherit; font-size:12px; transition:border-color .15s, color .15s, background .15s; }
 .auth-secondary:hover { color:var(--bolo-text); border-color:var(--bolo-muted); background:var(--bolo-raised, #f4f7f3); }
 @media(max-width:760px) { .auth-card { padding:24px; } .auth-card-top { margin-bottom:18px; } .auth-description { margin-bottom:14px; } .auth-card label { margin-top:12px; } }
+.auth-passkey-box { margin-top: 12px; }
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0 10px; color: var(--bolo-muted); font-size: 11px; letter-spacing: .04em; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--bolo-line); }
+.auth-passkey-btn { gap: 7px; margin-top: 0; font-weight: 500; }
+.auth-passkey-btn svg { flex-shrink: 0; }

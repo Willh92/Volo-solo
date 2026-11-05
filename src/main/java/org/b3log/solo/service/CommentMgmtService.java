@@ -31,6 +31,8 @@ import org.b3log.latke.Latkes;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.CommentCache;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
@@ -38,7 +40,6 @@ import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Ids;
-import org.b3log.latke.util.Strings;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Comment;
@@ -157,28 +158,29 @@ public class CommentMgmtService {
     @Inject
     private WebhookNotifyService webhookNotifyService;
 
+    @Inject
+    private CommentCache commentCache;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidateCommentAndPublicCaches(final String articleId) {
+        if (null != commentCache) {
+            commentCache.invalidateArticleComments(articleId);
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     /**
      * Checks the specified comment adding request.
      * <p>
      * XSS process (name) in this method.
      * </p>
      *
-     * @param requestJSONObject the specified comment adding request, for example,
-     *                          {
-     *                          "type": "", // "article"
-     *                          "oId": "",
-     *                          "commentName": "",
-     *                          "commentURL": "",
-     *                          "commentContent": "",
-     *                          }
-     * @return check result, for example,
-     * 
-     *         <pre>
-     * {
-     *     "sc": boolean,
-     *     "msg": "" // Exists if "sc" equals to false
-     * }
-     *         </pre>
+     * @param requestJSONObject the specified comment adding request
+     * @return check result
      */
     public JSONObject checkAddCommentRequest(final JSONObject requestJSONObject) {
         final JSONObject ret = new JSONObject();
@@ -222,7 +224,6 @@ public class CommentMgmtService {
 
                 return ret;
             }
-
 
             final String parentId = requestJSONObject.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID);
             if (parentId.length() > 64 || org.b3log.solo.util.CommentNames.hasMarkup(parentId)) {
@@ -271,44 +272,20 @@ public class CommentMgmtService {
     /**
      * Adds an article comment with the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          {
-     *                          "oId": "", // article id
-     *                          "commentName": "",
-     *                          "commentURL": "", // optional
-     *                          "commentContent": "",
-     *                          "commentOriginalCommentId": "" // optional
-     *                          }
-     * @return add result, for example,
-     * 
-     *         <pre>
-     * {
-     *     "oId": "", // generated comment id
-     *     "commentDate": "", // format: yyyy-MM-dd HH:mm:ss
-     *     "commentOriginalCommentName": "" // optional, corresponding to argument "commentOriginalCommentId"
-     *     "commentThumbnailURL": "",
-     *     "commentSharpURL": "",
-     *     "commentContent": "",
-     *     "commentName": "",
-     *     "commentURL": "", // optional
-     *     "isReply": boolean,
-     *     "article": {},
-     *     "commentOriginalCommentId": "", // optional
-     *     "commentable": boolean,
-     *     "permalink": "" // article.articlePermalink
-     * }
-     *         </pre>
-     * 
+     * @param requestJSONObject the specified request json object
+     * @return add result
      * @throws ServiceException service exception
      */
     public synchronized JSONObject addArticleComment(final JSONObject requestJSONObject) throws ServiceException {
         final JSONObject ret = new JSONObject();
         ret.put(Common.IS_REPLY, false);
 
+        String committedArticleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
 
         try {
             final String articleId = requestJSONObject.getString(Keys.OBJECT_ID);
+            committedArticleId = articleId;
             final JSONObject article = articleRepository.get(articleId);
             if (article == null || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED
                     || !article.optBoolean(Article.ARTICLE_COMMENTABLE)) throw new ServiceException("文章暂不接受评论。");
@@ -365,8 +342,6 @@ public class CommentMgmtService {
                 ret.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, originalCommentName);
                 ret.put(Common.IS_REPLY, true);
             }
-            // Anonymous comments do not create persistent user accounts. A missing
-            // user is normal; throwing through a proxied service rolls back Latke's transaction.
             setCommentThumbnailURL(comment);
             ret.put(Comment.COMMENT_THUMBNAIL_URL, comment.getString(Comment.COMMENT_THUMBNAIL_URL));
             comment.put(Comment.COMMENT_ON_ID, articleId);
@@ -394,6 +369,8 @@ public class CommentMgmtService {
             throw new ServiceException(e);
         }
 
+        invalidateCommentAndPublicCaches(committedArticleId);
+
         if (null != webhookNotifyService) {
             try {
                 final boolean pending = ret.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) == Comment.COMMENT_STATUS_C_PENDING;
@@ -412,14 +389,9 @@ public class CommentMgmtService {
         return ret;
     }
 
-    /**
-     * Removes a comment of an article with the specified comment id.
-     *
-     * @param commentId the given comment id
-     * @throws ServiceException service exception
-     */
     public synchronized void updateCommentContentAndStatus(final String commentId, final String content, final int status) throws ServiceException {
         JSONObject updatedComment = null;
+        String articleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
         try {
             final JSONObject comment = commentRepository.get(commentId);
@@ -427,7 +399,7 @@ public class CommentMgmtService {
             comment.put(Comment.COMMENT_CONTENT, content);
             comment.put(Comment.COMMENT_STATUS, status);
             commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT, Comment.COMMENT_STATUS);
-            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            articleId = comment.optString(Comment.COMMENT_ON_ID);
             if (!articleId.isBlank()) {
                 final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
                 setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
@@ -438,6 +410,7 @@ public class CommentMgmtService {
             if (transaction.isActive()) transaction.rollback();
             throw new ServiceException(failure);
         }
+        invalidateCommentAndPublicCaches(articleId);
         if (status == Comment.COMMENT_STATUS_C_PENDING && null != webhookNotifyService && null != updatedComment) {
             try {
                 webhookNotifyService.notifyEvent(
@@ -452,10 +425,12 @@ public class CommentMgmtService {
     }
 
     public synchronized void updateCommentContent(final String commentId, final String content) throws ServiceException {
+        String articleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
         try {
             final JSONObject comment = commentRepository.get(commentId);
             if (comment == null || comment.optBoolean("commentDeleted")) throw new ServiceException("评论已删除。");
+            articleId = comment.optString(Comment.COMMENT_ON_ID);
             comment.put(Comment.COMMENT_CONTENT, content);
             commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT);
             transaction.commit();
@@ -463,17 +438,19 @@ public class CommentMgmtService {
             if (transaction.isActive()) transaction.rollback();
             throw new ServiceException(failure);
         }
+        invalidateCommentAndPublicCaches(articleId);
     }
 
     /** Remove the content while preserving the actual parent relation and other visitors' replies. */
     public synchronized void removeArticleComment(final String commentId) throws ServiceException {
+        String articleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
         try {
             final JSONObject comment = commentRepository.get(commentId);
             if (comment == null) throw new ServiceException("评论不存在。");
             comment.put(Comment.COMMENT_CONTENT, "").put("commentDeleted", true).put("commentNotifyEmail", "");
             commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT, "commentDeleted", "commentNotifyEmail");
-            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            articleId = comment.optString(Comment.COMMENT_ON_ID);
             final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
             setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
             final JSONObject mail = optionRepository.get(Option.ID_C_MAIL_USER_CONTEXT);
@@ -486,15 +463,17 @@ public class CommentMgmtService {
             if (transaction.isActive()) transaction.rollback();
             throw new ServiceException(failure);
         }
+        invalidateCommentAndPublicCaches(articleId);
     }
 
     public synchronized void removeArticleCommentThread(final String commentId) throws ServiceException {
+        String articleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
 
         try {
             final JSONObject comment = commentRepository.get(commentId);
             if (comment == null) throw new ServiceException("评论不存在或已被删除。");
-            final String articleId = comment.getString(Comment.COMMENT_ON_ID);
+            articleId = comment.getString(Comment.COMMENT_ON_ID);
             final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
             final String rootId = CommentThreads.twoLevels(comments).stream().filter(item -> commentId.equals(item.optString(Keys.OBJECT_ID)))
                     .map(item -> item.getString("commentThreadId")).findFirst().orElse(commentId);
@@ -516,12 +495,14 @@ public class CommentMgmtService {
             LOGGER.log(Level.ERROR, "Removes a comment of an article failed", e);
             throw new ServiceException(e);
         }
+        invalidateCommentAndPublicCaches(articleId);
     }
 
     public void removeArticleAllComment(final String articleId) throws ServiceException {
         try {
             commentRepository.removeComments(articleId);
             setArticleCommentCount(articleId, 0);
+            invalidateCommentAndPublicCaches(articleId);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Removes a comment of an article failed", e);
             throw new ServiceException(e);
@@ -574,6 +555,7 @@ public class CommentMgmtService {
         if (targetStatus != Comment.COMMENT_STATUS_C_APPROVED && targetStatus != Comment.COMMENT_STATUS_C_REJECTED) {
             throw new ServiceException("不支持的审核状态。");
         }
+        String articleId = "";
         final Transaction transaction = commentRepository.beginTransaction();
         try {
             final JSONObject comment = commentRepository.get(commentId);
@@ -583,12 +565,13 @@ public class CommentMgmtService {
             final int previousStatus = comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
             comment.put(Comment.COMMENT_STATUS, targetStatus);
             commentRepository.update(commentId, comment, Comment.COMMENT_STATUS);
-            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            articleId = comment.optString(Comment.COMMENT_ON_ID);
             if (!articleId.isBlank()) {
                 final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
                 setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
             }
             transaction.commit();
+            invalidateCommentAndPublicCaches(articleId);
             return new JSONObject()
                     .put("previousStatus", previousStatus)
                     .put("status", targetStatus)
@@ -675,6 +658,7 @@ public class CommentMgmtService {
             }
             LOGGER.log(Level.INFO, "Sync comment from fishpi success");
             transaction.commit();
+            invalidateCommentAndPublicCaches("");
         } catch (final Throwable e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -710,8 +694,6 @@ public class CommentMgmtService {
                     .collect(Collectors.toMap(obj -> obj.optString("oId"), Function.identity()));
             for (Object o : rslt) {
                 JSONObject object = (JSONObject) o;
-                String commentContent = object.optString("commentContent");
-
                 String id = object.optString("oId");
                 if (commpentMaps.containsKey(id)) {
                     if (LOGGER.isDebugEnabled()) {
@@ -743,6 +725,7 @@ public class CommentMgmtService {
                 commentRepository.add(commentObject);
                 articleMgmtService.incArticleCommentCount(articleId);
             }
+            invalidateCommentAndPublicCaches(articleId);
         } catch (Exception e) {
             LOGGER.error(e.getMessage());
             return -1;

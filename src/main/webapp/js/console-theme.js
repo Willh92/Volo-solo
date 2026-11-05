@@ -44,17 +44,54 @@
       finally { saving = false }
     })
   }
+  function toAlpha (color, alpha) {
+    var v = String(color || '').trim()
+    var m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+    if (m) {
+      var hex = m[1].length === 3 ? m[1].split('').map(function (c) { return c + c }).join('') : m[1]
+      return 'rgba(' + parseInt(hex.slice(0, 2), 16) + ', ' + parseInt(hex.slice(2, 4), 16) + ', ' + parseInt(hex.slice(4, 6), 16) + ', ' + alpha + ')'
+    }
+    var rgb = v.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+    if (rgb) return 'rgba(' + rgb[1] + ', ' + rgb[2] + ', ' + rgb[3] + ', ' + alpha + ')'
+    return v
+  }
   function charts () {
     if (!window.Chart) return
-    var color = getComputedStyle(document.body).getPropertyValue('--bolo-muted').trim()
     var styles = getComputedStyle(document.body)
+    var color = styles.getPropertyValue('--bolo-muted').trim()
     var line = styles.getPropertyValue('--bolo-line').trim()
     var surface = styles.getPropertyValue('--bolo-surface').trim()
     var accent = styles.getPropertyValue('--bolo-accent').trim()
-    var palette = ['#638e7c', '#7694a0', '#ad956d', '#9383a2', '#ad828c']
+    var isDark = (window.BoloTheme && typeof BoloTheme.current === 'function' && BoloTheme.current() === 'dark') ||
+      document.documentElement.getAttribute('data-bolo-theme') === 'dark'
+    var accentName = window.BoloTheme && typeof BoloTheme.accent === 'function' ? BoloTheme.accent() : ''
+    var uvColor = accentName === 'amber' ? (isDark ? '#7cc0d8' : '#2b6cb0') : (isDark ? '#e0ab5b' : '#c27824')
+    var lineSeries = [accent, uvColor, isDark ? '#b99ee0' : '#7b61a8', isDark ? '#e08d9d' : '#c45b74']
+    var palette = isDark ? ['#7eb39c', '#88b4c7', '#d4ad6a', '#b69cc9', '#d494a1'] : ['#638e7c', '#7694a0', '#ad956d', '#9383a2', '#ad828c']
+    var baseGenerateLabels = Chart.defaults && Chart.defaults.global && Chart.defaults.global.legend &&
+      Chart.defaults.global.legend.labels && Chart.defaults.global.legend.labels.generateLabels
     Chart.defaults.global.defaultFontColor = color
     Object.values(Chart.instances || {}).forEach(function (chart) {
-      if (chart.options.legend) chart.options.legend.labels.fontColor = color
+      if (chart.options.legend) {
+        chart.options.legend.labels = chart.options.legend.labels || {}
+        chart.options.legend.labels.fontColor = color
+        if (chart.config.type === 'line') {
+          chart.options.legend.labels.boxWidth = 12
+          if (baseGenerateLabels) {
+            chart.options.legend.labels.generateLabels = function (c) {
+              return baseGenerateLabels.call(this, c).map(function (item) {
+                var ds = c && c.data && c.data.datasets && c.data.datasets[item.datasetIndex]
+                if (ds && ds.borderColor) {
+                  item.fillStyle = ds.borderColor
+                  item.strokeStyle = ds.borderColor
+                  item.lineWidth = 1
+                }
+                return item
+              })
+            }
+          }
+        }
+      }
       if (chart.options.title) chart.options.title.fontColor = color
       Object.values(chart.options.scales || {}).forEach(function (axes) {
         if (!Array.isArray(axes)) return
@@ -63,9 +100,13 @@
           if (axis.ticks) axis.ticks.fontColor = color
         })
       })
-      chart.data.datasets.forEach(function (data) {
+      chart.data.datasets.forEach(function (data, idx) {
         if (chart.config.type === 'line') {
-          data.borderColor = accent; data.pointBackgroundColor = accent; data.pointBorderColor = surface
+          var seriesColor = lineSeries[idx % lineSeries.length] || accent
+          data.borderColor = seriesColor
+          data.pointBackgroundColor = seriesColor
+          data.pointBorderColor = surface
+          data.backgroundColor = data.fill ? toAlpha(seriesColor, isDark ? 0.16 : 0.12) : seriesColor
         } else { data.backgroundColor = palette; data.borderColor = surface; data.borderWidth = 1 }
       })
       chart.update(0)
@@ -85,7 +126,13 @@
   window.addEventListener('bolo:theme-change', appearance)
   window.addEventListener('bolo:console-charts-ready', charts)
   var closeMenu = function (event) {
-    if (event.key === 'Escape') admin.toggleMenu(false)
+    if (event.key === 'Escape') {
+      admin.toggleMenu(false)
+      if (!event.defaultPrevented && window.admin && admin.article && typeof admin.article.closeQuickInsert === 'function') {
+        var qModal = document.getElementById('voloQuickInsertModal')
+        if (qModal && qModal.style.display !== 'none') admin.article.closeQuickInsert()
+      }
+    }
     if (host && (event.key === 'Escape' || event.type === 'click' && !host.contains(event.target))) {
       var selector = host.querySelector('details')
       if (selector) selector.open = false

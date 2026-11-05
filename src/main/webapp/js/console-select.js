@@ -3,6 +3,7 @@
   'use strict'
   if (!document.body.classList.contains('bolo-console')) return
   var controls = new Map(), active = null, sequence = 0, scheduled = false, disposed = false
+  var scrollOptions = {capture: true, passive: true}
   var previousSet = window.jQuery && jQuery.valHooks.select.set
   function node(tag, name, text) {
     var element = document.createElement(tag); if (name) element.className = name
@@ -19,7 +20,7 @@
     var label = option ? option.textContent.trim() : '请选择'
     if (control.label.textContent !== label) control.label.textContent = label
     if (control.button.disabled !== select.disabled) control.button.disabled = select.disabled
-    var hidden = select.hidden || getComputedStyle(select).display === 'none'
+    var hidden = select.hidden || select.style.display === 'none' || select.classList.contains('fn__none') || getComputedStyle(select).display === 'none'
     if (control.button.hidden !== hidden) control.button.hidden = hidden
     control.button.setAttribute('aria-required', String(select.required))
     if (active === control && (select.disabled || hidden || !select.getClientRects().length)) close()
@@ -138,7 +139,7 @@
     var label = event.target.closest('label')
     if (label && controls.has(label.control) && !controls.get(label.control).button.contains(event.target)) { event.preventDefault(); controls.get(label.control).button.focus() }
   }
-  function scroll(event) { if (active && !active.popup.contains(event.target)) close() }
+  function scroll(event) { if (active && !(event && event.target && event.target !== window && active.popup.contains(event.target))) close() }
   function setValue(select, value) { var result = previousSet.call(this, select, value); if (controls.has(select)) sync(controls.get(select)); return result }
   if (previousSet) jQuery.valHooks.select.set = setValue
   if (window.jQuery) jQuery(document).on('ajaxComplete.voloSelect', schedule)
@@ -161,11 +162,11 @@
     if (!records.length || records.some(isSelectMutation)) schedule()
   })
   observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['disabled','selected','hidden','style','class','required']})
-  document.addEventListener('click', outside); document.addEventListener('scroll', scroll, true)
+  document.addEventListener('click', outside); window.addEventListener('scroll', scroll, scrollOptions)
   window.addEventListener('resize', close); window.addEventListener('hashchange', close); window.addEventListener('pageshow', refresh)
   refresh()
   if (window.BoloNavigation) window.BoloNavigation.onLeave(function () {
-    disposed = true; close(); observer.disconnect(); document.removeEventListener('click', outside); document.removeEventListener('scroll', scroll, true)
+    disposed = true; close(); observer.disconnect(); document.removeEventListener('click', outside); window.removeEventListener('scroll', scroll, scrollOptions)
     window.removeEventListener('resize', close); window.removeEventListener('hashchange', close); window.removeEventListener('pageshow', refresh)
     if (previousSet && jQuery.valHooks.select.set === setValue) jQuery.valHooks.select.set = previousSet
     if (window.jQuery) jQuery(document).off('ajaxComplete.voloSelect', schedule)

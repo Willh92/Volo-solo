@@ -24,8 +24,8 @@
     <head>
         <@head title="${followLabel} - ${blogTitle}">
             <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}" />
-            <link rel="stylesheet" href="${staticServePath}/js/lib/mdui.min.css">
-            <link rel="stylesheet" href="${staticServePath}/js/lib/atom-one-dark.css">
+            <link rel="stylesheet" href="${staticServePath}/js/lib/mdui.min.css?${staticResourceVersion}">
+            <link rel="stylesheet" href="${staticServePath}/js/lib/atom-one-dark.css?${staticResourceVersion}">
             <link rel="stylesheet"
                 href="${staticServePath}/skins/${skinDirName}/css/font-icon.css?${staticResourceVersion}">
         </@head>

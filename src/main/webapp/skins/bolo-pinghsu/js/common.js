@@ -26,21 +26,39 @@
  * @static
  */
 var Skin = {
+  _headerHeadroom: null,
+  _sharerHeadroom: null,
   init: function () {
-    var header = new Headroom($('header')[0], {
-      tolerance: 0,
-      offset: 70,
-      classes: {
-        initial: 'header',
-        pinned: 'header--down',
-        unpinned: 'header--up',
-        top: 'header',
-        notTop: 'header',
-        bottom: 'header',
-        notBottom: 'header',
-      },
-    })
-    header.init()
+    if (Skin._headerHeadroom && typeof Skin._headerHeadroom.destroy === 'function') {
+      Skin._headerHeadroom.destroy()
+      Skin._headerHeadroom = null
+    }
+    var headerEl = $('header')[0]
+    if (headerEl && typeof Headroom === 'function') {
+      var header = new Headroom(headerEl, {
+        tolerance: 0,
+        offset: 70,
+        classes: {
+          initial: 'header',
+          pinned: 'header--down',
+          unpinned: 'header--up',
+          top: 'header',
+          notTop: 'header',
+          bottom: 'header',
+          notBottom: 'header',
+        },
+      })
+      header.init()
+      Skin._headerHeadroom = header
+      if (window.BoloNavigation && typeof window.BoloNavigation.onLeave === 'function') {
+        window.BoloNavigation.onLeave(function () {
+          if (Skin._headerHeadroom === header) {
+            header.destroy()
+            Skin._headerHeadroom = null
+          }
+        })
+      }
+    }
 
     Util.initPjax(function () {
       if ($('.post__fix').length === 0) {
@@ -48,8 +66,7 @@ var Skin = {
       } else {
         $('body').removeClass('body--gray')
       }
-      $('.header__nav a').each(function () {
-        $('.header__nav a').removeClass('current')
+      $('.header__nav a').removeClass('current').each(function () {
         if (this.href === location.href) {
           this.className = 'current'
         }
@@ -70,52 +87,80 @@ var Skin = {
     })
   },
   _initToc: function () {
+    $(window).off('scroll.pinghsuToc')
     if ($('.article__toc').length === 0) {
       return
     }
-    $('.post__toc').css('left', $('.post').offset().left + $('.post').outerWidth())
+    var $post = $('.post')
+    var $postToc = $('.post__toc')
+    if ($post.length) {
+      $postToc.css('left', $post.offset().left + $post.outerWidth())
+    }
 
     var $articleTocs = $('.vditor-reset [id^=b3_solo_h]'),
-      $articleToc = $('.article__toc');
+      $articleToc = $('.article__toc'),
+      tocRaf = 0,
+      lastTocVisible = null;
 
-    $(window).unbind('scroll').scroll(function (event) {
+    function syncToc () {
+      tocRaf = 0
       if ($('.article__toc li').length === 0) {
-        return false;
+        return false
       }
 
-      if ($(window).scrollTop() > 72) {
-        $('.post__toc').show()
-      } else {
-        $('.post__toc').hide()
+      var scrollTop = $(window).scrollTop()
+      var visible = scrollTop > 72
+      if (visible !== lastTocVisible) {
+        lastTocVisible = visible
+        if (visible) {
+          $postToc.show()
+        } else {
+          $postToc.hide()
+        }
+      }
+      if (!visible) {
         return
       }
 
-      // 界面各种图片加载会导致帖子目录定位
-      var toc = [];
-      $articleTocs.each(function (i) {
+      var toc = []
+      $articleTocs.each(function () {
         toc.push({
           id: this.id,
           offsetTop: this.offsetTop
-        });
-      });
+        })
+      })
+      if (!toc.length) return
 
-      // 当前目录样式
-      var scrollTop = $(window).scrollTop();
       for (var i = 0, iMax = toc.length; i < iMax; i++) {
         if (scrollTop < toc[i].offsetTop - 20) {
-          $articleToc.find('li').removeClass('current');
-          var index = i > 0 ? i - 1 : 0;
-          $articleToc.find('a[href="#' + toc[index].id + '"]').parent().addClass('current');
-          break;
+          $articleToc.find('li').removeClass('current')
+          var index = i > 0 ? i - 1 : 0
+          $articleToc.find('a[href="#' + toc[index].id + '"]').parent().addClass('current')
+          break
         }
       }
       if (scrollTop >= toc[toc.length - 1].offsetTop - 20) {
-        $articleToc.find('li').removeClass('current');
-        $articleToc.find('li:last').addClass('current');
+        $articleToc.find('li').removeClass('current')
+        $articleToc.find('li:last').addClass('current')
       }
-    });
+    }
 
-    $(window).scroll()
+    $(window).on('scroll.pinghsuToc', function () {
+      if (!tocRaf) {
+        tocRaf = requestAnimationFrame(syncToc)
+      }
+    })
+
+    syncToc()
+    if (window.BoloNavigation) {
+      window.BoloNavigation.onLeave(function () {
+        if (tocRaf) {
+          cancelAnimationFrame(tocRaf)
+          tocRaf = 0
+        }
+        $(window).off('scroll.pinghsuToc')
+      })
+    }
   },
   _initShare: function () {
     var $this = $('.post__share')
@@ -167,20 +212,36 @@ var Skin = {
     })
   },
   initArticle: function () {
-    var postSharer = new Headroom($('.post__fix')[0], {
-      tolerance: 0,
-      offset: 48,
-      classes: {
-        initial: 'post__fix',
-        pinned: 'post__fix--pinned',
-        unpinned: 'post__fix--unpinned',
-        top: 'post__fix',
-        notTop: 'post__fix',
-        bottom: 'post__fix',
-        notBottom: 'post__fix',
-      },
-    })
-    postSharer.init()
+    if (Skin._sharerHeadroom && typeof Skin._sharerHeadroom.destroy === 'function') {
+      Skin._sharerHeadroom.destroy()
+      Skin._sharerHeadroom = null
+    }
+    var fixEl = $('.post__fix')[0]
+    if (fixEl && typeof Headroom === 'function') {
+      var postSharer = new Headroom(fixEl, {
+        tolerance: 0,
+        offset: 48,
+        classes: {
+          initial: 'post__fix',
+          pinned: 'post__fix--pinned',
+          unpinned: 'post__fix--unpinned',
+          top: 'post__fix',
+          notTop: 'post__fix',
+          bottom: 'post__fix',
+          notBottom: 'post__fix',
+        },
+      })
+      postSharer.init()
+      Skin._sharerHeadroom = postSharer
+      if (window.BoloNavigation && typeof window.BoloNavigation.onLeave === 'function') {
+        window.BoloNavigation.onLeave(function () {
+          if (Skin._sharerHeadroom === postSharer) {
+            postSharer.destroy()
+            Skin._sharerHeadroom = null
+          }
+        })
+      }
+    }
 
     Skin._initShare()
     Skin._initToc()

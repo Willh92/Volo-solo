@@ -62,7 +62,22 @@ admin.article = {
         $('#title').val(result.article.articleTitle)
         admin.editors.articleEditor.setContent(result.article.articleContent)
         admin.editors.abstractEditor.setContent(result.article.articleAbstract)
-        admin.article.content = admin.editors.articleEditor.getContent()
+        var loadedArticleId = result.article.oId || admin.article.status.id
+        var articleEdWrapper = admin.editors.articleEditor
+        admin.article.content = articleEdWrapper && articleEdWrapper.editorReady && typeof articleEdWrapper.getContent === 'function'
+          ? articleEdWrapper.getContent()
+          : (result.article.articleContent || '')
+        admin.article._loadedServerTitle = String(result.article.articleTitle || '')
+        admin.article._loadedServerContent = String(admin.article.content || '')
+        if (articleEdWrapper && !articleEdWrapper.editorReady && articleEdWrapper.ready && typeof articleEdWrapper.ready.then === 'function') {
+          articleEdWrapper.ready.then(function (ed) {
+            if (ed && typeof ed.getValue === 'function' && !articleEdWrapper._userTyped &&
+              admin.article.status && admin.article.status.id === loadedArticleId) {
+              admin.article.content = ed.getValue()
+              admin.article._loadedServerContent = admin.article.content
+            }
+          })
+        }
 
         var tags = result.article.articleTags,
           tagsString = ''
@@ -135,6 +150,7 @@ admin.article = {
         $('#articleRevisionDiffBox').hide()
 
         admin.article.setStatus()
+        admin.article._checkLocalDraftRecovery(result.article)
         $('#loadMsg').text('')
       },
     })
@@ -243,6 +259,7 @@ admin.article = {
             return
           }
 
+          admin.article._clearLocalDraft(admin.article.status.id || 'new')
           admin.article.status.id = undefined
           if (articleStatus === 0 && !(requestJSONObject.article.articleScheduleTime > Date.now())) {
             admin.selectTab('article/article-list')
@@ -333,6 +350,7 @@ admin.article = {
 
           $('#tipMsg').text(Label.updateSuccLabel)
 
+          admin.article._clearLocalDraft(admin.article.status.id || 'new')
           admin.article.status.id = undefined
           admin.article.isConfirm = false
 
@@ -425,6 +443,9 @@ admin.article = {
     $('#articleRevisionsDrawer').hide()
     $('#articleRevisionDiffBox').hide()
     $('#articleTagInput').val('')
+    this._loadedServerTitle = ''
+    this._loadedServerContent = ''
+    this._checkLocalDraftRecovery(null)
     this.content = ''
     $('#articleCommentable').prop('checked', true)
     $('#postToCommunity').prop('checked', false)
@@ -498,6 +519,7 @@ admin.article = {
       id: 'articleContent',
       height: 500,
       fun: fun,
+      onInput: function () { admin.article._scheduleDraftSnapshot() },
       previewMode: 'both',
       resize: false,
       typewriterMode: true,
@@ -509,9 +531,16 @@ admin.article = {
       previewMode: 'editor',
       resize: true,
       typewriterMode: false,
+      onInput: function () { admin.article._scheduleDraftSnapshot() },
     })
     Promise.all([admin.editors.articleEditor.ready, admin.editors.abstractEditor.ready]).then(editors => {
       if (editors.every(Boolean)) $('#submitArticle,#saveArticle,#unSubmitArticle').prop('disabled', false)
+      $('#title,#permalink,#tag').off('input.voloDraft').on('input.voloDraft', function () {
+        admin.article._scheduleDraftSnapshot()
+      })
+      if (!admin.article.status || !admin.article.status.id) {
+        admin.article._checkLocalDraftRecovery(null)
+      }
     })
 
     // thumbnail
@@ -568,6 +597,7 @@ admin.article = {
           }
 
           admin.selectTab('article/draft-list')
+          admin.article._clearLocalDraft(admin.article.status.id || 'new')
           admin.article.status.id = undefined
           admin.article.isConfirm = false
         },
@@ -799,6 +829,298 @@ admin.article = {
       out.push('<div style="opacity:0.75;">当前编辑器正文与该历史快照完全一致。</div>')
     }
     return out.join('')
+  },
+  _loadedServerTitle: '',
+  _loadedServerContent: '',
+  _draftTimer: null,
+  _draftStoragePrefix: 'volo.draftSnapshot.',
+  _escapeAttr: function (v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    })
+  },
+  _getDraftKey: function (idOverride) {
+    var keyId = idOverride !== undefined ? idOverride : (this.status && this.status.id)
+    return this._draftStoragePrefix + (keyId || 'new')
+  },
+  _getLocalStorage: function () {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) return window.localStorage
+    } catch (e) {}
+    return null
+  },
+  _scheduleDraftSnapshot: function () {
+    var that = this
+    if (this._draftTimer) clearTimeout(this._draftTimer)
+    this._draftTimer = setTimeout(function () {
+      that._draftTimer = null
+      that._saveLocalDraftSnapshot()
+    }, 2500)
+  },
+  _saveLocalDraftSnapshot: function () {
+    var store = this._getLocalStorage()
+    if (!store || !admin.editors || !admin.editors.articleEditor || typeof admin.editors.articleEditor.getContent !== 'function') return
+    var title = String($('#title').val() || '')
+    var content = String(admin.editors.articleEditor.getContent() || '')
+    if (!title.replace(/\s+/g, '') && !content.replace(/\s+/g, '')) return
+    if (title === this._loadedServerTitle && content === this._loadedServerContent) return
+    var abstractContent = (admin.editors.abstractEditor && typeof admin.editors.abstractEditor.getContent === 'function')
+      ? String(admin.editors.abstractEditor.getContent() || '') : ''
+    var key = this._getDraftKey()
+    var payload = {
+      title: title,
+      content: content,
+      abstractContent: abstractContent,
+      tags: String($('#tag').val() || ''),
+      permalink: String($('#permalink').val() || ''),
+      category: String($('#categorySelector').val() || ''),
+      seriesId: String($('#seriesSelector').val() || ''),
+      updatedAt: Date.now(),
+    }
+    try {
+      store.setItem(key, JSON.stringify(payload))
+      this._pruneDraftSnapshots(store)
+    } catch (e) {}
+  },
+  _pruneDraftSnapshots: function (store) {
+    var entries = []
+    for (var i = 0; i < store.length; i++) {
+      var k = store.key(i)
+      if (k && k.indexOf(this._draftStoragePrefix) === 0) {
+        var ts = 0
+        try {
+          var parsed = JSON.parse(store.getItem(k) || '{}')
+          ts = Number(parsed.updatedAt || 0)
+        } catch (e) {}
+        entries.push({ key: k, updatedAt: ts })
+      }
+    }
+    if (entries.length <= 10) return
+    entries.sort(function (a, b) { return b.updatedAt - a.updatedAt })
+    for (var j = 10; j < entries.length; j++) {
+      store.removeItem(entries[j].key)
+    }
+  },
+  _checkLocalDraftRecovery: function (serverArticle) {
+    var bar = $('#articleDraftRecoveryBar')
+    var store = this._getLocalStorage()
+    if (!store || !bar.length) return
+    var raw = store.getItem(this._getDraftKey())
+    if (!raw) {
+      bar.hide()
+      return
+    }
+    try {
+      var snap = JSON.parse(raw)
+      var sTitle = serverArticle ? String(serverArticle.articleTitle || '') : ''
+      var sContent = serverArticle ? String(serverArticle.articleContent || '') : ''
+      var snapTitle = String((snap && snap.title) || '')
+      var snapContent = String((snap && snap.content) || '')
+      if ((!snapTitle.replace(/\s+/g, '') && !snapContent.replace(/\s+/g, '')) ||
+          (snapTitle === sTitle && snapContent === sContent)) {
+        bar.hide()
+        return
+      }
+      var d = new Date(Number(snap.updatedAt || 0))
+      var timeText = isNaN(d.getTime()) ? '' : ('保存于 ' + d.toLocaleString())
+      var previewTitle = snapTitle ? ('《' + snapTitle.slice(0, 32) + '》 · ') : ''
+      $('#articleDraftRecoveryMeta').text(previewTitle + timeText + ' · 正文 ' + snapContent.length + ' 字')
+      bar.show()
+    } catch (e) {
+      bar.hide()
+    }
+  },
+  restoreLocalDraft: function () {
+    var store = this._getLocalStorage()
+    if (!store) return
+    var raw = store.getItem(this._getDraftKey())
+    if (!raw) return
+    try {
+      var snap = JSON.parse(raw)
+      if (snap.title !== undefined) $('#title').val(snap.title)
+      if (snap.content !== undefined && admin.editors.articleEditor) {
+        admin.editors.articleEditor.setContent(snap.content)
+      }
+      if (snap.abstractContent !== undefined && admin.editors.abstractEditor) {
+        admin.editors.abstractEditor.setContent(snap.abstractContent)
+      }
+      if (snap.tags !== undefined) {
+        $('#tag').val(snap.tags)
+        if (admin.tagPicker && typeof admin.tagPicker.refresh === 'function') admin.tagPicker.refresh()
+      }
+      if (snap.permalink !== undefined) $('#permalink').val(snap.permalink)
+      if (snap.category !== undefined) $('#categorySelector').val(snap.category)
+      if (snap.seriesId !== undefined) $('#seriesSelector').val(snap.seriesId)
+      $('#articleDraftRecoveryBar').hide()
+      if (admin.showNotice) admin.showNotice('已恢复本地草稿快照，请核对后保存或发布。')
+      else $('#tipMsg').text('已恢复本地草稿快照，请核对后保存或发布。')
+    } catch (e) {}
+  },
+  discardLocalDraft: function () {
+    this._clearLocalDraft()
+    if (admin.showNotice) admin.showNotice('已丢弃本地草稿快照。')
+  },
+  _clearLocalDraft: function (idOverride) {
+    if (this._draftTimer) {
+      clearTimeout(this._draftTimer)
+      this._draftTimer = null
+    }
+    var store = this._getLocalStorage()
+    if (store) {
+      try { store.removeItem(this._getDraftKey(idOverride)) } catch (e) {}
+    }
+    $('#articleDraftRecoveryBar').hide()
+  },
+  openQuickInsert: function (tab) {
+    $('#voloQuickInsertModal').show()
+    this.switchQuickInsertTab(tab || 'media')
+  },
+  closeQuickInsert: function () {
+    $('#voloQuickInsertModal').hide()
+  },
+  switchQuickInsertTab: function (tab) {
+    var active = tab || 'media'
+    $('#voloQuickInsertModal [data-qtab]').each(function () {
+      var isCur = $(this).attr('data-qtab') === active
+      $(this).toggleClass('is-active', isCur)
+    })
+    ;['media', 'books', 'lock', 'cite'].forEach(function (name) {
+      var panel = $('#quickInsertPanel_' + name)
+      if (name === active) panel.show()
+      else panel.hide()
+    })
+    if (active === 'media') this.loadQuickMedia()
+    else if (active === 'books') this.loadQuickBooks()
+    else if (active === 'cite') this.loadQuickArticles()
+  },
+  insertQuickText: function (snippet) {
+    if (!snippet) return
+    var edWrapper = admin.editors && admin.editors.articleEditor
+    if (edWrapper && typeof edWrapper.insertContent === 'function') {
+      edWrapper.insertContent(snippet)
+    } else if (edWrapper && edWrapper.editor && typeof edWrapper.editor.insertValue === 'function') {
+      edWrapper.editor.insertValue(snippet)
+    } else if (edWrapper && typeof edWrapper.setContent === 'function') {
+      var cur = typeof edWrapper.getContent === 'function' ? edWrapper.getContent() : ''
+      edWrapper.setContent((cur ? cur + '\n' : '') + snippet)
+    }
+    this.closeQuickInsert()
+    this._scheduleDraftSnapshot()
+  },
+  loadQuickMedia: function () {
+    var that = this
+    var q = String($('#quickMediaSearchInput').val() || '').trim()
+    var grid = $('#quickMediaGrid')
+    grid.html('<p class="console-form-help">正在加载本地媒体库...</p>')
+    $.ajax({
+      url: Label.servePath + '/console/media/local?q=' + encodeURIComponent(q),
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (!res || !res.sc || !res.configured) {
+          grid.html('<p class="console-form-help">' + that._escapeAttr((res && res.msg) || '当前未启用本地图床或暂无媒体文件。') + '</p>')
+          return
+        }
+        var items = Array.isArray(res.items) ? res.items : []
+        if (!items.length) {
+          grid.html('<p class="console-form-help">没有匹配的本地图片，可直接粘贴或拖拽图片到编辑器上传。</p>')
+          return
+        }
+        var html = ''
+        for (var i = 0; i < Math.min(items.length, 60); i++) {
+          var it = items[i]
+          var safeName = that._escapeAttr(it.name || 'image')
+          var safeUrl = that._escapeAttr(it.url || '')
+          var md = it.markdown || ('![' + (it.name || 'image') + '](' + (it.url || '') + ')')
+          var safeMd = that._escapeAttr(md)
+          html += '<div class="console-quick-media-item">' +
+            '<div class="console-quick-media-item__thumb"><img src="' + safeUrl + '" alt="' + safeName + '" loading="lazy"/></div>' +
+            '<div class="console-quick-media-item__name" title="' + safeName + '">' + safeName + '</div>' +
+            '<button type="button" data-md="' + safeMd + '" onclick="admin.article.insertQuickText(this.getAttribute(\'data-md\') + \'\\n\')">插入图片</button>' +
+            '</div>'
+        }
+        grid.html(html)
+      },
+    })
+  },
+  loadQuickBooks: function () {
+    var that = this
+    var box = $('#quickBooksList')
+    box.html('<p class="console-form-help">正在加载书架列表...</p>')
+    $.ajax({
+      url: Label.servePath + '/console/books',
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        var books = (res && res.sc && Array.isArray(res.books)) ? res.books : []
+        if (!books.length) {
+          box.html('<p class="console-form-help">暂未添加单本书籍，您仍可直接点击上方“插入整页在线书架”或在“管理 → 书架与系列”中新建书籍。</p>')
+          return
+        }
+        var html = ''
+        for (var i = 0; i < books.length; i++) {
+          var b = books[i]
+          var safeTitle = that._escapeAttr(b.title || b.id)
+          var safeId = that._escapeAttr(b.id || '')
+          var shortcode = '\n:::book id="' + String(b.id || '').replace(/"/g, '') + '":::\n'
+          html += '<div class="console-quick-row">' +
+            '<div class="console-quick-row__main"><strong>' + safeTitle + '</strong><span><code>id="' + safeId + '"</code> · ' + Number(b.chapterCount || 0) + ' 章</span></div>' +
+            '<button type="button" data-code="' + that._escapeAttr(shortcode) + '" onclick="admin.article.insertQuickText(this.getAttribute(\'data-code\'))">插入此书</button>' +
+            '</div>'
+        }
+        box.html(html)
+      },
+    })
+  },
+  insertQuickLockBlock: function () {
+    var type = $('#quickLockType').val() === 'user' ? 'user' : 'pwd'
+    var pwd = String($('#quickLockPwd').val() || '').trim().replace(/"/g, '')
+    var hint = String($('#quickLockHint').val() || '').trim().replace(/"/g, '’')
+    var body = String($('#quickLockBody').val() || '').trim() || '在此输入受保护的正文内容...'
+    if (type === 'pwd' && !pwd) {
+      if (admin.showNotice) admin.showNotice('请填写局部解锁密码。', 'error')
+      $('#quickLockPwd').focus()
+      return
+    }
+    var header = ':::lock type="' + type + '"'
+    if (type === 'pwd') header += ' pwd="' + pwd + '"'
+    if (hint) header += ' hint="' + hint + '"'
+    var block = '\n' + header + '\n' + body + '\n:::\n'
+    $('#quickLockBody').val('')
+    this.insertQuickText(block)
+  },
+  loadQuickArticles: function () {
+    var that = this
+    var kw = String($('#quickCiteSearchInput').val() || '').trim()
+    var box = $('#quickCiteList')
+    box.html('<p class="console-form-help">正在检索已发布文章...</p>')
+    var qs = kw ? ('?k=' + encodeURIComponent(kw)) : ''
+    $.ajax({
+      url: Label.servePath + '/console/articles/status/published/1/25/10' + qs,
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        var articles = (res && res.sc && Array.isArray(res.articles)) ? res.articles : []
+        if (!articles.length) {
+          box.html('<p class="console-form-help">未找到匹配的已发布文章。</p>')
+          return
+        }
+        var html = ''
+        for (var i = 0; i < articles.length; i++) {
+          var a = articles[i]
+          var rawTitle = (typeof Util !== 'undefined' && Util.htmlDecode) ? Util.htmlDecode(a.articleTitle || '') : String(a.articleTitle || '')
+          var cleanTitle = rawTitle.replace(/[\[\]]/g, '') || '站内文章'
+          var permalink = String(a.articlePermalink || '')
+          var fullPath = (Label.servePath || '') + (permalink.charAt(0) === '/' ? permalink : ('/' + permalink))
+          var mdLink = '[' + cleanTitle + '](' + fullPath + ')'
+          html += '<div class="console-quick-row">' +
+            '<div class="console-quick-row__main"><strong>' + that._escapeAttr(rawTitle) + '</strong><span>' + that._escapeAttr(permalink) + '</span></div>' +
+            '<button type="button" data-md="' + that._escapeAttr(mdLink) + '" onclick="admin.article.insertQuickText(this.getAttribute(\'data-md\'))">插入引用</button>' +
+            '</div>'
+        }
+        box.html(html)
+      },
+    })
   },
   restoreRevision: function (revId) {
     if (!this.status || !this.status.id || !revId) return

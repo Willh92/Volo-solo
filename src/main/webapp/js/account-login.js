@@ -34,6 +34,8 @@
   var totpRememberInput = document.getElementById('rememberDevice')
   var totpRememberLabel = document.getElementById('totpRememberLabel')
   var totpBackBtn = document.getElementById('totpBackBtn')
+  var passkeyBox = document.getElementById('passkeyLoginBox')
+  var passkeyBtn = document.getElementById('passkeyLoginBtn')
   var heading = document.getElementById('loginHeading')
   var description = document.getElementById('loginDescription')
   var mode = form.dataset.mode
@@ -60,6 +62,11 @@
   function syncButtonState () {
     var throttled = Date.now() < retryUntil
     button.disabled = busy || throttled || (!totpStep && !captchaReady)
+    if (passkeyBtn) passkeyBtn.disabled = busy || throttled
+    if (passkeyBox) {
+      var canPasskey = !totpStep && mode !== '-1' && mode !== '2' && !!(window.PublicKeyCredential && navigator && navigator.credentials && typeof navigator.credentials.get === 'function')
+      passkeyBox.hidden = !canPasskey
+    }
     if (!busy && !throttled) {
       button.querySelector('span').textContent = currentActionText()
     }
@@ -185,6 +192,112 @@
   if (totpBackBtn && totpBackBtn.addEventListener) {
     totpBackBtn.addEventListener('click', function () {
       if (!busy) exitTotpStep('')
+    })
+  }
+  function b64UrlToBytes (b64url) {
+    var str = String(b64url || '').replace(/-/g, '+').replace(/_/g, '/')
+    while (str.length % 4 !== 0) str += '='
+    var bin = atob(str)
+    var out = new Uint8Array(bin.length)
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  }
+  function bytesToB64Url (buf) {
+    var bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf || 0)
+    var bin = ''
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+  if (passkeyBtn && passkeyBtn.addEventListener) {
+    passkeyBtn.addEventListener('click', async function () {
+      if (busy || Date.now() < retryUntil) return
+      message('')
+      busy = true
+      syncButtonState()
+      form.setAttribute('aria-busy', 'true')
+      var passkeyLabel = passkeyBtn.querySelector && passkeyBtn.querySelector('span')
+      if (passkeyLabel) passkeyLabel.textContent = '正在唤醒通行密钥…'
+      try {
+        var base = new URL(form.action, window.location.href).pathname.replace(/\/oauth\/bolo\/login$/, '')
+        var optResp = await fetch(base + '/oauth/bolo/passkey/options', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({ username: username ? (username.value || '').trim() : '' })
+        })
+        var optJson = await optResp.json()
+        if (optResp.status === 429) {
+          message(optJson.msg || '登录尝试过于频繁，请稍后再试。')
+          cooldown(optJson.retryAfter || optResp.headers.get('Retry-After'))
+          return
+        }
+        if (!optResp.ok || !optJson.sc || !optJson.data) {
+          message(optJson.msg || '尚未绑定通行密钥，请先使用账号密码登录。')
+          return
+        }
+        var opts = optJson.data
+        var publicKey = {
+          challenge: b64UrlToBytes(opts.challenge),
+          rpId: opts.rpId,
+          timeout: opts.timeout || 60000,
+          userVerification: opts.userVerification || 'preferred'
+        }
+        if (Array.isArray(opts.allowCredentials) && opts.allowCredentials.length > 0) {
+          publicKey.allowCredentials = opts.allowCredentials.map(function (c) {
+            return { type: c.type || 'public-key', id: b64UrlToBytes(c.id) }
+          })
+        }
+        var assertion = await navigator.credentials.get({ publicKey: publicKey })
+        if (!assertion || !assertion.response) {
+          message('未获取到通行密钥签名。')
+          return
+        }
+        if (passkeyLabel) passkeyLabel.textContent = '正在验证通行密钥…'
+        var verifyResp = await fetch(base + '/oauth/bolo/passkey/verify', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify({
+            challengeId: opts.challengeId,
+            credential: {
+              id: assertion.id,
+              rawId: bytesToB64Url(assertion.rawId),
+              type: assertion.type || 'public-key',
+              response: {
+                clientDataJSON: bytesToB64Url(assertion.response.clientDataJSON),
+                authenticatorData: bytesToB64Url(assertion.response.authenticatorData),
+                signature: bytesToB64Url(assertion.response.signature),
+                userHandle: assertion.response.userHandle ? bytesToB64Url(assertion.response.userHandle) : ''
+              }
+            }
+          })
+        })
+        var verifyJson = await verifyResp.json()
+        if (verifyResp.status === 429) {
+          message(verifyJson.msg || '登录尝试过于频繁，请稍后再试。')
+          cooldown(verifyJson.retryAfter || verifyResp.headers.get('Retry-After'))
+          return
+        }
+        if (!verifyResp.ok || !verifyJson.sc) {
+          message(verifyJson.msg || '通行密钥校验未通过，请重试或使用密码登录。')
+          return
+        }
+        var next = new URL(verifyJson.redirect, window.location.origin)
+        if (next.origin !== window.location.origin) throw new Error('Invalid login redirect')
+        if (passkeyLabel) passkeyLabel.textContent = '正在进入后台…'
+        await window.BoloNavigation.navigate(next.href, { replace: true })
+      } catch (err) {
+        if (err && err.name === 'NotAllowedError') {
+          message('已取消通行密钥验证，您仍可使用密码登录。')
+        } else {
+          message('通行密钥登录未完成，请重试或使用密码登录。')
+        }
+      } finally {
+        busy = false
+        if (passkeyLabel) passkeyLabel.textContent = '使用通行密钥（Passkey）登录'
+        form.removeAttribute('aria-busy')
+        syncButtonState()
+      }
     })
   }
   if (window.addEventListener) window.addEventListener('pageshow', onPageShow)

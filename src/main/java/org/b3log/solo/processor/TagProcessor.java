@@ -138,7 +138,7 @@ public class TagProcessor {
 
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
             final int windowSize = preference.getInt(Option.ID_C_ARTICLE_LIST_PAGINATION_WINDOW_SIZE);
-            final JSONObject tagArticleResult = articleQueryService.getArticlesByTag(tagId, currentPageNum, pageSize);
+            final JSONObject tagArticleResult = articleQueryService.getArticlesByTag(tag, currentPageNum, pageSize);
             if (null == tagArticleResult) {
                 context.sendError(404);
 

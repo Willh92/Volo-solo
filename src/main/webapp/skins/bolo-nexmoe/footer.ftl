@@ -17,18 +17,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
-<script src="${staticServePath}/js/bolo/mdui.min.js"></script>
-<script type="text/javascript" src="${staticServePath}/js/common.js?${staticResourceVersion}"
+<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}" charset="utf-8"></script>
+<script src="${staticServePath}/js/bolo/mdui.min.js?${staticResourceVersion}"></script>
+<script type="text/javascript" src="${staticServePath}/js/common${miniPostfix!''}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <#if customVars.bg??>
 <#else>
-    <script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/canvas.js?${staticResourceVersion}"
+    <script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/canvas${miniPostfix!''}.js?${staticResourceVersion}"
             charset="utf-8"></script>
 </#if>
 
-<script src="${staticServePath}/skins/${skinDirName}/js/app.js?${staticResourceVersion}"></script>
-<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common.js?${staticResourceVersion}"
+<script src="${staticServePath}/skins/${skinDirName}/js/app${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix!''}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <#include "../../common-template/label.ftl">
 

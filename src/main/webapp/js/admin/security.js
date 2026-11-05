@@ -661,12 +661,212 @@ Object.assign(admin.security, {
   copyTotpSecret: function () {
     if (this.totpSetup && this.totpSetup.secret) this.copyText(this.totpSetup.secret, '绑定密钥')
   },
+  _b64UrlToBytes: function (b64url) {
+    var str = String(b64url || '').replace(/-/g, '+').replace(/_/g, '/')
+    while (str.length % 4 !== 0) str += '='
+    var bin = typeof atob === 'function' ? atob(str) : Buffer.from(str, 'base64').toString('binary')
+    var out = new Uint8Array(bin.length)
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  },
+  _bytesToB64Url: function (buf) {
+    var bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf || 0)
+    var bin = ''
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    var b64 = typeof btoa === 'function' ? btoa(bin) : Buffer.from(bin, 'binary').toString('base64')
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  },
+  _formatPasskeyTime: function (ms) {
+    var ts = Number(ms || 0)
+    if (!ts || ts <= 0) return '尚未使用'
+    var d = new Date(ts)
+    return Number.isFinite(d.getTime()) ? d.toLocaleString() : '—'
+  },
+  loadPasskeys: function () {
+    if (!document || typeof document.getElementById !== 'function') return
+    var tbody = document.getElementById('passkeyListBody')
+    if (!tbody) return
+    var that = this
+    $.ajax({
+      url: Label.servePath + '/console/security/passkeys',
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (!tbody.isConnected) return
+        if (!res || !res.sc || !res.data) {
+          $('#passkeyMessage').text((res && res.msg) || '无法读取通行密钥列表。')
+          return
+        }
+        that.renderPasskeys(res.data.credentials || [])
+      },
+      error: function (xhr) {
+        if (tbody.isConnected) $('#passkeyMessage').text((xhr && xhr.responseJSON && xhr.responseJSON.msg) || '无法读取通行密钥列表。')
+      }
+    })
+  },
+  renderPasskeys: function (list) {
+    if (!document || typeof document.getElementById !== 'function') return
+    var tbody = document.getElementById('passkeyListBody')
+    var badge = document.getElementById('passkeyStatusBadge')
+    if (!tbody) return
+    var creds = Array.isArray(list) ? list : []
+    if (badge) {
+      badge.dataset.state = creds.length > 0 ? 'enabled' : 'unbound'
+      badge.textContent = creds.length > 0 ? ('已绑定 ' + creds.length + ' 个') : '未绑定'
+    }
+    tbody.replaceChildren()
+    if (!creds.length) {
+      var emptyRow = this.element('tr'), emptyCell = this.element('td', '尚未绑定任何通行密钥，点击上方“注册新通行密钥”即可添加。', 'console-simple-table__empty')
+      emptyCell.colSpan = 5
+      emptyRow.append(emptyCell)
+      tbody.append(emptyRow)
+      return
+    }
+    var that = this
+    creds.forEach(function (item) {
+      var tr = that.element('tr')
+      var nameTd = that.element('td')
+      nameTd.append(that.element('strong', item.name || '通行密钥'))
+      var algName = Number(item.alg) === -7 ? 'ES256 (P-256)' : (Number(item.alg) === -257 ? 'RS256 (RSA)' : String(item.alg || 'FIDO2'))
+      var algTd = that.element('td', algName)
+      var createdTd = that.element('td', that._formatPasskeyTime(item.createdAt))
+      var usedTd = that.element('td', item.lastUsedAt ? that._formatPasskeyTime(item.lastUsedAt) : '尚未使用')
+      var actTd = that.element('td', null, 'is-right')
+      var actGroup = that.element('div', null, 'console-row-actions is-right')
+      var delBtn = that.element('button', '移除', 'is-danger')
+      delBtn.type = 'button'
+      delBtn.addEventListener('click', function () {
+        that.removePasskey(item.id, item.name || '通行密钥')
+      })
+      actGroup.append(delBtn)
+      actTd.append(actGroup)
+      tr.append(nameTd, algTd, createdTd, usedTd, actTd)
+      tbody.append(tr)
+    })
+  },
+  registerPasskey: function (btn) {
+    if (this.passkeyBusy) return
+    if (typeof window === 'undefined' || !window.PublicKeyCredential || typeof navigator === 'undefined' || !navigator.credentials || typeof navigator.credentials.create !== 'function') {
+      $('#passkeyMessage').text('当前浏览器或非安全上下文（需 HTTPS 或 localhost）不支持 WebAuthn 通行密钥。')
+      return
+    }
+    var that = this
+    var deviceName = String($('#passkeyDeviceName').val() || '').trim()
+    this.passkeyBusy = true
+    if (btn) btn.disabled = true
+    $('#passkeyMessage').text('正在请求系统安全认证器…')
+    $.ajax({
+      url: Label.servePath + '/console/security/passkeys/register/options',
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ name: deviceName }),
+      success: function (res) {
+        if (!res || !res.sc || !res.data) {
+          that.passkeyBusy = false
+          if (btn) btn.disabled = false
+          $('#passkeyMessage').text((res && res.msg) || '无法初始化通行密钥绑定。')
+          return
+        }
+        var opts = res.data
+        var publicKey = {
+          challenge: that._b64UrlToBytes(opts.challenge),
+          rp: opts.rp,
+          user: {
+            id: that._b64UrlToBytes(opts.user.id),
+            name: opts.user.name,
+            displayName: opts.user.displayName || opts.user.name
+          },
+          pubKeyCredParams: opts.pubKeyCredParams || [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+          timeout: opts.timeout || 60000,
+          attestation: opts.attestation || 'none',
+          authenticatorSelection: opts.authenticatorSelection || { residentKey: 'preferred', userVerification: 'preferred' },
+          excludeCredentials: (opts.excludeCredentials || []).map(function (c) {
+            return { type: c.type || 'public-key', id: that._b64UrlToBytes(c.id) }
+          })
+        }
+        navigator.credentials.create({ publicKey: publicKey }).then(function (cred) {
+          if (!cred || !cred.response) throw new Error('未获取到有效的通行密钥凭证。')
+          var verifyPayload = {
+            challengeId: opts.challengeId,
+            name: deviceName,
+            credential: {
+              id: cred.id,
+              rawId: that._bytesToB64Url(cred.rawId),
+              type: cred.type || 'public-key',
+              response: {
+                clientDataJSON: that._bytesToB64Url(cred.response.clientDataJSON),
+                attestationObject: that._bytesToB64Url(cred.response.attestationObject)
+              }
+            }
+          }
+          $.ajax({
+            url: Label.servePath + '/console/security/passkeys/register/verify',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(verifyPayload),
+            complete: function () {
+              that.passkeyBusy = false
+              if (btn) btn.disabled = false
+            },
+            success: function (vRes) {
+              if (!vRes || !vRes.sc) {
+                $('#passkeyMessage').text((vRes && vRes.msg) || '通行密钥校验未通过。')
+                return
+              }
+              $('#passkeyDeviceName').val('')
+              $('#passkeyMessage').text('')
+              if (vRes.data && vRes.data.credentials) that.renderPasskeys(vRes.data.credentials)
+              else that.loadPasskeys()
+              if (admin.showNotice) admin.showNotice(vRes.msg || '通行密钥已成功绑定。')
+            },
+            error: function (xhr) {
+              $('#passkeyMessage').text((xhr && xhr.responseJSON && xhr.responseJSON.msg) || '通行密钥绑定失败，请重试。')
+            }
+          })
+        }).catch(function (err) {
+          that.passkeyBusy = false
+          if (btn) btn.disabled = false
+          var msg = (err && err.name === 'NotAllowedError') ? '已取消或超时未完成系统身份确认。' : ((err && err.message) || '通行密钥创建未完成。')
+          $('#passkeyMessage').text(msg)
+        })
+      },
+      error: function (xhr) {
+        that.passkeyBusy = false
+        if (btn) btn.disabled = false
+        $('#passkeyMessage').text((xhr && xhr.responseJSON && xhr.responseJSON.msg) || '暂时无法生成通行密钥注册参数。')
+      }
+    })
+  },
+  removePasskey: function (id, name) {
+    if (!id || this.passkeyBusy) return
+    if (typeof confirm === 'function' && !confirm('确定移除通行密钥 "' + name + '" 吗？移除后仍可使用账号密码登录。')) return
+    var that = this
+    this.passkeyBusy = true
+    $.ajax({
+      url: Label.servePath + '/console/security/passkeys/' + encodeURIComponent(id),
+      type: 'DELETE',
+      complete: function () { that.passkeyBusy = false },
+      success: function (res) {
+        if (!res || !res.sc) {
+          $('#passkeyMessage').text((res && res.msg) || '移除通行密钥失败。')
+          return
+        }
+        $('#passkeyMessage').text('')
+        if (res.data && res.data.credentials) that.renderPasskeys(res.data.credentials)
+        else that.loadPasskeys()
+        if (admin.showNotice) admin.showNotice(res.msg || '通行密钥已移除。')
+      },
+      error: function (xhr) {
+        $('#passkeyMessage').text((xhr && xhr.responseJSON && xhr.responseJSON.msg) || '移除通行密钥失败，请重试。')
+      }
+    })
+  },
   copyRecoveryCodes: function () {
     if (this.totpRecoveryPlain && this.totpRecoveryPlain.length) this.copyText(this.totpRecoveryPlain.join('\n'), '应急恢复码')
   }
 })
 admin.register.access = {obj:admin.security,init:function () { this.loadSettings('access') },refresh:function () { this.loadSettings('access') }}
-admin.register.totp = {obj:admin.security,init:function () { this.loadTotp() },refresh:function () { this.loadTotp() }}
+admin.register.totp = {obj:admin.security,init:function () { this.loadTotp(); this.loadPasskeys() },refresh:function () { this.loadTotp(); this.loadPasskeys() }}
 admin.register.ip = {obj:admin.security,init:admin.security.initIpBans,refresh:function () { if (this.ipBanEditing) this.cancelIpBanEdit(); this.loadIpBans() }}
 admin.register.geo = {obj:admin.security,init:admin.security.loadGeoAccess,refresh:admin.security.loadGeoAccess}
 admin.register.comments = {obj:admin.security,init:function () { this.loadSettings('comments') },refresh:function () { this.loadSettings('comments') }}

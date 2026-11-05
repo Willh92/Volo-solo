@@ -23,6 +23,15 @@
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  */
 
+if (typeof window !== 'undefined') {
+  window.NProgress = window.NProgress || {
+    start: function () {},
+    done: function () {},
+    configure: function () {},
+    inc: function () {},
+  }
+}
+
 /**
  * @description Util
  * @static
@@ -64,15 +73,57 @@ var Util = {
       if (!source || /\/images\/volo-mark\.svg(?:[?#]|$)/.test(source) || (image.complete && image.naturalWidth === 0)) fallback()
     })
   },
+  _syncVditorGlobals: function (candidate) {
+    const owner = window.BoloEditorCore || (window.BoloEditorCore = {})
+    const editable = fn => typeof fn === 'function' && typeof fn.prototype?.getValue === 'function'
+    const copyStatics = (source, target) => {
+      if (!source || (typeof source !== 'function' && typeof source !== 'object') || !target) return
+      Object.getOwnPropertyNames(source).forEach(key => {
+        if (key !== 'length' && key !== 'name' && key !== 'prototype' &&
+          typeof source[key] === 'function' && typeof target[key] !== 'function') {
+          target[key] = source[key]
+        }
+      })
+    }
+    const current = candidate || globalThis.Vditor
+    if (typeof current === 'function') {
+      if (editable(current)) {
+        owner.Editor = current
+      } else {
+        owner.renderMethods = owner.renderMethods || {}
+        copyStatics(current, owner.renderMethods)
+      }
+    }
+    if (editable(owner.Editor)) {
+      if (owner.renderMethods) copyStatics(owner.renderMethods, owner.Editor)
+      if (typeof globalThis.Vditor === 'function' && globalThis.Vditor !== owner.Editor) {
+        owner.renderMethods = owner.renderMethods || {}
+        copyStatics(globalThis.Vditor, owner.renderMethods)
+        copyStatics(globalThis.Vditor, owner.Editor)
+      }
+      if (!editable(globalThis.Vditor)) {
+        globalThis.Vditor = owner.Editor
+      }
+    }
+    return editable(globalThis.Vditor)
+  },
   // Keep the editing runtime on the application's origin, even when a separate
   // static CDN is configured for skin assets. Render-only method.min.js is insufficient.
   loadVditor: function (callback) {
     const owner = window.BoloEditorCore || (window.BoloEditorCore = {})
     const editable = candidate => typeof candidate === 'function' && typeof candidate.prototype?.getValue === 'function'
     // A skin can reload method.min.js during PJAX and replace the global with its render-only API.
+    Util._syncVditorGlobals()
     if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
     const complete = () => editable(globalThis.Vditor)
-    if (complete()) { owner.Editor = Vditor; return callback ? Promise.resolve().then(callback) : Promise.resolve() }
+    if (complete()) {
+      Util._syncVditorGlobals(globalThis.Vditor)
+      return callback ? Promise.resolve().then(() => {
+        Util._syncVditorGlobals()
+        if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
+        return callback()
+      }) : Promise.resolve()
+    }
     if (!owner.vditorLibrary) {
       owner.vditorLibrary = new Promise((resolve, reject) => {
         const script = document.createElement('script')
@@ -82,7 +133,7 @@ var Util = {
         function finish (error) {
           cancel(timeout)
           script.onload = script.onerror = null
-          if (error) { script.remove(); reject(error) } else { owner.Editor = Vditor; resolve() }
+          if (error) { script.remove(); reject(error) } else { Util._syncVditorGlobals(Vditor); resolve() }
         }
         script.src = Label.servePath + '/js/lib/vditor/dist/index.min.js'
         script.setAttribute('data-bolo-navigation', '')
@@ -90,9 +141,17 @@ var Util = {
         script.onload = () => finish(complete() ? null : new Error('Comment editor unavailable'))
         script.onerror = () => finish(new Error('Comment editor load failed'))
         document.head.appendChild(script)
-      }).then(() => { owner.vditorLibrary = null }, error => { owner.vditorLibrary = null; throw error })
+      }).then(() => {
+        owner.vditorLibrary = null
+        Util._syncVditorGlobals()
+        if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
+      }, error => { owner.vditorLibrary = null; throw error })
     }
-    return callback ? owner.vditorLibrary.then(callback) : owner.vditorLibrary
+    return callback ? owner.vditorLibrary.then(() => {
+      Util._syncVditorGlobals()
+      if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
+      return callback()
+    }) : owner.vditorLibrary
   },
   loadVditorRuntime: function () {
     const languages = ['de_DE', 'en_US', 'es_ES', 'fr_FR', 'ja_JP', 'ko_KR', 'pt_BR', 'ru_RU', 'sv_SE', 'vi_VN', 'zh_CN', 'zh_TW']
@@ -143,7 +202,13 @@ var Util = {
       load('i18n/' + language + '.js', 'vditorI18nScript' + language,
         () => translations.has(language),
         () => { if (window.VditorI18n) translations.set(language, window.VditorI18n) }),
-    ]).then(() => ({i18n: translations.get(language)}))
+    ]).then(() => {
+      const owner = window.BoloEditorCore || (window.BoloEditorCore = {})
+      const editable = candidate => typeof candidate === 'function' && typeof candidate.prototype?.getValue === 'function'
+      Util._syncVditorGlobals()
+      if (!editable(globalThis.Vditor) && editable(owner.Editor)) globalThis.Vditor = owner.Editor
+      return {i18n: translations.get(language)}
+    })
   },
   isArticlePage: function (href) {
     var isArticle = true
@@ -179,7 +244,7 @@ var Util = {
    */
   initPjax: function (cb) {
     if (window.BoloNavigation && window.BoloNavigation.publicPages) return
-    if ($('#pjax').length === 1) {
+    if (typeof $ === 'function' && typeof $.pjax === 'function' && $('#pjax').length === 1) {
       $.pjax({
         selector: 'a',
         container: '#pjax',
@@ -215,13 +280,15 @@ var Util = {
           cb && cb()
         },
       })
-      NProgress.configure({showSpinner: false})
+      if (window.NProgress) {
+        window.NProgress.configure({showSpinner: false})
+      }
       $('#pjax').bind('pjax.start', function () {
-        NProgress.start()
+        if (window.NProgress) window.NProgress.start()
       })
       $('#pjax').bind('pjax.end', function () {
         window.scroll(window.scrollX, 0)
-        NProgress.done()
+        if (window.NProgress) window.NProgress.done()
       })
     }
   },
@@ -256,32 +323,135 @@ var Util = {
     }
   },
   /**
-   * 异步添加 js
-   * @param url js 文件访问地址
+   * 异步添加 js（非阻塞 Promise 加载器，跨 PJAX 持久化缓存）
+   * @param path js 文件访问地址
    * @param id js 文件标示
+   * @param callback 加载完成后的可选回调
+   * @returns {Promise<void>}
    */
-  addScript: function (url, id) {
-    if (!document.getElementById(id)) {
-      var xhrObj = new XMLHttpRequest()
-      xhrObj.open('GET', url, false)
-      xhrObj.setRequestHeader('Accept',
-        'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript, */*; q=0.01')
-      xhrObj.send('')
-      var scriptElement = document.createElement('script')
-      scriptElement.id = id
-      scriptElement.type = 'text/javascript'
-      scriptElement.text = xhrObj.responseText
-      document.getElementsByTagName('head')[0].appendChild(scriptElement)
+  addScript: function (path, id, callback) {
+    var promises = window._voloScriptPromises = window._voloScriptPromises || {}
+    var loaded = window._voloLoadedScripts = window._voloLoadedScripts || {}
+    var pendingCallbacks = window._voloScriptCallbacks = window._voloScriptCallbacks || {}
+    var key = id || path
+
+    if (loaded[key]) {
+      if (typeof callback === 'function') {
+        callback()
+      }
+      return promises[key] || (promises[key] = Promise.resolve())
     }
+
+    if (promises[key]) {
+      if (typeof callback === 'function') {
+        ;(pendingCallbacks[key] || (pendingCallbacks[key] = [])).push(callback)
+      }
+      return promises[key]
+    }
+
+    if (id && typeof document.getElementById === 'function' && document.getElementById(id)) {
+      loaded[key] = true
+      promises[key] = Promise.resolve()
+      if (typeof callback === 'function') {
+        callback()
+      }
+      return promises[key]
+    }
+
+    pendingCallbacks[key] = typeof callback === 'function' ? [callback] : []
+    var promise = new Promise(function (resolve, reject) {
+      var script = document.createElement('script')
+      script.async = true
+      script.src = path
+      if (id) {
+        script.id = id
+      }
+      if (typeof script.setAttribute === 'function') {
+        script.setAttribute('data-bolo-navigation', 'persist')
+      }
+      script.onload = function () {
+        script.onload = script.onerror = null
+        loaded[key] = true
+        var list = pendingCallbacks[key] ? pendingCallbacks[key].splice(0) : []
+        delete pendingCallbacks[key]
+        resolve()
+        for (var i = 0; i < list.length; i++) {
+          try {
+            list[i]()
+          } catch (err) {
+            if (typeof console !== 'undefined' && console.error) console.error(err)
+          }
+        }
+      }
+      script.onerror = function () {
+        script.onload = script.onerror = null
+        delete promises[key]
+        delete loaded[key]
+        delete pendingCallbacks[key]
+        if (typeof script.remove === 'function') {
+          script.remove()
+        } else if (script.parentNode) {
+          script.parentNode.removeChild(script)
+        }
+        reject(new Error('Script load failed: ' + path))
+      }
+      var head = document.head || (typeof document.getElementsByTagName === 'function' && document.getElementsByTagName('head')[0])
+      if (head) {
+        head.appendChild(script)
+      }
+    })
+    promises[key] = promise
+    return promise
+  },
+  _withVditorMethod: function (requiredMethod, render) {
+    Util._syncVditorGlobals()
+    if (typeof Vditor === 'function' && typeof Vditor[requiredMethod] === 'function') {
+      render()
+      return
+    }
+    var loadMethod = function () {
+      Util._syncVditorGlobals()
+      if (typeof Vditor === 'function' && typeof Vditor[requiredMethod] === 'function') {
+        render()
+        return
+      }
+      var loading = Util.addScript(
+        Label.servePath + '/js/lib/vditor/dist/method.min.js',
+        'vditorPreviewScript',
+        function () {
+          Util._syncVditorGlobals()
+          if (window.BoloEditorCore && window.BoloEditorCore.Editor &&
+            window.BoloEditorCore.Editor.prototype &&
+            typeof window.BoloEditorCore.Editor.prototype.getValue === 'function') {
+            window.Vditor = window.BoloEditorCore.Editor
+          }
+          render()
+        })
+      if (loading && typeof loading.catch === 'function') {
+        loading.catch(function () {})
+      }
+    }
+    var owner = typeof window !== 'undefined' && window.BoloEditorCore
+    if (owner && owner.vditorLibrary && typeof owner.vditorLibrary.then === 'function') {
+      owner.vditorLibrary.then(loadMethod, loadMethod)
+      return
+    }
+    loadMethod()
   },
   /*
   * @description 解析语法高亮
   */
   parseLanguage: function () {
-    Vditor.highlightRender({
-      style: Label.hljsStyle,
-      enable: !Label.luteAvailable,
-    }, document, Label.servePath + '/js/lib/vditor')
+    var render = function () {
+      if (typeof Vditor !== 'function' || typeof Vditor.highlightRender !== 'function') {
+        return
+      }
+      Vditor.highlightRender({
+        style: Label.hljsStyle,
+        enable: !Label.luteAvailable,
+      }, document, Label.servePath + '/js/lib/vditor')
+    }
+    Util._withVditorMethod('highlightRender', render)
   },
   copyCodeText: function (text) {
     function fallback () {
@@ -335,32 +505,52 @@ var Util = {
    * @returns {undefined}
    */
   parseMarkdown: function () {
-    if (typeof document !== 'undefined' && typeof document.querySelector === 'function' &&
-      !document.querySelector('.vditor-reset, pre code, [class*="language-"]')) {
+    var selector = '.vditor-reset, pre code, [class*="language-"]'
+    var $markdownElements = typeof $ === 'function' ? $(selector) : null
+    var hasJqueryFilter = Boolean($markdownElements && typeof $markdownElements.filter === 'function')
+    var markdownNodes = !hasJqueryFilter && typeof document !== 'undefined' && typeof document.querySelectorAll === 'function'
+      ? Array.prototype.slice.call(document.querySelectorAll(selector))
+      : null
+    if (hasJqueryFilter ? $markdownElements.length === 0 : (markdownNodes && markdownNodes.length === 0)) {
       return
     }
-    if (typeof Vditor !== 'function') {
-      Util.addScript(
-          Label.servePath + '/js/lib/vditor/dist/method.min.js',
-          'vditorPreviewScript')
+    var render = function () {
+      if (typeof Vditor !== 'function' || typeof Vditor.codeRender !== 'function' || !document.body) {
+        return
+      }
+      if (hasJqueryFilter) {
+        $markdownElements = $markdownElements.filter(function () {
+          return document.body && (typeof document.body.contains !== 'function' || document.body.contains(this))
+        })
+        if ($markdownElements.length === 0) {
+          return
+        }
+      } else if (markdownNodes) {
+        markdownNodes = markdownNodes.filter(function (el) {
+          return document.body && (typeof document.body.contains !== 'function' || document.body.contains(el))
+        })
+        if (markdownNodes.length === 0) {
+          return
+        }
+      }
+      Vditor.highlightRender({
+        enable: !Label.luteAvailable,
+        lineNumber: Label.showCodeBlockLn,
+        style: Label.hljsStyle,
+      }, document, Label.servePath + '/js/lib/vditor')
+
+      var cdn = Label.servePath + '/js/lib/vditor'
+      Vditor.codeRender(document.body, {renderMenu: Util.prepareCodeCopyMenu})
+      Vditor.graphvizRender(document.body, cdn)
+      Vditor.mathRender(document.body, { cdn: cdn })
+      Vditor.abcRender(document.body, cdn)
+      Vditor.chartRender(document.body, cdn, 'classic')
+      Vditor.mindmapRender(document.body, cdn, 'classic')
+      Vditor.mediaRender(document.body)
+      Vditor.mermaidRender(document.body, cdn, 'classic')
+      Vditor.flowchartRender(document.body, cdn)
     }
-
-    Vditor.highlightRender({
-      enable: !Label.luteAvailable,
-      lineNumber: Label.showCodeBlockLn,
-      style: Label.hljsStyle,
-    }, document, Label.servePath + '/js/lib/vditor');
-
-    const cdn = Label.servePath + '/js/lib/vditor';
-    Vditor.codeRender(document.body, {renderMenu: Util.prepareCodeCopyMenu});
-    Vditor.graphvizRender(document.body, cdn);
-    Vditor.mathRender(document.body, { cdn: cdn });
-    Vditor.abcRender(document.body, cdn);
-    Vditor.chartRender(document.body, cdn, 'classic');
-    Vditor.mindmapRender(document.body, cdn, 'classic');
-    Vditor.mediaRender(document.body);
-    Vditor.mermaidRender(document.body, cdn, 'classic');
-    Vditor.flowchartRender(document.body, cdn);
+    Util._withVditorMethod('codeRender', render)
   },
   /**
    * @description IE6/7，跳转到 kill-browser 页面
@@ -442,10 +632,34 @@ var Util = {
       animate({scrollTop: $(document).height() - $(window).height() - bottom},
         800)
   },
+  _bindContactDisclosure: function () {
+    if (window.voloContactDisclosureBound || typeof document.addEventListener !== 'function') return
+    window.voloContactDisclosureBound = true
+    var closeContactOutside = function (event) {
+      document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
+        if (!contact.contains(event.target)) contact.open = false
+      })
+    }
+    var closeContactWithEscape = function (event) {
+      if (event.key !== 'Escape') return
+      document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
+        contact.open = false
+        contact.querySelector('summary').focus()
+      })
+    }
+    document.addEventListener('click', closeContactOutside)
+    document.addEventListener('keydown', closeContactWithEscape)
+    window.BoloNavigation?.onLeave(function () {
+      document.removeEventListener('click', closeContactOutside)
+      document.removeEventListener('keydown', closeContactWithEscape)
+      window.voloContactDisclosureBound = false
+    })
+  },
   /**
    * @description 页面初始化执行的函数
    */
   init: function () {
+    Util._bindContactDisclosure()
     Util.killIE()
     Util.parseMarkdown()
     Util.initSW()
@@ -542,28 +756,7 @@ var Util = {
     return format
   },
 }
-if (!window.voloContactDisclosureBound && typeof document.addEventListener === 'function') {
-  window.voloContactDisclosureBound = true;
-  const closeContactOutside = function (event) {
-    document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
-      if (!contact.contains(event.target)) contact.open = false;
-    });
-  };
-  const closeContactWithEscape = function (event) {
-    if (event.key !== 'Escape') return;
-    document.querySelectorAll('.user__site--account[open]').forEach(function (contact) {
-      contact.open = false;
-      contact.querySelector('summary').focus();
-    });
-  };
-  document.addEventListener('click', closeContactOutside);
-  document.addEventListener('keydown', closeContactWithEscape);
-  window.BoloNavigation?.onLeave(function () {
-    document.removeEventListener('click', closeContactOutside);
-    document.removeEventListener('keydown', closeContactWithEscape);
-    window.voloContactDisclosureBound = false;
-  });
-}
+Util._bindContactDisclosure()
 if (!Cookie) {
   /**
    * @description Cookie 相关操作

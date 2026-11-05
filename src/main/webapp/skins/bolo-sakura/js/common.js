@@ -46,10 +46,23 @@ var Skin = {
         // Keep core navigation and reading independent of those optional services.
         document.querySelectorAll('.post-list-thumb').forEach(function (post) { post.style.opacity = '1'; });
         var header = document.querySelector('.site-header');
+        var top = document.querySelector('#moblieGoTop');
+        var lastHeaderScrolled = null;
+        var lastTopVisible = null;
         var updateHeader = function () {
-            if (header) header.classList.toggle('yya', window.scrollY > 30);
-            var top = document.querySelector('#moblieGoTop');
-            if (top) top.style.display = window.scrollY > 200 ? 'grid' : 'none';
+            var headerScrolled = window.scrollY > 30;
+            if (header && headerScrolled !== lastHeaderScrolled) {
+                lastHeaderScrolled = headerScrolled;
+                header.classList.toggle('yya', headerScrolled);
+            }
+            var topEl = top || document.querySelector('#moblieGoTop');
+            if (topEl) {
+                var visible = window.scrollY > 200;
+                if (visible !== lastTopVisible) {
+                    lastTopVisible = visible;
+                    topEl.style.display = visible ? 'grid' : 'none';
+                }
+            }
         };
         window.addEventListener('scroll', updateHeader, {passive: true});
         updateHeader();
@@ -97,10 +110,17 @@ var Skin = {
                 search.querySelector('input').focus();
             });
         });
-        document.addEventListener('keydown', function (event) {
+        var onKeyDown = function (event) {
             if (event.key === 'Escape') closeSearch();
             if (event.key === 'Escape' && document.body?.classList.contains('sakura-menu-open')) setMenuOpen(false, true);
-        });
+        };
+        document.addEventListener('keydown', onKeyDown);
+        if (window.BoloNavigation) {
+            window.BoloNavigation.onLeave(function () {
+                if (window.removeEventListener) window.removeEventListener('scroll', updateHeader);
+                if (document.removeEventListener) document.removeEventListener('keydown', onKeyDown);
+            });
+        }
         document.querySelectorAll('.entry-content img').forEach(function (img) {
             if (img.parentElement.tagName !== 'A' && !img.closest('.volo-bookshelf, .volo-lock-card') && window.jQuery && jQuery.fn.fancybox) {
                 var url;

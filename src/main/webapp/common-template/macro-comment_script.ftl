@@ -19,8 +19,7 @@
 -->
 <#macro comment_script oId commentable>
 <#if commentable>
-    <link rel="preload" as="script" href="${servePath}/js/lib/vditor/dist/index.min.js"/>
-    <script src="${staticServePath}/js/captcha.js?${staticResourceVersion}"></script>
+    <script defer src="${staticServePath}/js/captcha${miniPostfix!''}.js?${staticResourceVersion}"></script>
     <div id="soloEditor" class="comment-composer" role="dialog" aria-label="${(commentLabel!'评论')?html}" aria-hidden="true" inert>
         <div class="comment-composer__inner">
             <#if isLoggedIn!false>
@@ -59,21 +58,89 @@
         </div>
     </div>
 </#if>
+<script src="${staticServePath}/js/bolo/jquery.cookie.min.js?${staticResourceVersion}"></script>
 <script type="text/javascript">
-    Util.addScript('${staticServePath}/js/page.js?${staticResourceVersion}', 'soloPageScript')
-    var page = new Page({
-        "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel?js_string}",
-        "oId": "${oId?js_string}",
-        "commentAdministrator": ${(isAdminLoggedIn!false)?c},
-        "commentAccessMode": "${(commentAccessMode!'all')?js_string}",
-        "allowRegister": ${(allowRegister!false)?c},
-        "blogHost": "${blogHost?js_string}",
-        "randomArticles1Label": "${randomArticles1Label?js_string}",
-    });
-    $(document).ready(function () {
-        page.load();
-        <#nested>
-    });
+    var page;
+    (function () {
+        var disposed = false;
+        var pendingToggle = null;
+        var commentTrigger = null;
+        var onPreBootCommentClick = function () {
+            if (!pendingToggle) {
+                pendingToggle = [undefined, undefined];
+            }
+        };
+        var cleanupPreBoot = function () {
+            if (commentTrigger && typeof commentTrigger.removeEventListener === 'function') {
+                commentTrigger.removeEventListener('click', onPreBootCommentClick);
+            }
+            commentTrigger = null;
+        };
+        var bindPreBootCommentClick = function () {
+            if (disposed || commentTrigger || typeof Page === 'function' || typeof document.getElementById !== 'function') {
+                return;
+            }
+            var el = document.getElementById('comment');
+            if (el && typeof el.addEventListener === 'function') {
+                commentTrigger = el;
+                commentTrigger.addEventListener('click', onPreBootCommentClick, { once: true });
+            }
+        };
+        if (window.BoloNavigation && typeof window.BoloNavigation.onLeave === 'function') {
+            window.BoloNavigation.onLeave(function () {
+                disposed = true;
+                cleanupPreBoot();
+            });
+        }
+        if (typeof Page !== 'function') {
+            page = window.page = {
+                toggleEditor: function (id, name) { pendingToggle = [id, name]; },
+                addReplyForm: function (id, name) { pendingToggle = [id, name]; },
+                showComment: function () {},
+                hideComment: function () {}
+            };
+            bindPreBootCommentClick();
+            if (!commentTrigger && typeof $ === 'function') {
+                $(document).ready(bindPreBootCommentClick);
+            }
+        }
+        var bootSoloPage = function () {
+            cleanupPreBoot();
+            if (disposed || typeof Page !== 'function') {
+                return;
+            }
+            var instance = new Page({
+                "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel?js_string}",
+                "oId": "${oId?js_string}",
+                "commentAdministrator": ${(isAdminLoggedIn!false)?c},
+                "commentAccessMode": "${(commentAccessMode!'all')?js_string}",
+                "allowRegister": ${(allowRegister!false)?c},
+                "blogHost": "${blogHost?js_string}",
+                "randomArticles1Label": "${randomArticles1Label?js_string}",
+            });
+            page = window.page = instance;
+            $(document).ready(function () {
+                if (disposed) {
+                    return;
+                }
+                page = window.page = instance;
+                page.load();
+                <#nested>
+                if (pendingToggle) {
+                    var args = pendingToggle;
+                    pendingToggle = null;
+                    page.toggleEditor(args[0], args[1]);
+                }
+            });
+        };
+        if (typeof Page === 'function') {
+            bootSoloPage();
+        } else {
+            var loading = Util.addScript('${staticServePath}/js/page${miniPostfix!''}.js?${staticResourceVersion}', 'soloPageScript', bootSoloPage);
+            if (loading && typeof loading.catch === 'function') {
+                loading.catch(function () {});
+            }
+        }
+    })();
 </script>
-<script src="${staticServePath}/js/bolo/jquery.cookie.min.js"></script>
 </#macro>

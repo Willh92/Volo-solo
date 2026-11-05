@@ -32,12 +32,12 @@
 
 <head>
     <@head title="${archiveLabel} - ${blogTitle}">
-        <link rel="stylesheet" href="${staticServePath}/js/lib/bulma.min.css"/>
-        <link rel="stylesheet" href="${staticServePath}/js/lib/fontawesome/css/all.min.css">
+        <link rel="stylesheet" href="${staticServePath}/js/lib/bulma.min.css?${staticResourceVersion}"/>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/fontawesome/css/all.min.css?${staticResourceVersion}">
         <link rel="stylesheet"
               href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
-        <link rel="stylesheet" href="${staticServePath}/js/lib/swiper.min.css">
-        <script src='${staticServePath}/js/lib/swiper.min.js'></script>
+        <link rel="stylesheet" href="${staticServePath}/js/lib/swiper.min.css?${staticResourceVersion}">
+        <script src='${staticServePath}/js/lib/swiper.min.js?${staticResourceVersion}'></script>
     </@head>
 
 

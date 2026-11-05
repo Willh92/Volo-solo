@@ -18,11 +18,13 @@
 package org.b3log.solo.rss;
 
 import java.io.ByteArrayInputStream;
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -32,12 +34,14 @@ import org.b3log.latke.Keys;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.OutboundUrls;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.jsoup.safety.Safelist;
 
 import com.rometools.rome.feed.synd.SyndEnclosure;
@@ -152,23 +156,34 @@ public class RssParser {
                 article.put(Article.ARTICLE_PERMALINK,
                         String.format("/follow/%s/article/%s", this.userName, title));
                 article.put("isRss", false);
+                final Document contentDoc;
                 if (null == entry.getContents() || entry.getContents().isEmpty()) {
+                    contentDoc = description.isEmpty() ? null : Jsoup.parseBodyFragment(description);
+                    final String descText = contentDoc == null ? "" : contentDoc.text();
+                    final String abstractText = truncateAbstract(description, descText);
                     article.put(Article.ARTICLE_CONTENT, description);
-                    article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(description));
-                    article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
-                    if (!isRichContent(description) && !entryLink.isEmpty()) {
+                    article.put(Article.ARTICLE_ABSTRACT, abstractText);
+                    article.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
+                    if (!isRichContent(contentDoc, descText) && !entryLink.isEmpty()) {
                         article.put("isRss", true);
                         article.put(Article.ARTICLE_PERMALINK, entryLink);
                     }
                 } else {
                     final String safeContent = sanitizeHtml(entry.getContents().get(0).getValue());
+                    contentDoc = safeContent.isEmpty() ? null : Jsoup.parseBodyFragment(safeContent);
                     article.put(Article.ARTICLE_CONTENT, safeContent);
-                    if (entry.getDescription() == null || entry.getDescription().getValue() == null) {
-                        article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(safeContent));
-                        article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
+                    if (entry.getDescription() == null || entry.getDescription().getValue() == null || description.isBlank()) {
+                        final String contentText = contentDoc == null ? "" : contentDoc.text();
+                        final String abstractText = truncateAbstract(safeContent, contentText);
+                        article.put(Article.ARTICLE_ABSTRACT, abstractText);
+                        article.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
                     } else {
-                        article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(article));
-                        article.put(Article.ARTICLE_ABSTRACT_TEXT, article.getString(Article.ARTICLE_ABSTRACT));
+                        final Document descDoc = description.equals(safeContent)
+                                ? contentDoc : Jsoup.parseBodyFragment(description);
+                        final String descText = descDoc == null ? "" : descDoc.text();
+                        final String abstractText = truncateAbstract(description, descText);
+                        article.put(Article.ARTICLE_ABSTRACT, abstractText);
+                        article.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
                     }
                 }
                 Date time;
@@ -181,7 +196,8 @@ public class RssParser {
                     time = new Date(now.toEpochMilli());
                     now = now.minusSeconds(600);
                 }
-                // 设置文章封面
+                // 设置文章封面（单次 DOM 提取复用）
+                final String firstContentImg = firstSafeImageUrl(contentDoc);
                 final Optional<SyndEnclosure> optionalEnclosure = entry.getEnclosures().stream()
                         .filter(enclosure -> enclosure.getType() != null
                                 && enclosure.getType().startsWith("image/")
@@ -190,11 +206,14 @@ public class RssParser {
                 if (optionalEnclosure.isPresent()) {
                     article.put(Article.ARTICLE_IMG1_URL, optionalEnclosure.get().getUrl().trim());
                 } else {
-                    final String contentFirstImageUrl = Article.getArticleImg1URLWithoutSetSize(article);
-                    final String articleCoverUrl = contentFirstImageUrl == null ? this.userIcon : contentFirstImageUrl;
-                    article.put(Article.ARTICLE_IMG1_URL, articleCoverUrl);
+                    final String contentFirstImageUrl = firstContentImg.isEmpty()
+                            ? Images.imageSize(Images.randImage(), Article.ARTICLE_THUMB_IMG_WIDTH, Article.ARTICLE_THUMB_IMG_HEIGHT)
+                            : firstContentImg;
+                    article.put(Article.ARTICLE_IMG1_URL, contentFirstImageUrl == null ? this.userIcon : contentFirstImageUrl);
                 }
-                article.put(Article.ARTICLE_COVER_URL, Article.getArticleCoverURL(article.optString(Article.ARTICLE_CONTENT)));
+                article.put(Article.ARTICLE_COVER_URL, firstContentImg.isEmpty()
+                        ? ""
+                        : Images.imageSize(firstContentImg, Article.ARTICLE_THUMB_IMG_WIDTH, Article.ARTICLE_THUMB_IMG_HEIGHT));
                 article.put(Article.ARTICLE_CREATED, time.getTime());
                 article.put(Article.ARTICLE_UPDATED, article.getLong(Article.ARTICLE_CREATED));
                 article.put(Article.ARTICLE_VIEW_PWD, "");
@@ -212,6 +231,49 @@ public class RssParser {
         return articles;
     }
 
+    private static String truncateAbstract(final String rawHtml, final String extractedText) {
+        if (rawHtml != null && rawHtml.contains(":::")) {
+            return Article.getAbstractText(rawHtml);
+        }
+        if (extractedText == null || extractedText.isEmpty()) {
+            return "";
+        }
+        return extractedText.length() > Article.ARTICLE_ABSTRACT_LENGTH
+                ? extractedText.substring(0, Article.ARTICLE_ABSTRACT_LENGTH) + "...."
+                : extractedText;
+    }
+
+    private static String firstSafeImageUrl(final Document doc) {
+        if (doc == null) {
+            return "";
+        }
+        for (final Element image : doc.select("img[src]")) {
+            final String source = image.attr("src").trim();
+            if (source.isBlank() || source.contains("\\") || source.chars().anyMatch(Character::isISOControl)) {
+                continue;
+            }
+            try {
+                final URI uri = URI.create(source);
+                final String scheme = uri.getScheme();
+                if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+                    continue;
+                }
+                if (scheme == null && source.startsWith("//")) {
+                    continue;
+                }
+                if (source.startsWith("#") || source.startsWith("?")
+                        || uri.getPath() == null || uri.getPath().isEmpty()
+                        || uri.getPath().toLowerCase(Locale.ROOT).endsWith(".ico")) {
+                    continue;
+                }
+                return source;
+            } catch (final IllegalArgumentException ignored) {
+                // Malformed or non-image URLs do not become cover sources.
+            }
+        }
+        return "";
+    }
+
     /**
      * 判断是否是“富内容”，即内容是否像是正文而不是摘要
      */
@@ -219,16 +281,23 @@ public class RssParser {
         if (html == null || html.trim().isEmpty()) {
             return false;
         }
+        return isRichContent(Jsoup.parseBodyFragment(html), null);
+    }
 
-        final Document doc = Jsoup.parse(html);
-        final String text = doc.text();
-        final int textLength = text.length();
-
-        final boolean hasLongText = textLength > 200;
-        final boolean hasParagraphs = doc.select("p").size() >= 3;
-        final boolean hasImages = doc.select("img").size() > 1;
-        final boolean hasHeaders = doc.select("h1,h2,h3").size() > 0;
-
-        return hasLongText && (hasParagraphs || hasImages || hasHeaders);
+    private static boolean isRichContent(final Document doc, final String precomputedText) {
+        if (doc == null) {
+            return false;
+        }
+        final String text = precomputedText != null ? precomputedText : doc.text();
+        if (text.length() <= 200) {
+            return false;
+        }
+        if (doc.selectFirst("h1,h2,h3") != null) {
+            return true;
+        }
+        if (doc.select("p").size() >= 3) {
+            return true;
+        }
+        return doc.select("img").size() > 1;
     }
 }

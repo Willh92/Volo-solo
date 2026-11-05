@@ -19,7 +19,7 @@
 -->
 <div class="vcard" id="${comment.oId?html}" xmlns="http://www.w3.org/1999/html" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class = "vavatar">
-        <img data-avatar-seed="${comment.commentName?html}" class="vcimg" src="${comment.commentThumbnailURL?html}">
+        <img data-avatar-seed="${comment.commentName?html}" class="vcimg" src="${comment.commentThumbnailURL?html}" loading="lazy" decoding="async">
     </div>
     <div class="vh">
         <div class="vhead">

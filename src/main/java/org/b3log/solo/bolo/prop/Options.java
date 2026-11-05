@@ -113,7 +113,10 @@ public class Options {
                 Option.ID_C_ENABLE_INSTANT_SEARCH,
                 Option.ID_C_LOCAL_BACKUP_AUTO,
                 Option.ID_C_LOCAL_BACKUP_KEEP_COUNT,
-                Option.ID_C_LOCAL_BACKUP_DIR);
+                Option.ID_C_LOCAL_BACKUP_DIR,
+                Option.ID_C_IMAGE_WEBP_ADAPTIVE,
+                Option.ID_C_INDEXNOW_ENABLED,
+                Option.ID_C_INDEXNOW_KEY);
         return optionList;
     }
 
@@ -234,7 +237,10 @@ public class Options {
                 new Object[] { Option.ID_C_ENABLE_INSTANT_SEARCH, Option.CATEGORY_C_PREFERENCE, "true" },
                 new Object[] { Option.ID_C_LOCAL_BACKUP_AUTO, Option.CATEGORY_C_PREFERENCE, "false" },
                 new Object[] { Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, Option.CATEGORY_C_PREFERENCE, "7" },
-                new Object[] { Option.ID_C_LOCAL_BACKUP_DIR, Option.CATEGORY_C_PREFERENCE, "" });
+                new Object[] { Option.ID_C_LOCAL_BACKUP_DIR, Option.CATEGORY_C_PREFERENCE, "" },
+                new Object[] { Option.ID_C_IMAGE_WEBP_ADAPTIVE, Option.CATEGORY_C_PREFERENCE, "false" },
+                new Object[] { Option.ID_C_INDEXNOW_ENABLED, Option.CATEGORY_C_PREFERENCE, "false" },
+                new Object[] { Option.ID_C_INDEXNOW_KEY, Option.CATEGORY_C_PREFERENCE, "" });
         return optList;
     }
 

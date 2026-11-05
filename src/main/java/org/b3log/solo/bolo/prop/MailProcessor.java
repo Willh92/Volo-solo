@@ -41,9 +41,17 @@ import org.b3log.latke.http.Response;
 public class MailProcessor {
     private static final Logger LOGGER = Logger.getLogger(MailProcessor.class);
     private static final java.util.concurrent.ThreadPoolExecutor MAILS = new java.util.concurrent.ThreadPoolExecutor(
-            1, 2, 30, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.ArrayBlockingQueue<>(64), task -> {
+            1, 2, 60L, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.ArrayBlockingQueue<>(64), task -> {
                 final Thread thread = new Thread(task, "volo-mail"); thread.setDaemon(true); return thread;
             });
+
+    static {
+        MAILS.allowCoreThreadTimeOut(true);
+    }
+
+    public static void shutdown() {
+        MAILS.shutdown();
+    }
 
     /**
      * 发送普通邮件

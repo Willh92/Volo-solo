@@ -20,6 +20,7 @@ package org.b3log.solo.service;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
@@ -102,20 +103,26 @@ public class PageMgmtService {
     @Inject
     private OptionMgmtService optionMgmtService;
 
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidateSyndicationAndPublicCaches() {
+        org.b3log.solo.processor.ErrorProcessor.clearCache();
+        if (null != syndicationCacheService) {
+            syndicationCacheService.invalidate();
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
+    }
+
     /**
      * Updates a page by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          {
-     *                          "page": {
-     *                          "oId": "",
-     *                          "pageTitle": "",
-     *                          "pageOrder": int,
-     *                          "pagePermalink": "",
-     *                          "pageOpenTarget": "",
-     *                          "pageIcon": "" // optional
-     *                          }
-     *                          }, see {@link Page} for more details
+     * @param requestJSONObject the specified request json object
      * @throws ServiceException service exception
      */
     public void updatePage(final JSONObject requestJSONObject) throws ServiceException {
@@ -132,6 +139,7 @@ public class PageMgmtService {
 
             pageRepository.update(pageId, newPage);
             transaction.commit();
+            invalidateSyndicationAndPublicCaches();
 
             LOGGER.log(Level.DEBUG, "Updated a page[id={0}]", pageId);
         } catch (final Exception e) {
@@ -156,6 +164,7 @@ public class PageMgmtService {
             pageRepository.remove(pageId);
             commentRepository.removeComments(pageId);
             transaction.commit();
+            invalidateSyndicationAndPublicCaches();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -170,15 +179,7 @@ public class PageMgmtService {
     /**
      * Adds a page with the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          {
-     *                          "page": {
-     *                          "pageTitle": "",
-     *                          "pageOpenTarget": "",
-     *                          "pagePermalink": "",
-     *                          "pageIcon": "" // optional
-     *                          }
-     *                          }, see {@link Page} for more details
+     * @param requestJSONObject the specified request json object
      * @return generated page id
      * @throws ServiceException if permalink format checks failed or persists failed
      */
@@ -196,6 +197,7 @@ public class PageMgmtService {
             page.put(Page.PAGE_ICON, page.optString(Page.PAGE_ICON));
             final String ret = pageRepository.add(page);
             transaction.commit();
+            invalidateSyndicationAndPublicCaches();
 
             return ret;
         } catch (final JSONException e) {
@@ -250,6 +252,7 @@ public class PageMgmtService {
             pageRepository.update(srcPage.getString(Keys.OBJECT_ID), srcPage, Page.PAGE_ORDER);
             pageRepository.update(targetPage.getString(Keys.OBJECT_ID), targetPage, Page.PAGE_ORDER);
             transaction.commit();
+            invalidateSyndicationAndPublicCaches();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();

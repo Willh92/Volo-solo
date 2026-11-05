@@ -35,7 +35,7 @@
 <button class="side__top" id="sideTop" type="button" aria-label="${goTopLabel!'返回顶部'}" title="${goTopLabel!'返回顶部'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
 
 
-<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <script type="text/javascript"

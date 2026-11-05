@@ -26,6 +26,8 @@
   try { mode = localStorage.getItem(key) || 'auto' } catch (error) { /* Private storage may be disabled. */ }
   if (!modes[mode]) mode = 'auto'
   var resolved
+  var hasOpenMenu = false
+  var headerSlotHostSelector = 'header, nav, aside, [id*="nav"], [class*="header"], [class*="drawer"], [class*="sidebar"], [data-bolo-theme-slot]'
   var accents = ['forest', 'ocean', 'teal', 'amber', 'plum', 'rose']
   var accentMeta = document.querySelector('meta[name="bolo-accent"]')
   var accent = accentMeta && accents.includes(accentMeta.content) ? accentMeta.content : 'forest'
@@ -96,6 +98,8 @@
   }
 
   function close (focus) {
+    if (!hasOpenMenu && !focus) return
+    hasOpenMenu = false
     document.querySelectorAll('.bolo-appearance').forEach(function (widget) {
       var menu = widget._appearanceMenu || widget.querySelector('[role="menu"]')
       var wasOpen = !menu.hidden
@@ -238,7 +242,14 @@
   window.addEventListener('bolo:before-navigate', function () { close(false) })
   window.addEventListener('resize', function () { close(false); moveHeaderControl(); syncGitHubRepoDescriptions() })
   window.addEventListener('scroll', function () { close(false) }, {passive: true})
-  document.addEventListener('transitionend', function (event) { if (event.propertyName === 'transform' || event.propertyName === 'left') moveHeaderControl() })
+  document.addEventListener('transitionend', function (event) {
+    if (event.propertyName !== 'transform' && event.propertyName !== 'left') return
+    var target = event.target
+    if (!target || typeof target.matches !== 'function') return
+    if (target.matches(headerSlotHostSelector) || (typeof target.querySelector === 'function' && target.querySelector('[data-bolo-theme-slot]'))) {
+      moveHeaderControl()
+    }
+  })
   document.addEventListener('pjax:complete', mount)
   document.addEventListener('visibilitychange', function () { if (!document.hidden) apply() })
   window.addEventListener('storage', function (event) {
@@ -263,6 +274,7 @@
       var open = toggle.getAttribute('aria-expanded') !== 'true'
       if (open && window.BoloTOC) BoloTOC.close()
       close(false)
+      hasOpenMenu = open
       toggle.setAttribute('aria-expanded', String(open))
       var widget = toggle.parentElement
       var menu = widget._appearanceMenu || widget.querySelector('[role="menu"]')

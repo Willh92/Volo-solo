@@ -31,12 +31,11 @@
 </form>
 <script src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/js/bolo/jquery.cookie.min.js?${staticResourceVersion}"></script>
-<link rel="stylesheet" href="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.css?${staticResourceVersion}"/>
 <script src="${staticServePath}/js/lib/fancybox/jquery.fancybox.min.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/js/lib/lazyload.iife.min.js?${staticResourceVersion}"></script>
-<script type="text/javascript" src="${staticServePath}/js/common.js?${staticResourceVersion}"
+<script type="text/javascript" src="${staticServePath}/js/common${miniPostfix!''}.js?${staticResourceVersion}"
         charset="utf-8"></script>
-<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common.js?${staticResourceVersion}"
+<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix!''}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <#include "../../common-template/label.ftl">
 

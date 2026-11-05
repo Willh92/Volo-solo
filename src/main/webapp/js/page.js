@@ -62,14 +62,25 @@ $.extend(Page.prototype, {
             }
 
             if (key === 'wechat') {
+                var renderQr = function () {
+                    if ($qrCode.find('canvas').length === 0 && typeof $qrCode.qrcode === 'function') {
+                        $qrCode.qrcode({
+                            width: 128,
+                            height: 128,
+                            text: shareURL,
+                        })
+                    }
+                };
                 if ($qrCode.find('canvas').length === 0) {
-                    Util.addScript(Label.staticServePath +
-                        '/js/lib/jquery.qrcode.min.js', 'qrcodeScript');
-                    $qrCode.qrcode({
-                        width: 128,
-                        height: 128,
-                        text: shareURL,
-                    })
+                    if (typeof $qrCode.qrcode === 'function') {
+                        renderQr();
+                    } else {
+                        var loadingQr = Util.addScript(Label.staticServePath +
+                            '/js/lib/jquery.qrcode.min.js', 'qrcodeScript', renderQr);
+                        if (loadingQr && typeof loadingQr.catch === 'function') {
+                            loadingQr.catch(function () {});
+                        }
+                    }
                 } else {
                     $qrCode.slideToggle()
                 }
@@ -78,6 +89,18 @@ $.extend(Page.prototype, {
 
             window.open(urls[key], '_blank', 'top=100,left=200,width=648,height=618')
         })
+    },
+    isCommentingUsable: function () {
+        var mode = (this.tips && this.tips.commentAccessMode)
+            || (window.VoloSiteConfig && window.VoloSiteConfig.commentAccessMode)
+            || 'all';
+        if (mode === 'off') return false;
+        var isAdmin = Boolean((this.tips && this.tips.commentAdministrator === true)
+            || (window.VoloSiteConfig && window.VoloSiteConfig.isAdminLoggedIn === true));
+        var isLogged = Boolean(this.commentLoggedIn
+            || (window.VoloSiteConfig && window.VoloSiteConfig.isLoggedIn === true));
+        if (mode === 'registered' && !isLogged && !isAdmin) return false;
+        return Boolean(document.getElementById('comment') && document.getElementById('soloEditorComment'));
     },
     /*
      * @description 文章加载
@@ -110,17 +133,68 @@ $.extend(Page.prototype, {
         window.addEventListener('resize', updateViewport);
         window.visualViewport?.addEventListener('resize', updateViewport);
         window.visualViewport?.addEventListener('scroll', updateViewport);
-        if (document.getElementById('soloEditorComment') && !window.navigator?.connection?.saveData) {
-            var warmup = function () { that.prepareCommentEditor().catch(function () {}); };
-            if (window.requestIdleCallback) this.commentWarmup = window.requestIdleCallback(warmup, {timeout: 3000});
-            else this.commentWarmup = setTimeout(warmup, 700);
+
+        var commentObserver = null;
+        var warmupTriggered = false;
+        var onInteractWarmup = function (event) {
+            var target = event && event.target;
+            if (!target || typeof target.closest !== 'function') return;
+            if (target.closest('#comment, [data-comment-id], [data-comment-edit], [onclick*="toggleEditor"], [onclick*="addReplyForm"], .comment-reply, .comment-reply-link, .reply-btn, .comment__btn')) {
+                warmup();
+            }
+        };
+        var cleanupWarmup = function () {
+            if (commentObserver) {
+                commentObserver.disconnect();
+                commentObserver = null;
+            }
+            if (typeof document.removeEventListener === 'function') {
+                document.removeEventListener('pointerdown', onInteractWarmup, true);
+                document.removeEventListener('focusin', onInteractWarmup, true);
+            }
+            if (that.commentWarmup) {
+                if (window.requestIdleCallback && window.cancelIdleCallback) window.cancelIdleCallback(that.commentWarmup);
+                else clearTimeout(that.commentWarmup);
+                that.commentWarmup = 0;
+            }
+        };
+        var warmup = function () {
+            if (warmupTriggered || that.commentDisposed || !that.isCommentingUsable()) return;
+            warmupTriggered = true;
+            cleanupWarmup();
+            that.prepareCommentEditor().catch(function () {});
+        };
+        if (this.isCommentingUsable()) {
+            if (typeof document.addEventListener === 'function') {
+                document.addEventListener('pointerdown', onInteractWarmup, true);
+                document.addEventListener('focusin', onInteractWarmup, true);
+            }
+            if (!window.navigator?.connection?.saveData) {
+                if (typeof IntersectionObserver !== 'undefined') {
+                    commentObserver = new IntersectionObserver(function (entries) {
+                        for (var i = 0; i < entries.length; i++) {
+                            if (entries[i].isIntersecting || entries[i].intersectionRatio > 0) {
+                                warmup();
+                                break;
+                            }
+                        }
+                    }, {rootMargin: '320px 0px'});
+                    var commentTrigger = document.getElementById('comment');
+                    var commentsRegion = document.getElementById('comments');
+                    if (commentsRegion) commentObserver.observe(commentsRegion);
+                    if (commentTrigger && commentTrigger !== commentsRegion) commentObserver.observe(commentTrigger);
+                } else if (window.requestIdleCallback) {
+                    this.commentWarmup = window.requestIdleCallback(warmup, {timeout: 3000});
+                } else {
+                    this.commentWarmup = setTimeout(warmup, 700);
+                }
+            }
         }
         if (window.BoloNavigation) BoloNavigation.onLeave(function () {
             that.commentDisposed = true;
+            cleanupWarmup();
             that.commentCaptchaWidget?.destroy();
             clearTimeout(that.commentEditorTimeout);
-            if (window.requestIdleCallback) window.cancelIdleCallback(that.commentWarmup);
-            else clearTimeout(that.commentWarmup);
             window.removeEventListener('resize', updateViewport);
             window.visualViewport?.removeEventListener('resize', updateViewport);
             window.visualViewport?.removeEventListener('scroll', updateViewport);
@@ -864,7 +938,6 @@ $.extend(Page.prototype, {
         Util.bindCommentAvatars(document);
         this.refreshCommentPermissions();
         Util.parseMarkdown();
-        Util.parseLanguage();
         window.location.hash = '#comments'
         return true
     },

@@ -35,11 +35,86 @@ var SoloEditor = function (conf) {
   this.init()
 }
 
+SoloEditor.convertStaticImageToWebp = function (file) {
+  if (!file || typeof Label !== 'object' || String(Label.imageWebpAdaptive) !== 'true') {
+    return Promise.resolve(file)
+  }
+  var mime = String(file.type || '').toLowerCase()
+  if (!/^image\/(jpeg|jpg|png|bmp)$/.test(mime)) {
+    return Promise.resolve(file)
+  }
+  if (typeof document === 'undefined' || !document.createElement || typeof Image === 'undefined' || typeof File === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+    return Promise.resolve(file)
+  }
+  var rawQuality = parseFloat(Label.imageUploadCompress)
+  var quality = (!isNaN(rawQuality) && rawQuality > 0 && rawQuality < 1) ? Math.min(0.95, Math.max(0.5, rawQuality)) : ((!isNaN(rawQuality) && rawQuality >= 10 && rawQuality < 100) ? Math.min(0.95, Math.max(0.5, rawQuality / 100)) : 0.86)
+  return new Promise(function (resolve) {
+    var objUrl = ''
+    try {
+      objUrl = URL.createObjectURL(file)
+    } catch (e) {
+      resolve(file)
+      return
+    }
+    var cleanup = function () {
+      try { if (objUrl && URL.revokeObjectURL) URL.revokeObjectURL(objUrl) } catch (e) {}
+    }
+    var img = new Image()
+    img.onload = function () {
+      try {
+        var w = img.naturalWidth || img.width
+        var h = img.naturalHeight || img.height
+        if (!w || !h || w * h > 36000000) {
+          cleanup()
+          resolve(file)
+          return
+        }
+        var canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        var ctx = canvas.getContext && canvas.getContext('2d')
+        if (!ctx || typeof canvas.toBlob !== 'function') {
+          cleanup()
+          resolve(file)
+          return
+        }
+        ctx.drawImage(img, 0, 0, w, h)
+        canvas.toBlob(function (blob) {
+          cleanup()
+          if (!blob || blob.type !== 'image/webp' || blob.size <= 0 || blob.size >= file.size) {
+            resolve(file)
+            return
+          }
+          var baseName = String(file.name || 'image').replace(/\.[^.]+$/, '')
+          resolve(new File([blob], baseName + '.webp', { type: 'image/webp', lastModified: file.lastModified || Date.now() }))
+        }, 'image/webp', quality)
+      } catch (err) {
+        cleanup()
+        resolve(file)
+      }
+    }
+    img.onerror = function () {
+      cleanup()
+      resolve(file)
+    }
+    img.src = objUrl
+  })
+}
+
+SoloEditor.prepareUploadFiles = function (files) {
+  var list = Array.prototype.slice.call(files || [])
+  if (!list.length || typeof Label !== 'object' || String(Label.imageWebpAdaptive) !== 'true') {
+    return list
+  }
+  return Promise.all(list.map(function (f) { return SoloEditor.convertStaticImageToWebp(f) }))
+}
+
 $.extend(SoloEditor.prototype, {
   /*
    * @description 初始化编辑器
    */
   init: function () {
+    this._userTyped = false
 
     Label.emoji = {}
     let defaultEmojiData = JSON.parse('[{"doge":"' + Label.servePath + '/js/lib/vditor/dist/images/emoji/doge.png"},{"huaji":"' + Label.servePath + '/js/lib/vditor/dist/images/emoji/huaji.gif"},{"smile":"😄"},{"laughing":"😆"},{"smirk":"😏"},{"heart_eyes":"😍"},{"kissing_heart":"😘"},{"flushed":"😳"},{"grin":"😁"},{"stuck_out_tongue_closed_eyes":"😝"},{"sleeping":"😴"},{"anguished":"😧"},{"open_mouth":"😮"},{"expressionless":"😑"},{"unamused":"😒"},{"sweat_smile":"😅"},{"weary":"😩"},{"sob":"😭"},{"joy":"😂"},{"astonished":"😲"},{"scream":"😱"},{"tired_face":"😫"},{"rage":"😡"},{"triumph":"😤"},{"yum":"😋"},{"mask":"😷"},{"sunglasses":"😎"},{"dizzy_face":"😵"},{"imp":"👿"},{"smiling_imp":"😈"},{"innocent":"😇"},{"alien":"👽"},{"yellow_heart":"💛"},{"blue_heart":"💙"},{"purple_heart":"💜"},{"green_heart":"💚"},{"broken_heart":"💔"},{"anger":"💢"},{"exclamation":"❗"},{"question":"❓"},{"zzz":"💤"},{"notes":"🎶"},{"poop":"💩"},{"+1":"👍"},{"-1":"👎"},{"ok_hand":"👌"},{"punch":"👊"},{"v":"✌"},{"point_up":"☝"},{"point_down":"👇"},{"pray":"🙏"},{"clap":"👏"},{"muscle":"💪"},{"ok_woman":"🙆"},{"no_good":"🙅"},{"raising_hand":"🙋"},{"massage":"💆"},{"haircut":"💇"},{"nail_care":"💅"},{"see_no_evil":"🙈"},{"feet":"🐾"},{"trollface":"' + Label.servePath + '/js/lib/vditor/dist/images/emoji/trollface.png"},{"snowman":"⛄"},{"zap":"⚡"},{"cat":"🐱"},{"dog":"🐶"},{"mouse":"🐭"},{"hamster":"🐹"},{"rabbit":"🐰"},{"frog":"🐸"},{"koala":"🐨"},{"pig":"🐷"},{"monkey":"🐒"},{"racehorse":"🐎"},{"camel":"🐫"},{"sheep":"🐑"},{"elephant":"🐘"},{"panda_face":"🐼"},{"snake":"🐍"},{"hatched_chick":"🐥"},{"hatching_chick":"🐣"},{"turtle":"🐢"},{"bug":"🐛"},{"honeybee":"🐝"},{"beetle":"🐞"},{"snail":"🐌"},{"octopus":"🐙"},{"whale":"🐳"},{"dolphin":"🐬"},{"dragon":"🐉"},{"goat":"🐐"},{"paw_prints":"🐾"},{"tulip":"🌷"},{"four_leaf_clover":"🍀"},{"rose":"🌹"},{"mushroom":"🍄"},{"seedling":"🌱"},{"shell":"🐚"},{"crescent_moon":"🌙"},{"partly_sunny":"⛅"},{"octocat":"' + Label.servePath + '/js/lib/vditor/dist/images/emoji/octocat.png"},{"jack_o_lantern":"🎃"},{"ghost":"👻"},{"santa":"🎅"},{"tada":"🎉"},{"camera":"📷"},{"loudspeaker":"📢"},{"hourglass":"⌛"},{"lock":"🔒"},{"bulb":"💡"},{"hammer":"🔨"},{"moneybag":"💰"},{"smoking":"🚬"},{"bomb":"💣"},{"gun":"🔫"},{"hocho":"🔪"},{"pill":"💊"},{"syringe":"💉"},{"scissors":"✂"},{"swimmer":"🏊"},{"black_joker":"🃏"},{"coffee":"☕"},{"tea":"🍵"},{"sake":"🍶"},{"beer":"🍺"},{"wine_glass":"🍷"},{"pizza":"🍕"},{"hamburger":"🍔"},{"poultry_leg":"🍗"},{"meat_on_bone":"🍖"},{"dango":"🍡"},{"doughnut":"🍩"},{"icecream":"🍦"},{"shaved_ice":"🍧"},{"cake":"🍰"},{"cookie":"🍪"},{"lollipop":"🍭"},{"apple":"🍎"},{"green_apple":"🍏"},{"tangerine":"🍊"},{"lemon":"🍋"},{"cherries":"🍒"},{"grapes":"🍇"},{"watermelon":"🍉"},{"strawberry":"🍓"},{"peach":"🍑"},{"banana":"🍌"},{"pear":"🍐"},{"pineapple":"🍍"},{"sweet_potato":"🍠"},{"eggplant":"🍆"},{"tomato":"🍅"}]')
@@ -60,6 +135,12 @@ $.extend(SoloEditor.prototype, {
         enable: true,
       },
       tab: '\t',
+      input: value => {
+        this._userTyped = true
+        if (typeof this.conf.onInput === 'function') {
+          this.conf.onInput(value)
+        }
+      },
       preview: {
         delay: 500,
         mode: this.conf.previewMode,
@@ -81,10 +162,11 @@ $.extend(SoloEditor.prototype, {
         url: Label.uploadURL,
         token: Label.uploadToken,
         headers: {'X-Requested-With': 'XMLHttpRequest'},
+        file: function (files) { return SoloEditor.prepareUploadFiles(files) },
         filename: function (name) {
           return name.replace(/[^(a-zA-Z0-9\u4e00-\u9fa5\.)]/g, '').
           replace(/[\?\\/:|<>\*\[\]\(\)\$%\{\}@~]/g, '').
-          replace('/\\s/g', '')
+          replace(/\s+/g, '_')
         },
       },
       height: this.conf.height,
@@ -164,11 +246,20 @@ $.extend(SoloEditor.prototype, {
 
     if (this.conf.id === 'articleContent' && window.innerWidth > 768) {
       const insertSnippet = snippet => {
-        if (this.editor && typeof this.editor.insertValue === 'function') {
-          this.editor.insertValue(snippet)
-        }
+        this.insertContent(snippet)
       }
       options.toolbar.splice(options.toolbar.indexOf('fullscreen'), 0,
+        {
+          name: 'volo-quick-insert',
+          tipPosition: 'n',
+          tip: '快捷插入面板（图库 / 书架 / 锁块 / 引用）',
+          icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/></svg>',
+          click: () => {
+            if (admin.article && typeof admin.article.openQuickInsert === 'function') {
+              admin.article.openQuickInsert('media')
+            }
+          },
+        },
         {
           name: 'volo-lock-user',
           tipPosition: 'n',
@@ -255,8 +346,26 @@ $.extend(SoloEditor.prototype, {
    * @param {string} content 编辑器回填内容
    */
   setContent: function (content) {
+    this._userTyped = false
     if (this.editorReady) this.editor.setValue(content)
-    else this.ready.then(editor => editor?.setValue(content))
+    else this.ready = Promise.resolve(this.ready).then(editor => { editor?.setValue(content); return editor })
+  },
+  /*
+   * @description 插入内容到编辑器光标处（兼容冷启动队列）
+   * @param {string} value 待插入内容
+   */
+  insertContent: function (value) {
+    this._userTyped = true
+    if (this.editorReady && this.editor && typeof this.editor.insertValue === 'function') {
+      this.editor.insertValue(value)
+    } else {
+      this.ready = Promise.resolve(this.ready).then(editor => {
+        if (editor && typeof editor.insertValue === 'function') {
+          editor.insertValue(value)
+        }
+        return editor
+      })
+    }
   },
   /*
    * @description 移除编辑器值

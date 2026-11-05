@@ -20,7 +20,7 @@
 <li id="${comment.oId?html}" class="fn-clear" data-comment-id="${comment.oId?html}" data-comment-thread="${(comment.commentThreadId!comment.oId)?html}" data-comment-depth="${(comment.commentDepth!0)?c}" data-comment-deleted="${(comment.commentDeleted!false)?c}">
     <div class="comment-body">
         <div class="fn-clear comment-meta">
-                <img class="comment-avatar" data-avatar-seed="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" width="32" height="32" alt=""/>
+                <img class="comment-avatar" data-avatar-seed="${comment.commentName?html}" src="${comment.commentThumbnailURL?html}" width="32" height="32" alt="" loading="lazy" decoding="async"/>
                 <span class="comment-author">
                     <#if !(comment.commentURL?starts_with('https://') || comment.commentURL?starts_with('http://')) || comment.commentURL == 'http://' || comment.commentURL == 'https://'>
                         <a>${comment.commentName?html}</a>

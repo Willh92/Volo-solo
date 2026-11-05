@@ -112,9 +112,25 @@ public final class Starter extends org.b3log.latke.http.BaseServer {
             return;
         }
 
+        final String cliSocketPath = commandLine.getOptionValue("listen_socket");
+        if (cliSocketPath != null && !cliSocketPath.isBlank() && commandLine.hasOption("listen_port")) {
+            throw new IllegalArgumentException("Choose either --listen_socket/listenSocket or --listen_port");
+        }
+
         String portArg = commandLine.getOptionValue("listen_port");
         if (!Strings.isNumeric(portArg)) {
             portArg = "8080";
+        }
+
+        // Apply pre-init runtime mode & Lute overrides before Latkes.init() so bean/template initialization sees them
+        final String runtimeMode = commandLine.getOptionValue("runtime_mode");
+        if (null != runtimeMode) {
+            Latkes.setRuntimeMode(Latkes.RuntimeMode.valueOf(runtimeMode));
+        }
+        final String luteHttp = commandLine.getOptionValue("lute");
+        if (null != luteHttp) {
+            Markdowns.LUTE_ENGINE_URL = luteHttp;
+            Markdowns.LUTE_AVAILABLE = true;
         }
 
         try {
@@ -126,39 +142,7 @@ public final class Starter extends org.b3log.latke.http.BaseServer {
             System.exit(-1);
         }
 
-        String serverScheme = commandLine.getOptionValue("server_scheme");
-        if (null != serverScheme) {
-            Latkes.setLatkeProperty("serverScheme", serverScheme);
-        }
-        String serverHost = commandLine.getOptionValue("server_host");
-        if (null != serverHost) {
-            Latkes.setLatkeProperty("serverHost", serverHost);
-        }
-        String serverPort = commandLine.getOptionValue("server_port");
-        if (null != serverPort) {
-            Latkes.setLatkeProperty("serverPort", serverPort);
-        }
-        String staticServerScheme = commandLine.getOptionValue("static_server_scheme");
-        if (null != staticServerScheme) {
-            Latkes.setLatkeProperty("staticServerScheme", staticServerScheme);
-        }
-        String staticServerHost = commandLine.getOptionValue("static_server_host");
-        if (null != staticServerHost) {
-            Latkes.setLatkeProperty("staticServerHost", staticServerHost);
-        }
-        String staticServerPort = commandLine.getOptionValue("static_server_port");
-        if (null != staticServerPort) {
-            Latkes.setLatkeProperty("staticServerPort", staticServerPort);
-        }
-        String runtimeMode = commandLine.getOptionValue("runtime_mode");
-        if (null != runtimeMode) {
-            Latkes.setRuntimeMode(Latkes.RuntimeMode.valueOf(runtimeMode));
-        }
-        String luteHttp = commandLine.getOptionValue("lute");
-        if (null != luteHttp) {
-            Markdowns.LUTE_ENGINE_URL = luteHttp;
-            Markdowns.LUTE_AVAILABLE = true;
-        }
+        applyLatkeCliOverrides(commandLine, runtimeMode);
 
         final String socketPath = commandLine.getOptionValue("listen_socket", Latkes.getLocalProperty("listenSocket"));
         if (socketPath != null && !socketPath.isBlank() && commandLine.hasOption("listen_port")) {
@@ -184,6 +168,36 @@ public final class Starter extends org.b3log.latke.http.BaseServer {
             }));
             if (socket == null) server.start(port);
             else socket.listen(path -> server.start(path), server::shutdown);
+        }
+    }
+
+    private static void applyLatkeCliOverrides(final CommandLine commandLine, final String runtimeMode) {
+        final String serverScheme = commandLine.getOptionValue("server_scheme");
+        if (null != serverScheme) {
+            Latkes.setLatkeProperty("serverScheme", serverScheme);
+        }
+        final String serverHost = commandLine.getOptionValue("server_host");
+        if (null != serverHost) {
+            Latkes.setLatkeProperty("serverHost", serverHost);
+        }
+        final String serverPort = commandLine.getOptionValue("server_port");
+        if (null != serverPort) {
+            Latkes.setLatkeProperty("serverPort", serverPort);
+        }
+        final String staticServerScheme = commandLine.getOptionValue("static_server_scheme");
+        if (null != staticServerScheme) {
+            Latkes.setLatkeProperty("staticServerScheme", staticServerScheme);
+        }
+        final String staticServerHost = commandLine.getOptionValue("static_server_host");
+        if (null != staticServerHost) {
+            Latkes.setLatkeProperty("staticServerHost", staticServerHost);
+        }
+        final String staticServerPort = commandLine.getOptionValue("static_server_port");
+        if (null != staticServerPort) {
+            Latkes.setLatkeProperty("staticServerPort", staticServerPort);
+        }
+        if (null != runtimeMode) {
+            Latkes.setLatkeProperty("runtimeMode", runtimeMode);
         }
     }
 

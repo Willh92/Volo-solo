@@ -20,17 +20,28 @@
  *
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
  */
+var goTopRaf = 0
 var goTop = function (acceleration) {
   acceleration = acceleration || 0.1
-
-  var y = $(window).scrollTop()
-  var speed = 1 + acceleration
-  window.scrollTo(0, Math.floor(y / speed))
-
-  if (y > 0) {
-    var invokeFunction = 'goTop(' + acceleration + ')'
-    window.setTimeout(invokeFunction, 16)
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    window.scrollTo(0, 0)
+    return
   }
+  if (goTopRaf) {
+    cancelAnimationFrame(goTopRaf)
+    goTopRaf = 0
+  }
+  var speed = 1 + acceleration
+  function step () {
+    goTopRaf = 0
+    var y = $(window).scrollTop()
+    var nextY = Math.floor(y / speed)
+    window.scrollTo(0, nextY)
+    if (nextY > 0) {
+      goTopRaf = requestAnimationFrame(step)
+    }
+  }
+  step()
 }
 
 var collapseArchive = function (it, year) {
@@ -73,7 +84,6 @@ var getArticle = function (it, id) {
         $content.html(result)
         $abstract.hide().css('background', 'none')
         $content.fadeIn('slow')
-        Util.parseLanguage()
         Util.parseMarkdown()
       },
     })
@@ -98,30 +108,79 @@ var goTranslate = function () {
 }
 
 $(document).ready(function () {
+  var returnTopRaf = 0
+  var lastVisible = null
+  var lastControlWidth = null
+  var lastTopCss = null
+
   // go top icon show or hide
   function updateReturnTop () {
+    returnTopRaf = 0
+    var $button = $('#goTop')
+    if (!$button.length) return
     var y = $(window).scrollTop()
     var bodyH = $(window).height()
     var mobile = window.innerWidth <= 600
-    var $button = $('#goTop')
     var top = y + bodyH - 21
-    if ($('body').height() - 58 <= y + bodyH) top = $('.footer').offset().top - 21
-
-    if (y > 182) {
-      if (!$button.is(':visible')) $button.fadeIn('slow')
-    } else {
-      $button.stop(true, true).hide()
+    var $footer = $('.footer')
+    if ($footer.length && $('body').height() - 58 <= y + bodyH) {
+      top = $footer.offset().top - 21
     }
-    $button.css('top', mobile ? '' : top)
-    document.documentElement.style.setProperty('--neoease-control-width', $button.outerWidth() + 'px')
+
+    var visible = y > 182
+    if (visible !== lastVisible) {
+      lastVisible = visible
+      if (visible) {
+        if (!$button.is(':visible')) $button.fadeIn('slow')
+      } else {
+        $button.stop(true, true).hide()
+      }
+    }
+
+    var nextTopCss = mobile ? '' : top + 'px'
+    if (nextTopCss !== lastTopCss) {
+      lastTopCss = nextTopCss
+      $button.css('top', mobile ? '' : top)
+    }
+
+    if (visible || lastControlWidth === null) {
+      var widthStr = $button.outerWidth() + 'px'
+      if (widthStr !== lastControlWidth) {
+        lastControlWidth = widthStr
+        document.documentElement.style.setProperty('--neoease-control-width', widthStr)
+      }
+    }
+
     var appearance = document.querySelector('.bolo-appearance--floating')
     if (appearance) {
-      appearance.style.right = mobile ? '18px' : '56px'
-      appearance.style.bottom = (mobile ? 78 : y > 182 ? bodyH - (top - y) + 12 : 33) + 'px'
+      var nextRight = mobile ? '18px' : '56px'
+      var nextBottom = (mobile ? 78 : visible ? bodyH - (top - y) + 12 : 33) + 'px'
+      if (appearance.style.right !== nextRight) appearance.style.right = nextRight
+      if (appearance.style.bottom !== nextBottom) appearance.style.bottom = nextBottom
     }
   }
-  $(window).on('scroll resize', updateReturnTop)
+
+  function scheduleReturnTop () {
+    if (!returnTopRaf) {
+      returnTopRaf = requestAnimationFrame(updateReturnTop)
+    }
+  }
+
+  $(window).off('.boloNeoEase').on('scroll.boloNeoEase resize.boloNeoEase', scheduleReturnTop)
   updateReturnTop()
+  if (window.BoloNavigation) {
+    window.BoloNavigation.onLeave(function () {
+      if (returnTopRaf) {
+        cancelAnimationFrame(returnTopRaf)
+        returnTopRaf = 0
+      }
+      if (goTopRaf) {
+        cancelAnimationFrame(goTopRaf)
+        goTopRaf = 0
+      }
+      $(window).off('.boloNeoEase')
+    })
+  }
 
   // archive
   var currentYear = (new Date()).getFullYear(),

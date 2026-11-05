@@ -19,12 +19,16 @@ package org.b3log.solo.repository;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.cache.ArticleCache;
 import org.b3log.solo.model.Article;
+import org.b3log.solo.service.ArticleMgmtService;
+import org.b3log.solo.service.ArticleQueryService;
+import org.b3log.solo.service.OptionQueryService;
+import org.b3log.solo.util.QueryResults;
+import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -47,6 +51,29 @@ public class ArticleRepository extends AbstractRepository {
      */
     private static final Logger LOGGER = Logger.getLogger(ArticleRepository.class);
 
+    private static final String RANDOM_SELECT_COLS =
+            "oId, articleStatus, articleRandomDouble, articleTitle, articlePermalink, articleCreated, articleUpdated";
+
+    private static final String[] SIDEBAR_PROJECTIONS = {
+            Article.ARTICLE_TITLE,
+            Article.ARTICLE_PERMALINK,
+            Article.ARTICLE_COMMENT_COUNT,
+            Article.ARTICLE_VIEW_COUNT,
+            Article.ARTICLE_IMG1_URL,
+            Article.ARTICLE_STATUS,
+            Article.ARTICLE_PUT_TOP,
+            Article.ARTICLE_CREATED,
+            Article.ARTICLE_UPDATED
+    };
+
+    private static final String[] ADJACENT_SUMMARY_PROJECTIONS = {
+            Article.ARTICLE_TITLE,
+            Article.ARTICLE_ABSTRACT,
+            Article.ARTICLE_ABSTRACT_TEXT,
+            Article.ARTICLE_PERMALINK,
+            Article.ARTICLE_IMG1_URL
+    };
+
     /**
      * Article cache.
      */
@@ -55,6 +82,9 @@ public class ArticleRepository extends AbstractRepository {
 
     @Inject
     private org.b3log.solo.cache.StatisticCache statisticCache;
+
+    @Inject
+    private OptionQueryService optionQueryService;
 
     /**
      * Public constructor.
@@ -102,7 +132,7 @@ public class ArticleRepository extends AbstractRepository {
 
     @Override
     public JSONObject get(final String id) throws RepositoryException {
-        JSONObject ret = articleCache.getArticle(id);
+        JSONObject ret = null == articleCache ? null : articleCache.getArticle(id);
         if (null != ret) {
             return ret;
         }
@@ -112,9 +142,12 @@ public class ArticleRepository extends AbstractRepository {
             return null;
         }
 
-        articleCache.putArticle(ret);
+        overlayPendingViewDelta(ret);
+        if (null != articleCache) {
+            articleCache.putArticle(ret);
+        }
 
-        return org.b3log.solo.util.Solos.clone(ret);
+        return Solos.clone(ret);
     }
 
     @Override
@@ -122,15 +155,50 @@ public class ArticleRepository extends AbstractRepository {
         super.update(id, article, propertyNames);
 
         article.put(Keys.OBJECT_ID, id);
-        if (null != articleCache) {
-            articleCache.putArticle(article);
-        }
         final boolean viewCountOnly = null != propertyNames
                 && propertyNames.length == 1
                 && Article.ARTICLE_VIEW_COUNT.equals(propertyNames[0]);
+        if (null != articleCache) {
+            if (null != propertyNames && propertyNames.length > 0 && !article.has(Article.ARTICLE_CONTENT)) {
+                final JSONObject cached = articleCache.getArticle(id);
+                if (null != cached) {
+                    if (viewCountOnly) {
+                        final long liveCount = article.optLong(Article.ARTICLE_VIEW_COUNT, 0L)
+                                + ArticleMgmtService.peekPendingViewDelta(id);
+                        cached.put(Article.ARTICLE_VIEW_COUNT,
+                                (int) Math.min(Integer.MAX_VALUE, Math.max(0L, liveCount)));
+                    } else {
+                        for (final String prop : propertyNames) {
+                            if (article.has(prop)) {
+                                cached.put(prop, article.opt(prop));
+                            }
+                        }
+                    }
+                    articleCache.putArticle(cached);
+                } else if (containsPermalinkOrStatusProperty(propertyNames)) {
+                    articleCache.removeArticle(id);
+                }
+            } else {
+                final JSONObject toCache = Solos.clone(article);
+                overlayPendingViewDelta(toCache);
+                articleCache.putArticle(toCache);
+            }
+        }
         if (!viewCountOnly && null != statisticCache) {
             statisticCache.invalidateCounts();
         }
+    }
+
+    private static boolean containsPermalinkOrStatusProperty(final String[] propertyNames) {
+        if (null == propertyNames) {
+            return false;
+        }
+        for (final String prop : propertyNames) {
+            if (Article.ARTICLE_PERMALINK.equals(prop) || Article.ARTICLE_STATUS.equals(prop)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -140,12 +208,12 @@ public class ArticleRepository extends AbstractRepository {
             return ret;
         }
         final double pivot = Math.random();
-        final String query = "SELECT * FROM " + getName()
+        final String query = "SELECT " + RANDOM_SELECT_COLS + " FROM " + getName()
                 + " WHERE articleStatus = ? AND articleRandomDouble >= ?"
                 + " ORDER BY articleRandomDouble, oId LIMIT ?";
         ret.addAll(select(query, Article.ARTICLE_STATUS_C_PUBLISHED, pivot, fetchSize));
         if (ret.size() < fetchSize) {
-            final String wrapQuery = "SELECT * FROM " + getName()
+            final String wrapQuery = "SELECT " + RANDOM_SELECT_COLS + " FROM " + getName()
                     + " WHERE articleStatus = ? AND (articleRandomDouble < ? OR articleRandomDouble IS NULL)"
                     + " ORDER BY articleRandomDouble, oId LIMIT ?";
             ret.addAll(select(wrapQuery, Article.ARTICLE_STATUS_C_PUBLISHED, pivot, fetchSize - ret.size()));
@@ -159,17 +227,7 @@ public class ArticleRepository extends AbstractRepository {
      * @param authorId       the specified author id
      * @param currentPageNum the specified current page number, MUST greater then {@code 0}
      * @param pageSize       the specified page size(count of a page contains objects), MUST greater then {@code 0}
-     * @return for example
-     * <pre>
-     * {
-     *     "pagination": {
-     *       "paginationPageCount": 88250
-     *     },
-     *     "rslts": [{
-     *         // article keys....
-     *     }, ....]
-     * }
-     * </pre>
+     * @return paginated articles
      * @throws RepositoryException repository exception
      */
     public JSONObject getByAuthorId(final String authorId, final int currentPageNum, final int pageSize) throws RepositoryException {
@@ -179,6 +237,13 @@ public class ArticleRepository extends AbstractRepository {
                         new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
                 addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).addSort(Article.ARTICLE_PUT_TOP, SortDirection.DESCENDING).
                 setPage(currentPageNum, pageSize);
+
+        if (null != optionQueryService) {
+            final JSONObject preference = optionQueryService.getPreference();
+            if (null != preference && !ArticleQueryService.isFullContentListStyle(preference)) {
+                ArticleQueryService.selectWithoutContent(query);
+            }
+        }
 
         return get(query);
     }
@@ -191,9 +256,12 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByPermalink(final String permalink) throws RepositoryException {
-        JSONObject ret = articleCache.getArticleByPermalink(permalink);
+        JSONObject ret = null == articleCache ? null : articleCache.getArticleByPermalink(permalink);
         if (null != ret) {
             return ret;
+        }
+        if (null != articleCache && articleCache.isMissingPermalink(permalink)) {
+            return null;
         }
 
         final Query query = new Query().
@@ -201,15 +269,38 @@ public class ArticleRepository extends AbstractRepository {
                 setPageCount(1);
 
         final JSONObject result = get(query);
-        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
+        final JSONArray array = QueryResults.array(result);
         if (0 == array.length()) {
+            if (null != articleCache) {
+                articleCache.markMissingPermalink(permalink);
+            }
             return null;
         }
 
         ret = array.optJSONObject(0);
-        articleCache.putArticle(ret);
+        overlayPendingViewDelta(ret);
+        if (null != articleCache) {
+            articleCache.putArticle(ret);
+        }
 
-        return ret;
+        return Solos.clone(ret);
+    }
+
+    /**
+     * Gets post articles recently with the specified fetch size without write-behind view overlay.
+     *
+     * @param fetchSize the specified fetch size
+     * @return a list of recent articles with persisted view counts
+     * @throws RepositoryException repository exception
+     */
+    public List<JSONObject> getRecentArticlesRaw(final int fetchSize) throws RepositoryException {
+        final Query query = new Query().
+                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
+                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
+                setPage(1, fetchSize).setPageCount(1).
+                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
+
+        return getList(query);
     }
 
     /**
@@ -220,10 +311,25 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getRecentArticles(final int fetchSize) throws RepositoryException {
+        final List<JSONObject> ret = getRecentArticlesRaw(fetchSize);
+        overlayPendingViewDeltas(ret);
+        return ret;
+    }
+
+    /**
+     * Gets most commented and published articles with the specified number without write-behind view overlay.
+     *
+     * @param num the specified number
+     * @return a list of most comment articles with persisted view counts
+     * @throws RepositoryException repository exception
+     */
+    public List<JSONObject> getMostCommentArticlesRaw(final int num) throws RepositoryException {
         final Query query = new Query().
-                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
+                addSort(Article.ARTICLE_COMMENT_COUNT, SortDirection.DESCENDING).
                 addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
-                setPage(1, fetchSize).setPageCount(1);
+                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
+                setPage(1, num).setPageCount(1).
+                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
 
         return getList(query);
     }
@@ -236,11 +342,25 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostCommentArticles(final int num) throws RepositoryException {
+        final List<JSONObject> ret = getMostCommentArticlesRaw(num);
+        overlayPendingViewDeltas(ret);
+        return ret;
+    }
+
+    /**
+     * Gets most view count and published articles with the specified number without write-behind view overlay.
+     *
+     * @param num the specified number
+     * @return a list of most view count articles with persisted view counts
+     * @throws RepositoryException repository exception
+     */
+    public List<JSONObject> getMostViewCountArticlesRaw(final int num) throws RepositoryException {
         final Query query = new Query().
-                addSort(Article.ARTICLE_COMMENT_COUNT, SortDirection.DESCENDING).
+                addSort(Article.ARTICLE_VIEW_COUNT, SortDirection.DESCENDING).
                 addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
                 setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
-                setPage(1, num).setPageCount(1);
+                setPage(1, num).setPageCount(1).
+                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
 
         return getList(query);
     }
@@ -253,28 +373,16 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostViewCountArticles(final int num) throws RepositoryException {
-        final Query query = new Query().
-                addSort(Article.ARTICLE_VIEW_COUNT, SortDirection.DESCENDING).
-                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
-                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
-                setPage(1, num).setPageCount(1);
-
-        return getList(query);
+        final List<JSONObject> ret = getMostViewCountArticlesRaw(num);
+        overlayPendingViewDeltas(ret);
+        return ret;
     }
 
     /**
      * Gets the previous article(by create date) by the specified article id.
      *
      * @param articleId the specified article id
-     * @return the previous article,
-     * <pre>
-     * {
-     *     "articleTitle": "",
-     *     "articlePermalink": "",
-     *     "articleAbstract: ""
-     * }
-     * </pre>
-     * returns {@code null} if not found
+     * @return the previous article summary, returns {@code null} if not found
      * @throws RepositoryException repository exception
      */
     public JSONObject getPreviousArticle(final String articleId) throws RepositoryException {
@@ -283,49 +391,40 @@ public class ArticleRepository extends AbstractRepository {
             return null;
         }
 
-        final long currentArticleCreated = currentArticle.optLong(Article.ARTICLE_CREATED);
+        return getPreviousArticle(articleId, currentArticle.optLong(Article.ARTICLE_CREATED));
+    }
 
+    /**
+     * Gets the previous article summary by create timestamp without re-loading the current article.
+     *
+     * @param articleId the specified article id
+     * @param created   the current article creation timestamp
+     * @return the previous article summary, returns {@code null} if not found
+     * @throws RepositoryException repository exception
+     */
+    public JSONObject getPreviousArticle(final String articleId, final long created) throws RepositoryException {
         final Query query = new Query().
                 setFilter(CompositeFilterOperator.and(
-                        new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.LESS_THAN, currentArticleCreated),
+                        new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.LESS_THAN, created),
                         new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
                 addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).
                 setPage(1, 1).setPageCount(1).
-                select(Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK, Article.ARTICLE_ABSTRACT);
+                select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
 
         final JSONObject result = get(query);
-        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
+        final JSONArray array = QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
 
-        final JSONObject ret = new JSONObject();
-        final JSONObject article = array.optJSONObject(0);
-
-        try {
-            ret.put(Article.ARTICLE_TITLE, article.getString(Article.ARTICLE_TITLE));
-            ret.put(Article.ARTICLE_PERMALINK, article.getString(Article.ARTICLE_PERMALINK));
-            ret.put(Article.ARTICLE_ABSTRACT, article.getString((Article.ARTICLE_ABSTRACT)));
-        } catch (final JSONException e) {
-            throw new RepositoryException(e);
-        }
-
-        return ret;
+        return toAdjacentSummary(array.optJSONObject(0));
     }
 
     /**
      * Gets the next article(by create date, oId) by the specified article id.
      *
      * @param articleId the specified article id
-     * @return the next article,
-     * <pre>
-     * {
-     *     "articleTitle": "",
-     *     "articlePermalink": "",
-     *     "articleAbstract: ""
-     * }
-     * </pre>
-     * returns {@code null} if not found
+     * @return the next article summary, returns {@code null} if not found
      * @throws RepositoryException repository exception
      */
     public JSONObject getNextArticle(final String articleId) throws RepositoryException {
@@ -334,33 +433,52 @@ public class ArticleRepository extends AbstractRepository {
             return null;
         }
 
-        final long currentArticleCreated = currentArticle.optLong(Article.ARTICLE_CREATED);
+        return getNextArticle(articleId, currentArticle.optLong(Article.ARTICLE_CREATED));
+    }
 
+    /**
+     * Gets the next article summary by create timestamp without re-loading the current article.
+     *
+     * @param articleId the specified article id
+     * @param created   the current article creation timestamp
+     * @return the next article summary, returns {@code null} if not found
+     * @throws RepositoryException repository exception
+     */
+    public JSONObject getNextArticle(final String articleId, final long created) throws RepositoryException {
         final Query query = new Query().
                 setFilter(CompositeFilterOperator.and(
-                        new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.GREATER_THAN, currentArticleCreated),
+                        new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.GREATER_THAN, created),
                         new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
                 addSort(Article.ARTICLE_CREATED, SortDirection.ASCENDING).
                 setPage(1, 1).setPageCount(1).
-                select(Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK, Article.ARTICLE_ABSTRACT);
+                select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
 
         final JSONObject result = get(query);
-        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
+        final JSONArray array = QueryResults.array(result);
         if (1 != array.length()) {
             return null;
         }
 
-        final JSONObject ret = new JSONObject();
-        final JSONObject article = array.optJSONObject(0);
+        return toAdjacentSummary(array.optJSONObject(0));
+    }
 
+    private static JSONObject toAdjacentSummary(final JSONObject article) throws RepositoryException {
+        if (null == article) {
+            return null;
+        }
+        final JSONObject ret = new JSONObject();
         try {
+            ret.put(Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
             ret.put(Article.ARTICLE_TITLE, article.getString(Article.ARTICLE_TITLE));
             ret.put(Article.ARTICLE_PERMALINK, article.getString(Article.ARTICLE_PERMALINK));
-            ret.put(Article.ARTICLE_ABSTRACT, article.getString((Article.ARTICLE_ABSTRACT)));
+            final String abstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
+            ret.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
+            ret.put(Article.ARTICLE_ABSTRACT,
+                    !abstractText.isEmpty() ? abstractText : article.optString(Article.ARTICLE_ABSTRACT));
+            ret.put(Article.ARTICLE_IMG1_URL, article.optString(Article.ARTICLE_IMG1_URL));
         } catch (final JSONException e) {
             throw new RepositoryException(e);
         }
-
         return ret;
     }
 
@@ -378,5 +496,85 @@ public class ArticleRepository extends AbstractRepository {
         }
 
         return Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS);
+    }
+
+    /**
+     * Resolves the subset of {@code articleIds} corresponding to published articles, consulting
+     * {@link ArticleCache} first and executing a single batched {@code SELECT oId} query for uncached IDs.
+     *
+     * @param articleIds candidate article IDs
+     * @return set of published article IDs
+     * @throws RepositoryException repository exception
+     */
+    public java.util.Set<String> filterPublishedArticleIds(final java.util.Collection<String> articleIds)
+            throws RepositoryException {
+        if (null == articleIds || articleIds.isEmpty()) {
+            return java.util.Collections.emptySet();
+        }
+        final java.util.Set<String> publishedIds = new java.util.HashSet<>();
+        final List<String> uncachedIds = new ArrayList<>();
+        for (final String id : articleIds) {
+            if (null == id || id.isBlank()) {
+                continue;
+            }
+            final JSONObject cached = null == articleCache ? null : articleCache.getArticle(id);
+            if (null != cached) {
+                if (Article.ARTICLE_STATUS_C_PUBLISHED == cached.optInt(Article.ARTICLE_STATUS)) {
+                    publishedIds.add(id);
+                }
+            } else {
+                uncachedIds.add(id);
+            }
+        }
+        if (!uncachedIds.isEmpty()) {
+            final String placeholders = String.join(",", java.util.Collections.nCopies(uncachedIds.size(), "?"));
+            final Object[] params = new Object[uncachedIds.size() + 1];
+            int idx = 0;
+            for (final String id : uncachedIds) {
+                params[idx++] = id;
+            }
+            params[idx] = Article.ARTICLE_STATUS_C_PUBLISHED;
+            final String sql = "SELECT oId FROM " + getName()
+                    + " WHERE oId IN (" + placeholders + ") AND articleStatus = ?";
+            final List<JSONObject> rows = select(sql, params);
+            if (null != rows) {
+                for (final JSONObject row : rows) {
+                    if (null == row) {
+                        continue;
+                    }
+                    String oid = row.optString(Keys.OBJECT_ID);
+                    if (oid.isEmpty()) {
+                        oid = row.optString("OID");
+                    }
+                    if (oid.isEmpty()) {
+                        oid = row.optString("oid");
+                    }
+                    if (!oid.isEmpty()) {
+                        publishedIds.add(oid);
+                    }
+                }
+            }
+        }
+        return publishedIds;
+    }
+
+    private static void overlayPendingViewDelta(final JSONObject article) {
+        if (null == article) {
+            return;
+        }
+        final long delta = ArticleMgmtService.peekPendingViewDelta(article.optString(Keys.OBJECT_ID));
+        if (delta > 0L) {
+            article.put(Article.ARTICLE_VIEW_COUNT,
+                    (int) Math.min(Integer.MAX_VALUE, Math.max(0L, article.optLong(Article.ARTICLE_VIEW_COUNT) + delta)));
+        }
+    }
+
+    private static void overlayPendingViewDeltas(final List<JSONObject> articles) {
+        if (null == articles || articles.isEmpty()) {
+            return;
+        }
+        for (final JSONObject article : articles) {
+            overlayPendingViewDelta(article);
+        }
     }
 }

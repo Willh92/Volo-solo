@@ -28,6 +28,7 @@ import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CommentRepository;
+import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
 /**
@@ -66,6 +67,9 @@ public class StatisticQueryService {
     @Inject
     private org.b3log.solo.cache.StatisticCache statisticCache;
 
+    @Inject
+    private StatisticMgmtService statisticMgmtService;
+
     /**
      * Gets the online visitor count.
      *
@@ -76,15 +80,41 @@ public class StatisticQueryService {
     }
 
     /**
+     * Gets the real-time blog view count including any un-flushed write-behind delta.
+     *
+     * @return blog view count
+     */
+    public long getBlogViewCount() {
+        final long pending = null == statisticMgmtService ? 0L : statisticMgmtService.getPendingBlogViewDelta();
+        if (null == optionQueryService) {
+            return pending;
+        }
+        try {
+            final JSONObject opt = optionQueryService.getOptionById(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
+            final long base = null == opt ? 0L : Math.max(0L, opt.optLong(Option.OPTION_VALUE, 0L));
+            return base + pending;
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Gets blog view count failed", e);
+            return pending;
+        }
+    }
+
+    /**
      * Gets the statistic.
      *
      * @return statistic, returns {@code null} if not found
      */
     public JSONObject getStatistic() {
         try {
-            final JSONObject ret = optionQueryService.getOptions(Option.CATEGORY_C_STATISTIC);
-            if (null == ret) {
+            final JSONObject raw = optionQueryService.getOptions(Option.CATEGORY_C_STATISTIC);
+            if (null == raw) {
                 return null;
+            }
+            final JSONObject ret = Solos.clone(raw);
+            final long pendingDelta = null == statisticMgmtService ? 0L : statisticMgmtService.getPendingBlogViewDelta();
+            if (pendingDelta > 0L) {
+                final long baseViewCount = Math.max(0L, ret.optLong(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, 0L));
+                ret.put(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, String.valueOf(baseViewCount + pendingDelta));
             }
             org.b3log.solo.cache.StatisticCache.Counts counts = null == statisticCache ? null : statisticCache.getCounts();
             if (null == counts) {

@@ -29,7 +29,7 @@
                 <textarea placeholder="${postCommentsLabel} ..." aria-label="${postCommentsLabel}" class="commentbody" id="comment" rows="5" tabindex="4" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
             </div>
         </div>
-        <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
+        <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js?${staticResourceVersion}"></script>
     </#if>
     <h3 id="comments-list-title">${commentLabel} · <span class="noticom">${count}</span></h3>
     <ul id="comments" class="comment-list">

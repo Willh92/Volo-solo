@@ -16,11 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 /**
- * @fileoverview 注册 Service Work，目前为空，只为触发添加到桌面。
- *
- * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
+ * @fileoverview Minimal Service Worker lifecycle without a no-op fetch handler,
+ * avoiding idle Service Worker wakeup IPC overhead on navigations and subresources.
  */
 
-self.addEventListener('fetch', function (event) {
-  // fix 'cannot be installed: does not work offline'
+self.addEventListener('install', function () {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(self.clients.claim())
 })

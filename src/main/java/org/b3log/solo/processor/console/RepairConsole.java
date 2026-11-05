@@ -92,6 +92,9 @@ public class RepairConsole {
     @Inject
     private StatisticMgmtService statisticMgmtService;
 
+    @Inject
+    private org.b3log.solo.cache.PublicViewCache publicViewCache;
+
     /**
      * Restores the signs of preference to default.
      *
@@ -108,6 +111,17 @@ public class RepairConsole {
             final JSONObject preference = optionQueryService.getPreference();
             preference.put(Option.ID_C_SIGNS, Option.DefaultPreference.DEFAULT_SIGNS);
             preferenceMgmtService.updatePreference(preference);
+            org.b3log.solo.cache.PublicViewCache viewCache = this.publicViewCache;
+            if (null == viewCache) {
+                try {
+                    viewCache = org.b3log.latke.ioc.BeanManager.getInstance()
+                            .getReference(org.b3log.solo.cache.PublicViewCache.class);
+                } catch (final Exception ignored) {
+                }
+            }
+            if (null != viewCache) {
+                viewCache.invalidateAll();
+            }
 
             renderer.setContent("Restore signs succeeded.");
         } catch (final Exception e) {

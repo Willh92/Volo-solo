@@ -17,6 +17,7 @@
  */
 package org.b3log.solo.util;
 
+import freemarker.cache.MruCacheStorage;
 import freemarker.template.Configuration;
 import freemarker.core.TemplateClassResolver;
 import freemarker.template.Template;
@@ -42,6 +43,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Skin utilities.
@@ -60,10 +62,13 @@ public final class Skins {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(Skins.class);
+    private static final int MAX_LANG_MAP_ENTRIES = 64;
     /**
      * Properties map.
      */
-    private static final Map<String, Map<String, String>> LANG_MAP = new HashMap<>();
+    private static final ConcurrentHashMap<String, Map<String, String>> LANG_MAP = new ConcurrentHashMap<>();
+    private static volatile Set<String> cachedSkinDirNames;
+    private static volatile Path cachedSkinWebRoot;
 
     static {
         TEMPLATE_CFG = new Configuration(Configuration.VERSION_2_3_35);
@@ -78,12 +83,42 @@ public final class Skins {
         }
         TEMPLATE_CFG.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
         TEMPLATE_CFG.setLogTemplateExceptions(false);
+        TEMPLATE_CFG.setCacheStorage(new MruCacheStorage(64, 192));
+        applyTemplateUpdateDelay();
+    }
+
+    private static void applyTemplateUpdateDelay() {
+        try {
+            if (Latkes.RuntimeMode.PRODUCTION == Latkes.getRuntimeMode()) {
+                TEMPLATE_CFG.setTemplateUpdateDelayMilliseconds(3_600_000L);
+            }
+        } catch (final RuntimeException ignored) {
+        }
     }
 
     /**
      * Private constructor.
      */
     private Skins() {
+    }
+
+    /**
+     * Invalidates the cached set of skin directory names.
+     */
+    public static void invalidateSkinDirNames() {
+        cachedSkinDirNames = null;
+        cachedSkinWebRoot = null;
+    }
+
+    /**
+     * Clears FreeMarker template cache, skin language bundle cache, and cached skin directory names.
+     */
+    public static void clearTemplateCache() {
+        TEMPLATE_CFG.clearTemplateCache();
+        LANG_MAP.clear();
+        cachedSkinDirNames = null;
+        cachedSkinWebRoot = null;
+        applyTemplateUpdateDelay();
     }
 
     /**
@@ -147,32 +182,41 @@ public final class Skins {
             final String langName = currentSkinDirName + "." + localeString;
             Map<String, String> langs = LANG_MAP.get(langName);
             if (null == langs) {
-                LANG_MAP.clear(); // Collect unused skin languages
-
-                langs = new HashMap<>();
+                final Map<String, String> loaded = new HashMap<>();
                 final String language = Locales.getLanguage(localeString);
                 final String country = Locales.getCountry(localeString);
                 final WebResources servletContext = SoloApplication.getWebResources();
-                final InputStream inputStream = servletContext.getResourceAsStream(
-                        "/skins/" + currentSkinDirName + "/lang/lang_" + language + '_' + country + ".properties");
-                if (null != inputStream) {
-                    LOGGER.log(Level.DEBUG, "Loading skin [dirName={0}, locale={1}]", currentSkinDirName, localeString);
-                    final Properties props = new Properties();
-                    props.load(inputStream);
-                    inputStream.close();
-                    final Set<Object> keys = props.keySet();
-                    for (final Object key : keys) {
-                        String val = props.getProperty((String) key);
-                        val = replaceVars(val);
-                        langs.put((String) key, val);
-                    }
+                try (final InputStream inputStream = servletContext.getResourceAsStream(
+                        "/skins/" + currentSkinDirName + "/lang/lang_" + language + '_' + country + ".properties")) {
+                    if (null != inputStream) {
+                        LOGGER.log(Level.DEBUG, "Loading skin [dirName={0}, locale={1}]", currentSkinDirName, localeString);
+                        final Properties props = new Properties();
+                        props.load(inputStream);
+                        final Set<Object> keys = props.keySet();
+                        for (final Object key : keys) {
+                            String val = props.getProperty((String) key);
+                            val = replaceVars(val);
+                            loaded.put((String) key, val);
+                        }
 
-                    LANG_MAP.put(langName, langs);
-                    LOGGER.log(Level.DEBUG, "Loaded skin [dirName={0}, locale={1}, keyCount={2}]", currentSkinDirName, localeString, langs.size());
+                        langs = Collections.unmodifiableMap(loaded);
+                        LOGGER.log(Level.DEBUG, "Loaded skin [dirName={0}, locale={1}, keyCount={2}]", currentSkinDirName, localeString, langs.size());
+                    } else {
+                        langs = Collections.emptyMap();
+                    }
                 }
+                if (LANG_MAP.size() >= MAX_LANG_MAP_ENTRIES) {
+                    final Iterator<String> it = LANG_MAP.keySet().iterator();
+                    if (it.hasNext()) {
+                        LANG_MAP.remove(it.next());
+                    }
+                }
+                LANG_MAP.put(langName, langs);
             }
 
-            dataModel.putAll(langs); // Fills the current skin's language configurations
+            if (!langs.isEmpty()) {
+                dataModel.putAll(langs); // Fills the current skin's language configurations
+            }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills skin langs failed", e);
 
@@ -195,9 +239,14 @@ public final class Skins {
      * @return a set of skin name, returns an empty set if not found
      */
     public static Set<String> getSkinDirNames() {
-        final Set<String> ret = new HashSet<>();
-
         final WebResources servletContext = SoloApplication.getWebResources();
+        final Path root = servletContext.root();
+        final Set<String> cached = cachedSkinDirNames;
+        if (null != cached && Objects.equals(root, cachedSkinWebRoot)) {
+            return cached;
+        }
+
+        final Set<String> ret = new HashSet<>();
         final Set<String> resourcePaths = servletContext.getResourcePaths("/skins");
         for (final String path : resourcePaths) {
             final Path p = Paths.get(path);
@@ -210,7 +259,10 @@ public final class Skins {
             ret.add(fileName);
         }
 
-        return ret;
+        final Set<String> immutable = Collections.unmodifiableSet(ret);
+        cachedSkinWebRoot = root;
+        cachedSkinDirNames = immutable;
+        return immutable;
     }
 
     /**

@@ -23,7 +23,7 @@
     <input autocomplete="off" id="boloUser" placeholder="你的昵称" style="box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 0; padding: 20px; width: fill-available; width: -webkit-fill-available;">
     <input autocomplete="off" id="boloSite" placeholder="你的个人主页URL（选填）" style="margin-top: 3px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 0; padding: 20px; width: fill-available; width: -webkit-fill-available;">
     <textarea placeholder="${postCommentsLabel}" id="comment" style="box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: 0; padding: 20px; width: fill-available; width: -webkit-fill-available;" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
-    <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
+    <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js?${staticResourceVersion}"></script>
 </#if>
 
 <div class="comment">

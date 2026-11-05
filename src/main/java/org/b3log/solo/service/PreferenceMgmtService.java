@@ -76,17 +76,28 @@ public class PreferenceMgmtService {
      */
     @Inject
     private CronMgmtService cronMgmtService;
+
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
+    @Inject
+    private org.b3log.solo.cache.PublicViewCache publicViewCache;
+
     public static final String CLEAR_SECRET_SENTINEL = "__VOLO_CLEAR_SECRET__";
 
     public static int secretIndexForTuChuang(final String type) {
         if (type == null) {
             return -1;
         }
-        return switch (type) {
+        return switch (type.trim().toLowerCase(Locale.ROOT)) {
             case "picuang", "qiniu", "aliyun", "tencent" -> 2;
-            case "upyun" -> 3;
+            case "upyun", "s3" -> 3;
             default -> -1;
         };
+    }
+
+    public static int secretIndexForProvider(final String provider) {
+        return secretIndexForTuChuang(provider);
     }
 
     public static boolean hasTuChuangSecret(final String raw) {
@@ -126,7 +137,7 @@ public class PreferenceMgmtService {
         }
         if (inParts[idx].isEmpty() && stored != null && !stored.isEmpty()) {
             final String[] oldParts = stored.split("<<>>", -1);
-            if (oldParts.length > idx && inParts[0].equals(oldParts[0]) && !oldParts[idx].isEmpty()) {
+            if (oldParts.length > idx && inParts[0].equalsIgnoreCase(oldParts[0]) && !oldParts[idx].isEmpty()) {
                 inParts[idx] = oldParts[idx];
                 return String.join("<<>>", inParts);
             }
@@ -145,7 +156,8 @@ public class PreferenceMgmtService {
      */
     public synchronized void updatePreference(final JSONObject preference) throws ServiceException {
         preference.put(Option.ID_C_HELP_IMPROVE_PLAN, "false");
-        final JSONObject oldPreference = optionQueryService.getPreference();
+        final JSONObject fetchedOldPreference = optionQueryService.getPreference();
+        final JSONObject oldPreference = fetchedOldPreference == null ? new JSONObject() : fetchedOldPreference;
         final String loginEntry = Option.normalizeBooleanSwitch(
                 preference.has(Option.ID_C_SHOW_LOGIN_ENTRY) ? preference.opt(Option.ID_C_SHOW_LOGIN_ENTRY) : null,
                 Option.optBooleanSwitch(oldPreference, Option.ID_C_SHOW_LOGIN_ENTRY, false),
@@ -156,6 +168,53 @@ public class PreferenceMgmtService {
                 Option.optBooleanSwitch(oldPreference, Option.ID_C_INTERACTIVE, true),
                 "前端评论开关不正确。");
         preference.put(Option.ID_C_INTERACTIVE, comments);
+
+        final String imageWebpAdaptive = Option.normalizeBooleanSwitch(
+                preference.has(Option.ID_C_IMAGE_WEBP_ADAPTIVE) ? preference.opt(Option.ID_C_IMAGE_WEBP_ADAPTIVE) : null,
+                Option.optBooleanSwitch(oldPreference, Option.ID_C_IMAGE_WEBP_ADAPTIVE, false),
+                "图片 WebP 自适应转换开关配置不正确。");
+        preference.put(Option.ID_C_IMAGE_WEBP_ADAPTIVE, imageWebpAdaptive);
+
+        final String indexNowEnabled = Option.normalizeBooleanSwitch(
+                preference.has(Option.ID_C_INDEXNOW_ENABLED) ? preference.opt(Option.ID_C_INDEXNOW_ENABLED) : null,
+                Option.optBooleanSwitch(oldPreference, Option.ID_C_INDEXNOW_ENABLED, false),
+                "IndexNow 开关配置不正确。");
+        preference.put(Option.ID_C_INDEXNOW_ENABLED, indexNowEnabled);
+
+        String indexNowKey;
+        if (preference.has(Option.ID_C_INDEXNOW_KEY)) {
+            indexNowKey = preference.isNull(Option.ID_C_INDEXNOW_KEY)
+                    ? ""
+                    : String.valueOf(preference.opt(Option.ID_C_INDEXNOW_KEY)).trim();
+        } else {
+            indexNowKey = oldPreference.optString(Option.ID_C_INDEXNOW_KEY, "").trim();
+        }
+        if (!indexNowKey.isEmpty() && !IndexNowService.KEY_PATTERN.matcher(indexNowKey).matches()) {
+            throw new ServiceException("IndexNow 密钥需为 8-64 位字母、数字或连字符。");
+        }
+        if ("true".equals(indexNowEnabled) && indexNowKey.isEmpty()) {
+            indexNowKey = UUID.randomUUID().toString().replace("-", "");
+        }
+        preference.put(Option.ID_C_INDEXNOW_KEY, indexNowKey);
+
+        if (preference.has(Option.ID_C_IMAGE_UPLOAD_COMPRESS) && !preference.isNull(Option.ID_C_IMAGE_UPLOAD_COMPRESS)) {
+            final String rawCompress = String.valueOf(preference.opt(Option.ID_C_IMAGE_UPLOAD_COMPRESS)).trim();
+            if (!rawCompress.isEmpty()) {
+                final float compressVal;
+                try {
+                    compressVal = Float.parseFloat(rawCompress);
+                } catch (final NumberFormatException e) {
+                    throw new ServiceException("图片上传压缩参数需为 0.05 至 100 之间的数字。");
+                }
+                if (!Float.isFinite(compressVal) || compressVal < 0.05f || compressVal > 100.0f) {
+                    throw new ServiceException("图片上传压缩参数需为 0.05 至 100 之间的数字。");
+                }
+                preference.put(Option.ID_C_IMAGE_UPLOAD_COMPRESS, rawCompress);
+            }
+        } else if (oldPreference.has(Option.ID_C_IMAGE_UPLOAD_COMPRESS) && !preference.has(Option.ID_C_IMAGE_UPLOAD_COMPRESS)) {
+            preference.put(Option.ID_C_IMAGE_UPLOAD_COMPRESS, oldPreference.optString(Option.ID_C_IMAGE_UPLOAD_COMPRESS));
+        }
+
         if (!preference.has(Option.ID_C_COMMENT_FILTER_BUILTIN)) {
             preference.put(Option.ID_C_COMMENT_FILTER_BUILTIN,
                     Boolean.toString(Option.optBooleanSwitch(oldPreference, Option.ID_C_COMMENT_FILTER_BUILTIN, true)));
@@ -277,6 +336,7 @@ public class PreferenceMgmtService {
         }
 
         final Transaction transaction = optionRepository.beginTransaction();
+        final List<String> touchedKeys = new ArrayList<>();
 
         try {
             preference.put(Option.ID_C_SIGNS, preference.get(Option.ID_C_SIGNS).toString());
@@ -289,10 +349,20 @@ public class PreferenceMgmtService {
 
             List<String> optionList = Options.loadOptions();
             for (String i : optionList) {
-                if (preference.has(i)) emptyPreferenceOptSave(i, preference.optString(i));
+                if (preference.has(i)) {
+                    touchedKeys.add(i);
+                    emptyPreferenceOptSave(i, preference.optString(i));
+                }
             }
 
             transaction.commit();
+            if (syndicationCacheService != null) {
+                syndicationCacheService.invalidate();
+            }
+            if (publicViewCache != null) {
+                publicViewCache.invalidateAll();
+            }
+            org.b3log.solo.processor.ErrorProcessor.clearCache();
             commentFilterService.activate(filter);
 
             final String showCodeBlockLnVal = preference.optString(Option.ID_C_SHOW_CODE_BLOCK_LN);
@@ -303,10 +373,12 @@ public class PreferenceMgmtService {
             WAF.set();
             MailService.loadMailSettings();
             Solos.enableWelfareLuteService();
-            cronMgmtService.restart();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            for (final String key : touchedKeys) {
+                optionRepository.evictOption(key);
             }
 
             LOGGER.log(Level.ERROR, "Updates preference failed", e);
@@ -366,7 +438,7 @@ public class PreferenceMgmtService {
         for (final String key : new String[]{Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.ID_C_WAF_CURRENT_LIMIT_TIMES}) {
             if (values.has(key) && (!values.getString(key).matches("[1-9][0-9]{0,5}"))) throw new IllegalArgumentException("访问次数和时间范围应为 1 至 999999 的整数。");
         }
-        final JSONObject merged = new JSONObject(optionQueryService.getPreference().toString());
+        final JSONObject merged = org.b3log.solo.util.Solos.clone(optionQueryService.getPreference());
         if (!values.has(Option.ID_C_COMMENT_FILTER_BUILTIN)) {
             merged.put(Option.ID_C_COMMENT_FILTER_BUILTIN,
                     Boolean.toString(Option.optBooleanSwitch(merged, Option.ID_C_COMMENT_FILTER_BUILTIN, true)));
@@ -382,11 +454,64 @@ public class PreferenceMgmtService {
                         "off".equals(values.getString(Option.ID_C_COMMENT_ACCESS_MODE)) ? "false" : "true");
             }
             transaction.commit();
-        } catch (Exception failure) { if (transaction.isActive()) transaction.rollback(); throw failure; }
+        } catch (Exception failure) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            for (final String key : values.keySet()) {
+                optionRepository.evictOption(key);
+            }
+            if (values.has(Option.ID_C_COMMENT_ACCESS_MODE)) {
+                optionRepository.evictOption(Option.ID_C_INTERACTIVE);
+            }
+            throw failure;
+        }
+        if (syndicationCacheService != null) {
+            syndicationCacheService.invalidate();
+        }
+        if (publicViewCache != null) {
+            publicViewCache.invalidateAll();
+        }
+        org.b3log.solo.processor.ErrorProcessor.clearCache();
         commentFilterService.activate(filter);
         if (values.has("riskControlEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(RiskControlService.class).configure("true".equals(values.getString("riskControlEnabled")));
         if (values.has("commentCaptchaEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(CaptchaService.class).configureComments("true".equals(values.getString("commentCaptchaEnabled")));
         if (values.has("adminLoginPath")) org.b3log.solo.util.AdminPaths.configureLogin(values.getString("adminLoginPath"));
         WAF.set();
+    }
+
+    /**
+     * Updates the public notice board text independently of full preference form saves.
+     *
+     * @param notice JSON payload containing {@link Option#ID_C_NOTICE_BOARD}
+     * @throws ServiceException service exception
+     */
+    public synchronized void updateNotice(final JSONObject notice) throws ServiceException {
+        updateNotice(null == notice ? "" : notice.optString(Option.ID_C_NOTICE_BOARD, ""));
+    }
+
+    /**
+     * Updates the public notice board text independently of full preference form saves.
+     *
+     * @param noticeBoard notice board HTML/text
+     * @throws ServiceException service exception
+     */
+    public synchronized void updateNotice(final String noticeBoard) throws ServiceException {
+        final String normalized = null == noticeBoard ? "" : noticeBoard;
+        final Transaction transaction = optionRepository.beginTransaction();
+        try {
+            emptyPreferenceOptSave(Option.ID_C_NOTICE_BOARD, normalized);
+            transaction.commit();
+        } catch (final Exception e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            optionRepository.evictOption(Option.ID_C_NOTICE_BOARD);
+            LOGGER.log(Level.ERROR, "Updates notice board failed", e);
+            throw new ServiceException(null != langPropsService ? langPropsService.get("updateFailLabel") : e.getMessage());
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
     }
 }

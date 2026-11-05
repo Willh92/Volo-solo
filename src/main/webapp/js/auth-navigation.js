@@ -28,17 +28,41 @@
   var scriptTypes = /^(?:application|text)\/(?:java|ecma)script$/i
   var persistentAttribute = 'data-bolo-navigation'
   var loadedPersistentScripts = new Set()
-  Array.from(document.querySelectorAll('script[' + persistentAttribute + ']')).forEach(function (s) {
-    if (s.src) {
-      try { loadedPersistentScripts.add(new URL(s.src, window.location.href).pathname) } catch (e) { loadedPersistentScripts.add(s.src) }
-    }
-  })
+  var onceScriptPaths = new Set()
+  var persistentExecutionDepth = 0
+
+  function normalizeScriptPath (src) {
+    if (!src) return ''
+    try { return new URL(src, window.location.href).pathname } catch (e) { return src }
+  }
+
+  function scanDocumentPersistentScripts () {
+    if (typeof document.querySelectorAll !== 'function') return
+    Array.from(document.querySelectorAll('script[' + persistentAttribute + ']')).forEach(function (s) {
+      if (!s.src) return
+      var path = normalizeScriptPath(s.src)
+      var mode = typeof s.getAttribute === 'function' ? s.getAttribute(persistentAttribute) : ''
+      if (mode === 'once') onceScriptPaths.add(path)
+      else loadedPersistentScripts.add(path)
+    })
+  }
+  scanDocumentPersistentScripts()
+
   var pageCleanups = []
   var nativeTimeout = window.setTimeout.bind(window)
   var nativeClearTimeout = window.clearTimeout.bind(window)
 
   function isPersistentScript () {
-    return document.currentScript && document.currentScript.hasAttribute(persistentAttribute)
+    return persistentExecutionDepth > 0 || Boolean(document.currentScript && document.currentScript.hasAttribute(persistentAttribute))
+  }
+
+  function runPersistent (fn) {
+    persistentExecutionDepth++
+    try {
+      return fn()
+    } finally {
+      persistentExecutionDepth--
+    }
   }
 
   // Legacy decorations remain active on their page. Release their timers and global
@@ -48,7 +72,17 @@
     var cancel = window[names[1]].bind(window)
     var handles = new Set()
     window[names[0]] = function (callback) {
-      if (isPersistentScript()) return schedule.apply(window, arguments)
+      if (isPersistentScript()) {
+        if (typeof callback === 'function') {
+          var persistentArgs = Array.from(arguments)
+          persistentArgs[0] = function () {
+            var self = this, callArgs = arguments
+            return runPersistent(function () { return callback.apply(self, callArgs) })
+          }
+          return schedule.apply(window, persistentArgs)
+        }
+        return schedule.apply(window, arguments)
+      }
       var args = Array.from(arguments)
       if (typeof callback === 'function' && names[0] !== 'setInterval') {
         args[0] = function () { handles.delete(handle); return callback.apply(this, arguments) }
@@ -92,7 +126,20 @@
     request.addEventListener('loadend', function () { requests.delete(request) }, {once: true})
     return sendRequest.apply(request, arguments)
   }
-  pageCleanups.push(function () { requests.forEach(function (request) { request.abort() }); requests.clear() })
+  pageCleanups.push(function (context) {
+    var live2dRequests = context && context.keepKanban && window.VoloLive2D && window.VoloLive2D.requests
+    requests.forEach(function (request) {
+      if (live2dRequests && live2dRequests.has(request)) return
+      request.abort()
+    })
+    if (live2dRequests) {
+      Array.from(requests).forEach(function (request) {
+        if (!live2dRequests.has(request)) requests.delete(request)
+      })
+    } else {
+      requests.clear()
+    }
+  })
 
   function isAuthPage (url) {
     var paths = document.documentElement.dataset
@@ -109,11 +156,11 @@
     return destination
   }
 
-  function cleanupPage () {
+  function cleanupPage (context) {
     cleanups.splice(0).forEach(function (cleanup) {
-      try { cleanup() } catch (error) { console.warn('Page cleanup failed', error) }
+      try { cleanup(context) } catch (error) { console.warn('Page cleanup failed', error) }
     })
-    pageCleanups.forEach(function (cleanup) { cleanup() })
+    pageCleanups.forEach(function (cleanup) { cleanup(context) })
     if (window.admin && window.admin.editors) {
       Object.values(window.admin.editors).forEach(function (wrapper) {
         var editor = wrapper && (wrapper.editor || wrapper)
@@ -149,12 +196,38 @@
     })
   }
 
+  function shouldSkipPersistentBodyScript (source, scriptPath, navMode) {
+    if (!source.src) return false
+    if (/\/plugins\/kanbanniang\/loader(?:\.min)?\.js$/i.test(scriptPath)) {
+      return Boolean(window.VoloKanban && typeof window.VoloKanban.isAlive === 'function' && window.VoloKanban.isAlive())
+    }
+    if (navMode === 'once') {
+      if (onceScriptPaths.has(scriptPath)) return true
+      onceScriptPaths.add(scriptPath)
+      return false
+    }
+    if (/\/js\/lib\/(?:compress\/pjax\.min|jquery\/jquery\.min)\.js$/i.test(scriptPath)) {
+      return typeof window.jQuery === 'function'
+    }
+    if (/\/js\/common(?:\.min)?\.js$/i.test(scriptPath)) {
+      return Boolean(window.Util && window.Cookie)
+    }
+    if (/\/js\/blog-enhancements(?:\.min)?\.js$/i.test(scriptPath)) {
+      return Boolean(loadedPersistentScripts.has(scriptPath) || window.VoloSearch)
+    }
+    return false
+  }
+
   function execute (source) {
-    var isPersistent = source.hasAttribute(persistentAttribute)
-    if (isPersistent) {
+    var hasNavAttr = source.hasAttribute(persistentAttribute)
+    var navMode = hasNavAttr && typeof source.getAttribute === 'function' ? source.getAttribute(persistentAttribute) : ''
+    var scriptPath = normalizeScriptPath(source.src)
+    if (shouldSkipPersistentBodyScript(source, scriptPath, navMode)) {
+      return Promise.resolve()
+    }
+    var isPersistentHead = hasNavAttr && navMode !== 'once'
+    if (isPersistentHead) {
       if (!source.src) return Promise.resolve()
-      var scriptPath = source.src
-      try { scriptPath = new URL(source.src, window.location.href).pathname } catch (e) {}
       if (loadedPersistentScripts.has(scriptPath)) return Promise.resolve()
       loadedPersistentScripts.add(scriptPath)
     }
@@ -180,7 +253,7 @@
       } else {
         script.textContent = source.textContent
       }
-      ;(isPersistent ? document.head : document.body).appendChild(script)
+      ;(isPersistentHead ? document.head : document.body).appendChild(script)
       if (!source.src) resolve()
     })
   }
@@ -223,12 +296,36 @@
       var oldStyles = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]'))
       var styles = await Promise.all(Array.from(page.head.querySelectorAll('link[rel="stylesheet"]')).map(stylesheet))
       if (id !== generation) return
+      scanDocumentPersistentScripts()
       if (!options.pop) {
         history.replaceState(Object.assign({}, history.state, {boloAuthPjax: true, scrollY: window.scrollY}), '', location.href)
         history[options.replace ? 'replaceState' : 'pushState']({boloAuthPjax: true, scrollY: 0}, '', finalURL.href)
       }
       window.dispatchEvent(new CustomEvent('bolo:before-navigate'))
-      cleanupPage()
+
+      var isIncomingPublic = page.documentElement.hasAttribute('data-bolo-page') && typeof page.documentElement.getAttribute === 'function'
+        ? page.documentElement.getAttribute('data-bolo-page') === 'public'
+        : !isAuthPage(finalURL)
+      var liveKanban = typeof document.getElementById === 'function' ? document.getElementById('boloKanBanNiangContainer') : null
+      if (!liveKanban && typeof document.querySelector === 'function') {
+        liveKanban = document.querySelector('.solo-kanbanniang')
+      }
+      var incomingKanbans = typeof page.querySelectorAll === 'function'
+        ? Array.from(page.querySelectorAll('#boloKanBanNiangContainer, .solo-kanbanniang'))
+        : []
+      var keepKanban = Boolean(
+        liveKanban &&
+        window.VoloKanban &&
+        typeof window.VoloKanban.isAlive === 'function' &&
+        window.VoloKanban.isAlive() &&
+        isIncomingPublic &&
+        incomingKanbans.length > 0
+      )
+      if (keepKanban && typeof liveKanban.remove === 'function') {
+        liveKanban.remove()
+      }
+
+      cleanupPage({keepKanban: keepKanban})
       oldStyles.forEach(function (style) { if (!styles.includes(style)) style.remove() })
       Array.from(document.head.children).forEach(function (element) {
         if (element.hasAttribute(persistentAttribute) || element.matches('link[rel="stylesheet"]')) return
@@ -239,11 +336,19 @@
         document.head.appendChild(document.importNode(element, true))
       })
       scripts.forEach(function (script) { script.remove() })
+      if (keepKanban) {
+        incomingKanbans.forEach(function (placeholder) {
+          if (typeof placeholder.remove === 'function') placeholder.remove()
+        })
+      }
       Array.from(document.body.attributes).forEach(function (attribute) { document.body.removeAttribute(attribute.name) })
       Array.from(page.body.attributes).forEach(function (attribute) { document.body.setAttribute(attribute.name, attribute.value) })
       document.body.replaceChildren.apply(document.body, Array.from(page.body.childNodes).map(function (node) {
         return document.importNode(node, true)
       }))
+      if (keepKanban && typeof document.body.appendChild === 'function') {
+        document.body.appendChild(liveKanban)
+      }
       document.documentElement.lang = page.documentElement.lang || 'zh-CN'
       document.documentElement.className = page.documentElement.className
       ;['data-bolo-admin-url', 'data-bolo-login-url', 'data-bolo-admin-pages', 'data-bolo-page', 'data-bolo-skin'].forEach(function (name) {
@@ -254,12 +359,37 @@
       if (window.BoloTheme) window.BoloTheme.refresh()
       rendered = finalURL
       heldJQueries = []
-      for (var script of scripts) {
-        if (id !== generation) return
-        await execute(script)
+      var deferredReadyCallbacks = []
+      var restoreJQueryReady = null
+      if (window.jQuery && window.jQuery.fn && window.jQuery.isReady) {
+        var existingJQuery = window.jQuery
+        var originalFnReady = existingJQuery.fn.ready
+        existingJQuery.fn.ready = function (fn) {
+          if (typeof fn === 'function') deferredReadyCallbacks.push(fn)
+          return this
+        }
+        restoreJQueryReady = function () {
+          if (existingJQuery.fn && existingJQuery.fn.ready !== originalFnReady) {
+            existingJQuery.fn.ready = originalFnReady
+          }
+        }
+      }
+      try {
+        for (var script of scripts) {
+          if (id !== generation) return
+          await execute(script)
+        }
+      } finally {
+        if (restoreJQueryReady) restoreJQueryReady()
       }
       heldJQueries.forEach(function (jquery) { jquery.holdReady(false) })
       heldJQueries = []
+      deferredReadyCallbacks.splice(0).forEach(function (fn) {
+        try { fn.call(document, window.jQuery) } catch (error) { console.error(error) }
+      })
+      if (window.Util && typeof window.Util._bindContactDisclosure === 'function') {
+        window.Util._bindContactDisclosure()
+      }
       if (typeof window.onload === 'function') window.onload.call(window, new Event('load'))
       var fragment
       try { fragment = finalURL.hash ? document.getElementById(decodeURIComponent(finalURL.hash.slice(1))) : null } catch (error) { fragment = null }
@@ -282,6 +412,7 @@
     // Shared runtime downloads keep their timeout after page cleanup.
     setTimeout: nativeTimeout,
     clearTimeout: nativeClearTimeout,
+    runPersistent: runPersistent,
     onLeave: function (cleanup) { cleanups.push(cleanup) },
   }
   function pageLink (destination) {

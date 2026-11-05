@@ -38,10 +38,9 @@
 
     ${footerContent}
 </footer>
-<script type="text/javascript" src="${staticServePath}/js/lib/jquery/jquery.min.js" charset="utf-8"></script>
-<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js?${staticResourceVersion}" charset="utf-8"></script>
 <script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
-<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common.js?${staticResourceVersion}"
+<script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix!''}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 
 <button type="button" class="back-to-top" id="JELON__backToTop" title="返回顶部" aria-label="返回顶部"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>

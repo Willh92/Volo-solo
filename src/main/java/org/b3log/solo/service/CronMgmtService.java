@@ -18,16 +18,18 @@
 package org.b3log.solo.service;
 
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Stopwatchs;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Option;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -46,9 +48,16 @@ public class CronMgmtService {
     private static final Logger LOGGER = Logger.getLogger(CronMgmtService.class);
 
     /**
-     * Cron thread pool.
+     * Fast local cron scheduler (60s view/trend flushes, scheduled publish, online visitor cleanup).
      */
-    private static ScheduledExecutorService SCHEDULED_EXECUTOR_SERVICE = Executors.newScheduledThreadPool(1);
+    private static volatile ScheduledExecutorService SCHEDULED_EXECUTOR_SERVICE = newFastScheduler();
+
+    /**
+     * Isolated slow background executor for daily network sync and backup jobs so they never stall 60s local flushes.
+     */
+    private static volatile ThreadPoolExecutor SLOW_CRON_EXECUTOR = newSlowExecutor();
+
+    private static volatile boolean started;
 
     /**
      * User query service.
@@ -61,6 +70,12 @@ public class CronMgmtService {
      */
     @Inject
     private ArticleMgmtService articleMgmtService;
+
+    /**
+     * Statistic management service.
+     */
+    @Inject
+    private StatisticMgmtService statisticMgmtService;
 
     /**
      * Option query service.
@@ -89,10 +104,68 @@ public class CronMgmtService {
     @Inject
     private LocalRollingBackupService localRollingBackupService;
 
+    @Inject
+    private AnalyticsTrendService analyticsTrendService;
+
+    @Inject
+    private PasskeyService passkeyService;
+
+    private static ScheduledExecutorService newFastScheduler() {
+        return Executors.newScheduledThreadPool(1, r -> {
+            final Thread t = new Thread(r, "volo-cron-fast");
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    private static ThreadPoolExecutor newSlowExecutor() {
+        final ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1, 1, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(16),
+                r -> {
+                    final Thread t = new Thread(r, "volo-cron-slow");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.DiscardPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
+    }
+
+    private static void submitSlowJob(final Runnable job) {
+        final ThreadPoolExecutor pool = SLOW_CRON_EXECUTOR;
+        if (null == pool || pool.isShutdown()) {
+            return;
+        }
+        pool.execute(() -> {
+            try {
+                job.run();
+            } catch (final Throwable e) {
+                LOGGER.log(Level.ERROR, "Executes slow cron failed", e);
+            } finally {
+                try {
+                    JdbcRepository.dispose();
+                } finally {
+                    Stopwatchs.release();
+                }
+            }
+        });
+    }
+
     /**
      * Start all cron tasks.
      */
-    public void start() {
+    public synchronized void start() {
+        if (started) {
+            stop();
+        }
+        if (null == SCHEDULED_EXECUTOR_SERVICE || SCHEDULED_EXECUTOR_SERVICE.isShutdown()) {
+            SCHEDULED_EXECUTOR_SERVICE = newFastScheduler();
+        }
+        if (null == SLOW_CRON_EXECUTOR || SLOW_CRON_EXECUTOR.isShutdown()) {
+            SLOW_CRON_EXECUTOR = newSlowExecutor();
+        }
+        started = true;
         long delay = 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
@@ -101,82 +174,94 @@ public class CronMgmtService {
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Executes cron failed", e);
             } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+                try {
+                    JdbcRepository.dispose();
+                } finally {
+                    Stopwatchs.release();
+                }
             }
         }, delay, 1000 * 60 * 10, TimeUnit.MILLISECONDS);
         delay += 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
             try {
-                articleMgmtService.publishDueScheduledArticles();
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Executes scheduled article publish cron failed", e);
+                try {
+                    if (null != articleMgmtService) {
+                        articleMgmtService.publishDueScheduledArticles();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Executes scheduled article publish cron failed", e);
+                }
+                try {
+                    if (null != statisticMgmtService) {
+                        statisticMgmtService.flushPendingViewCounts();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Executes blog view count flush cron failed", e);
+                }
+                try {
+                    if (null != articleMgmtService) {
+                        articleMgmtService.flushPendingViewCounts();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Executes article view count flush cron failed", e);
+                }
+                try {
+                    if (null != analyticsTrendService) {
+                        analyticsTrendService.flushIfDirty();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Executes analytics trends flush cron failed", e);
+                }
+                try {
+                    if (null != passkeyService) {
+                        passkeyService.flushIfDirty();
+                    }
+                } catch (final Exception e) {
+                    LOGGER.log(Level.ERROR, "Executes passkey metadata flush cron failed", e);
+                }
             } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+                try {
+                    JdbcRepository.dispose();
+                } finally {
+                    Stopwatchs.release();
+                }
             }
         }, delay, 1000 * 60, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
-            try {
-                synchronizeGitHub();
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Executes cron failed", e);
-            } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
-            }
-        }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(this::synchronizeGitHub),
+                delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
-            try {
-                if (!org.b3log.solo.util.PluginUtil.fishpiPluginEnabled()) return;
-                final String fishKey = userQueryService.getFishKey();
-                if (fishKey == null || "".equals(fishKey)) {
-                    return;
-                }
-                commentMgmtService.syncAllArticleCommentFromFishPI();
-            } catch (final Throwable e) {
-                LOGGER.log(Level.ERROR, "Executes cron failed", e);
-            } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+            if (!org.b3log.solo.util.PluginUtil.fishpiPluginEnabled()) {
+                return;
             }
-        }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+            final String fishKey = userQueryService.getFishKey();
+            if (fishKey == null || "".equals(fishKey)) {
+                return;
+            }
+            commentMgmtService.syncAllArticleCommentFromFishPI();
+        }), delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
-            try {
-                followService.syncAllFollowArticles();
-            } catch (final Throwable e) {
-                LOGGER.log(Level.ERROR, "Executes cron failed", e);
-            } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
-            }
-        }, delay, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> followService.syncAllFollowArticles()),
+                delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
-            try {
-                if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) return;
-                exportService.exportHacPai(false);
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Executes cron failed", e);
-            } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+            if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) {
+                return;
             }
-        }, delay + 1000 * 60 * 10, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+            exportService.exportHacPai(false);
+        }), delay + 1000L * 60 * 10, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
-            try {
-                if (null != localRollingBackupService) {
-                    localRollingBackupService.runScheduledBackupIfEnabled();
-                }
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Executes local rolling backup cron failed", e);
-            } finally {
-                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+            if (null != localRollingBackupService) {
+                localRollingBackupService.runScheduledBackupIfEnabled();
             }
-        }, delay + 1000 * 60 * 15, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+        }), delay + 1000L * 60 * 15, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -184,7 +269,9 @@ public class CronMgmtService {
      */
     public void synchronizeGitHub() {
         final JSONObject current = optionQueryService.getPreference();
-        if (current == null) return;
+        if (current == null) {
+            return;
+        }
         final String username = current.optString(Option.ID_C_MY_GITHUB_ID).strip();
         if (current.optBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB) && !username.isEmpty()) {
             articleMgmtService.refreshGitHub(username);
@@ -193,16 +280,23 @@ public class CronMgmtService {
     }
 
     /** Stop all cron tasks. */
-    public void stop() {
-        SCHEDULED_EXECUTOR_SERVICE.shutdown();
+    public synchronized void stop() {
+        started = false;
+        if (null != SCHEDULED_EXECUTOR_SERVICE) {
+            SCHEDULED_EXECUTOR_SERVICE.shutdown();
+        }
+        if (null != SLOW_CRON_EXECUTOR) {
+            SLOW_CRON_EXECUTOR.shutdown();
+        }
     }
 
     /**
      * Restart cron tasks.
      */
-    public void restart() {
+    public synchronized void restart() {
         stop();
-        SCHEDULED_EXECUTOR_SERVICE = Executors.newScheduledThreadPool(1);
+        SCHEDULED_EXECUTOR_SERVICE = newFastScheduler();
+        SLOW_CRON_EXECUTOR = newSlowExecutor();
         start();
     }
 }

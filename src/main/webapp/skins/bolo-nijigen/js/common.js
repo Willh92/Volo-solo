@@ -26,22 +26,39 @@
  * @static
  */
 var Skin = {
+  _lastSideFixed: null,
   _initCommon: function ($goTop) {
-    $(window).scroll(function () {
-      if ($(window).scrollTop() > 125) {
-        $goTop.show()
-      } else {
-        $goTop.hide()
+    $(window).off('scroll.boloNijigen')
+    var lastVisible = null
+    Skin._lastSideFixed = null
+
+    function onScroll () {
+      var scrollTop = $(window).scrollTop()
+      var visible = scrollTop > 125
+      if (visible !== lastVisible) {
+        lastVisible = visible
+        if (visible) {
+          $goTop.show()
+        } else {
+          $goTop.hide()
+        }
       }
 
       if ($('.side .article__toc').length > 0 && $(window).width() > 768) {
-        if ($(window).scrollTop() > 50) {
-          $('.side').css('position', 'fixed')
-        } else {
-          $('.side').css('position', 'initial')
+        var fixed = scrollTop > 50
+        if (fixed !== Skin._lastSideFixed) {
+          Skin._lastSideFixed = fixed
+          $('.side').css('position', fixed ? 'fixed' : 'initial')
         }
       }
-    })
+    }
+
+    $(window).on('scroll.boloNijigen', onScroll)
+    if (window.BoloNavigation) {
+      BoloNavigation.onLeave(function () {
+        $(window).off('scroll.boloNijigen')
+      })
+    }
   },
   _initAnimation: function () {
     if (!('IntersectionObserver' in window)) {
@@ -101,6 +118,7 @@ var Skin = {
   },
   _initArticleCommon: function () {
     if ($(window).width() > 768) {
+      Skin._lastSideFixed = null
       if ($('.article__toc li').length === 0) {
         $('.side').css({
           height: 'auto',

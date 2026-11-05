@@ -23,7 +23,7 @@ admin.logs = {
     var data = recent ? {} : {page: this.page, pageSize: 30}
     if (!recent && this.page > 1 && this.through) data.through = this.through
     this.requests[target] = true; host.setAttribute('aria-busy', 'true')
-    $.ajax({url: Label.servePath + '/admin/logs', cache: false, timeout: 10000, dataType: 'json', data: data,
+    $.ajax({url: Label.servePath + '/admin/logs' + (recent ? '?limit=15' : ''), cache: false, timeout: 10000, dataType: 'json', data: data,
       success: function (result) {
         if (!host.isConnected || !result || !Array.isArray(result.result)) return
         that.render(recent ? result.result.slice(-15).reverse() : result.result, target)

@@ -26,7 +26,6 @@ import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.cache.StatisticCache;
 import org.b3log.solo.model.Option;
@@ -42,6 +41,7 @@ import org.b3log.latke.http.Response;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Statistic management service.
@@ -61,6 +61,9 @@ public class StatisticMgmtService {
      */
     public static final Map<String, Long> ONLINE_VISITORS = new ConcurrentHashMap<>();
     public static final int MAX_ONLINE_VISITORS = 10_000;
+
+    private static final String ATTR_VISITED_CHECKED = "bolo.visitedChecked";
+    private static final String ATTR_HAS_BEEN_SERVED = "bolo.hasBeenServed";
 
     /**
      * Logger.
@@ -102,6 +105,15 @@ public class StatisticMgmtService {
     private StatisticCache statisticCache;
 
     /**
+     * Zero-PII daily analytics trend service.
+     */
+    @Inject
+    private AnalyticsTrendService analyticsTrendService;
+
+    private final LongAdder pendingBlogViewDelta = new LongAdder();
+    private final Object viewFlushLock = new Object();
+
+    /**
      * Removes the expired online visitor.
      */
     public static void removeExpiredOnlineVisitor() {
@@ -114,24 +126,23 @@ public class StatisticMgmtService {
 
             if (currentTimeMillis > (onlineVisitor.getValue() + ONLINE_VISITOR_EXPIRATION)) {
                 iterator.remove();
-                LOGGER.log(Level.TRACE, "Removed online visitor[ip={0}]", onlineVisitor.getKey());
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.log(Level.TRACE, "Removed online visitor[ip={0}]", onlineVisitor.getKey());
+                }
             }
         }
 
-        LOGGER.log(Level.DEBUG, "Current online visitor count [{0}]", ONLINE_VISITORS.size());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.log(Level.DEBUG, "Current online visitor count [{0}]", ONLINE_VISITORS.size());
+        }
     }
 
     /**
      * Determines whether the specified request has been served.
      * <p>
-     * A "served request" is a request a URI as former one. For example, if a client is request "/test", all requests from the client
-     * subsequent in 24 hours will be treated as served requests, requested URIs save in client cookie (name: "visited").
-     * </p>
-     * <p>
-     * If the specified request has not been served, appends the request URI in client cookie.
-     * </p>
-     * <p>
-     * Sees this issue (https://github.com/b3log/solo/issues/44) for more details.
+     * Memoizes the parsed {@code visited} cookie outcome per {@link Request} so repeated invocations within
+     * the same request lifecycle (e.g. {@code ArticleProcessor.showArticle} + {@code incBlogViewCount}) decode
+     * and parse the cookie at most once.
      * </p>
      *
      * @param context  the specified request context
@@ -139,51 +150,54 @@ public class StatisticMgmtService {
      * @return {@code true} if the specified request has been served, returns {@code false} otherwise
      */
     public static boolean hasBeenServed(final RequestContext context, final Response response) {
-        final Request request = context.getRequest();
-        final Cookie[] cookies = request.getCookies().toArray(new Cookie[0]);
-        if (null == cookies || 0 == cookies.length) {
+        final Request request = null == context ? null : context.getRequest();
+        if (null == request) {
             return false;
         }
+        final Object memoServed = request.getAttribute(ATTR_HAS_BEEN_SERVED);
+        if (memoServed instanceof Boolean served) {
+            return served;
+        }
 
-        Cookie cookie;
+        final var rawCookies = request.getCookies();
         boolean needToCreate = true;
         boolean needToAppend = true;
         JSONArray cookieJSONArray = null;
 
         try {
-            for (int i = 0; i < cookies.length; i++) {
-                cookie = cookies[i];
-
-                if (!"visited".equals(cookie.getName())) {
-                    continue;
-                }
-
-                final String value = URLs.decode(cookie.getValue());
-                cookieJSONArray = new JSONArray(value);
-                if (null == cookieJSONArray || 0 == cookieJSONArray.length()) {
-                    return false;
-                }
-
-                needToCreate = false;
-
-                for (int j = 0; j < cookieJSONArray.length(); j++) {
-                    final String visitedURL = cookieJSONArray.optString(j);
-
-                    if (request.getRequestURI().equals(visitedURL)) {
-                        needToAppend = false;
-                        return true;
+            if (null != rawCookies) {
+                for (final Cookie cookie : rawCookies) {
+                    if (null == cookie || !"visited".equals(cookie.getName())) {
+                        continue;
                     }
+
+                    final String value = URLs.decode(cookie.getValue());
+                    cookieJSONArray = new JSONArray(value);
+                    needToCreate = false;
+                    request.setAttribute(ATTR_VISITED_CHECKED, cookieJSONArray.length() > 0);
+
+                    final String requestURI = request.getRequestURI();
+                    for (int j = 0; j < cookieJSONArray.length(); j++) {
+                        final String visitedURL = cookieJSONArray.optString(j);
+                        if (requestURI.equals(visitedURL)) {
+                            needToAppend = false;
+                            request.setAttribute(ATTR_HAS_BEEN_SERVED, Boolean.TRUE);
+                            return true;
+                        }
+                    }
+                    break;
                 }
             }
 
             if (needToCreate) {
-                final StringBuilder builder = new StringBuilder("[").append("\"").append(request.getRequestURI()).append("\"]");
-                final Cookie c = new Cookie("visited", URLs.encode(builder.toString()));
+                request.setAttribute(ATTR_VISITED_CHECKED, Boolean.FALSE);
+                final JSONArray initial = new JSONArray().put(request.getRequestURI());
+                final Cookie c = new Cookie("visited", URLs.encode(initial.toString()));
                 c.setMaxAge(COOKIE_EXPIRY);
                 c.setPath("/");
                 c.setHttpOnly(true);
                 c.setSameSite("Lax");
-                response.addCookie(c);
+                writeVisitedCookie(response, c);
             } else if (needToAppend) {
                 while (cookieJSONArray.length() >= 64) {
                     cookieJSONArray.remove(0);
@@ -195,28 +209,63 @@ public class StatisticMgmtService {
                 c.setPath("/");
                 c.setHttpOnly(true);
                 c.setSameSite("Lax");
-                response.addCookie(c);
+                writeVisitedCookie(response, c);
             }
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Parses cookie failed, clears the cookie[name=visited]");
+            request.setAttribute(ATTR_VISITED_CHECKED, Boolean.FALSE);
 
             final Cookie c = new Cookie("visited", "");
             c.setMaxAge(0);
             c.setPath("/");
-
-            response.addCookie(c);
+            writeVisitedCookie(response, c);
         }
 
+        request.setAttribute(ATTR_HAS_BEEN_SERVED, Boolean.FALSE);
         return false;
     }
 
+    private static void writeVisitedCookie(final Response response, final Cookie cookie) {
+        if (null == response) {
+            return;
+        }
+        response.getCookies().removeIf(existing -> "visited".equals(existing.getName()));
+        response.addCookie(cookie);
+    }
+
+    private static boolean hasValidVisitedCookie(final Request request) {
+        if (null == request) {
+            return false;
+        }
+        final Object memoValid = request.getAttribute(ATTR_VISITED_CHECKED);
+        if (memoValid instanceof Boolean valid) {
+            return valid;
+        }
+        boolean result = false;
+        if (null != request.getCookies()) {
+            for (final Cookie cookie : request.getCookies()) {
+                if (null != cookie && "visited".equals(cookie.getName())) {
+                    final String rawVal = cookie.getValue();
+                    if (null != rawVal && !rawVal.isBlank()) {
+                        try {
+                            final JSONArray arr = new JSONArray(URLs.decode(rawVal));
+                            result = arr.length() > 0;
+                        } catch (final Exception ignored) {
+                            result = false;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        request.setAttribute(ATTR_VISITED_CHECKED, result);
+        return result;
+    }
+
     /**
-     * Blog statistic view count +1.
+     * Blog statistic view count +1 (lock-free write-behind).
      * <p>
      * If it is a search engine bot made the specified request, will NOT increment blog statistic view count.
-     * </p>
-     * <p>
-     * There is a cron job (/console/stat/viewcnt) to flush the blog view count from cache to datastore.
      * </p>
      *
      * @param context  the specified request context
@@ -231,33 +280,71 @@ public class StatisticMgmtService {
         if (hasBeenServed(context, response)) {
             return;
         }
+        final boolean isFirstVisit = !hasValidVisitedCookie(context.getRequest());
 
-        final Transaction transaction = optionRepository.beginTransaction();
-        JSONObject statistic;
-        try {
-            statistic = optionRepository.get(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
-            if (null == statistic) {
-                return;
-            }
-
-            LOGGER.log(Level.TRACE, "Before inc blog view count is [{0}]", statistic);
-
-            statistic.put(Option.OPTION_VALUE, statistic.optInt(Option.OPTION_VALUE) + 1);
-
-            updateStatistic(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, statistic);
-
-            transaction.commit();
-        } catch (final RepositoryException e) {
-            if (transaction.isActive()) {
-                transaction.rollback();
-            }
-
-            LOGGER.log(Level.ERROR, "Updates blog view count failed", e);
-
-            return;
+        if (null != analyticsTrendService) {
+            analyticsTrendService.recordSiteVisit(context, isFirstVisit);
         }
 
-        LOGGER.log(Level.TRACE, "Inced blog view count[statistic={0}]", statistic);
+        pendingBlogViewDelta.increment();
+    }
+
+    /**
+     * Returns the un-flushed write-behind blog view delta.
+     *
+     * @return non-negative pending blog view delta
+     */
+    public long getPendingBlogViewDelta() {
+        return Math.max(0L, pendingBlogViewDelta.sum());
+    }
+
+    /**
+     * Resets in-memory write-behind blog view delta (used when restoring a backup).
+     */
+    public void resetPendingViewDeltas() {
+        synchronized (viewFlushLock) {
+            pendingBlogViewDelta.reset();
+        }
+    }
+
+    /**
+     * Atomically drains accumulated write-behind blog views and persists them to
+     * {@link Option#ID_C_STATISTIC_BLOG_VIEW_COUNT} in a single transaction, restoring the delta on failure.
+     */
+    public void flushPendingViewCounts() {
+        if (null == optionRepository) {
+            return;
+        }
+        synchronized (viewFlushLock) {
+            final long delta = pendingBlogViewDelta.sumThenReset();
+            if (delta <= 0L) {
+                return;
+            }
+            final Transaction transaction = optionRepository.beginTransaction();
+            try {
+                final JSONObject statistic = optionRepository.get(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
+                if (null == statistic) {
+                    if (null != transaction && transaction.isActive()) {
+                        transaction.rollback();
+                    }
+                    return;
+                }
+                final long current = Math.max(0L, statistic.optLong(Option.OPTION_VALUE, 0L));
+                statistic.put(Option.OPTION_VALUE, String.valueOf(current + delta));
+                updateStatistic(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, statistic);
+                transaction.commit();
+            } catch (final Exception e) {
+                if (null != transaction && transaction.isActive()) {
+                    transaction.rollback();
+                }
+                optionRepository.evictOption(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
+                if (null != statisticCache) {
+                    statisticCache.clearStatistic();
+                }
+                pendingBlogViewDelta.add(delta);
+                LOGGER.log(Level.ERROR, "Flushes pending blog view count failed", e);
+            }
+        }
     }
 
     /**
@@ -277,9 +364,13 @@ public class StatisticMgmtService {
                 return;
             }
         }
-        LOGGER.log(Level.DEBUG, "Current request [IP={0}]", remoteAddr);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.log(Level.DEBUG, "Current request [IP={0}]", remoteAddr);
+        }
         ONLINE_VISITORS.put(remoteAddr, System.currentTimeMillis());
-        LOGGER.log(Level.DEBUG, "Current online visitor count [{0}]", ONLINE_VISITORS.size());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.log(Level.DEBUG, "Current online visitor count [{0}]", ONLINE_VISITORS.size());
+        }
     }
 
     /**

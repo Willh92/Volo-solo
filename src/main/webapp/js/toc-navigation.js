@@ -206,21 +206,7 @@
         else container.scrollTop = position
       }
     }
-    function update () {
-      frame = 0
-      var rootStyle = window.getComputedStyle?.(document.documentElement)
-      var offset = Math.max(110, parseFloat(rootStyle?.scrollPaddingTop) || 0) + 4
-      var activeId = chapters.find(Boolean)?.id
-      if (content) {
-        var bounds = content.getBoundingClientRect()
-        floating.forEach(function (element) { element.style.visibility = bounds.top > 160 || bounds.bottom < 100 ? 'hidden' : 'visible' })
-      }
-      chapters.forEach(function (chapter) {
-        if (chapter && chapter.getBoundingClientRect().top <= offset) activeId = chapter.id
-      })
-      var reveal = revealSelection || selectedChapter !== activeId
-      selectedChapter = activeId
-      revealSelection = false
+    function setCurrent (activeId, reveal) {
       links.forEach(function (link, index) {
         var active = Boolean(chapters[index] && chapters[index].id === activeId)
         link.parentElement.classList.toggle('current', active)
@@ -231,8 +217,30 @@
         else link.removeAttribute('aria-current')
       })
     }
+    function update () {
+      frame = 0
+      var rootStyle = window.getComputedStyle?.(document.documentElement)
+      var offset = Math.max(110, parseFloat(rootStyle?.scrollPaddingTop) || 0) + 4
+      var bounds = content ? content.getBoundingClientRect() : null
+      var current = chapters.find(Boolean)?.id
+      chapters.forEach(function (chapter) {
+        if (chapter && chapter.getBoundingClientRect().top <= offset) current = chapter.id
+      })
+      if (bounds) {
+        var nextVisibility = bounds.top > 160 || bounds.bottom < 100 ? 'hidden' : 'visible'
+        floating.forEach(function (element) {
+          if (element.style.visibility !== nextVisibility) element.style.visibility = nextVisibility
+        })
+      }
+      var reveal = revealSelection || selectedChapter !== current
+      selectedChapter = current
+      revealSelection = false
+      setCurrent(current, reveal)
+    }
     function schedule () { if (!frame) frame = requestAnimationFrame(update) }
     function scheduleReveal () { revealSelection = true; schedule() }
+    var ro = content && typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null
+    if (ro) ro.observe(content)
     window.addEventListener('scroll', schedule, {passive: true})
     window.addEventListener('resize', scheduleReveal)
     dispose = function () {
@@ -245,6 +253,7 @@
       window.removeEventListener('keydown', cancelOnKey)
       animations.forEach(function (entry, panel) { entry.animation.cancel(); panel.style.overflow = entry.overflow; panel.classList.remove('is-closing') })
       animations.clear()
+      ro?.disconnect()
       window.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', scheduleReveal)
       if (frame) cancelAnimationFrame(frame)

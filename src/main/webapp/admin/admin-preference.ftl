@@ -135,6 +135,36 @@
                 <span>${syncGitHubLabel}</span>
             </label>
         </div>
+        <div class="console-subcard console-subcard--surface">
+            <div class="console-section-head">
+                <div class="console-section-head__copy">
+                    <h4>SEO 即时收录（IndexNow）与图片转换</h4>
+                    <p>开启 IndexNow 后站点自动托管 <code>/{密钥}.txt</code> 校验文件，公开文章发布或更新时异步通知搜索引擎收录。</p>
+                </div>
+            </div>
+            <div class="console-form-grid">
+                <div class="console-form-cell">
+                    <label for="indexNowEnabled">IndexNow 自动推送</label>
+                    <select id="indexNowEnabled">
+                        <option value="false">关闭（默认）</option>
+                        <option value="true">开启发布后自动推送</option>
+                    </select>
+                </div>
+                <div class="console-form-cell">
+                    <label for="indexNowKey">IndexNow 验证密钥（8–64 位字母/数字/连字符）</label>
+                    <div class="console-inline-bar console-inline-bar--fill" style="margin:0">
+                        <input id="indexNowKey" type="text" maxlength="64" placeholder="留空在开启时自动生成随机密钥"/>
+                        <button type="button" onclick="admin.preference.generateIndexNowKey()">生成密钥</button>
+                    </div>
+                </div>
+            </div>
+            <div class="console-checkbox-group" style="margin-bottom:0">
+                <label class="checkbox" for="imageWebpAdaptive">
+                    <input id="imageWebpAdaptive" type="checkbox" class="normalInput"/>
+                    <span>编辑器上传静态图片（JPG / PNG / BMP）自动转换为 WebP（体积更小时生效，GIF 动图保持原格式）</span>
+                </label>
+            </div>
+        </div>
         <details>
             <summary style="cursor: default">${advancedSettingsLabel}</summary>
             <label for="timeZoneId">${timeZoneId1Label}</label>
@@ -258,6 +288,7 @@
         <select id="tcS" disabled>
             <option selected></option>
             <option value="local">${localPicBedLabel}</option>
+            <option value="s3">S3 兼容存储（Cloudflare R2 / MinIO / AWS S3）</option>
             <option value="qiniu">${qiNiuLabel}</option>
             <option value="aliyun">${aliLabel}</option>
             <option value="upyun">${upyunLabel}</option>
@@ -284,9 +315,17 @@
         <input id="tc7" type="text" autocomplete="off" style="display:none" />
         <div id="td8" for="tc8" style="display:none"></div>
         <input id="tc8" type="text" autocomplete="off" style="display:none" />
+        <div id="td9" for="tc9" style="display:none"></div>
+        <div id="tc9Wrap" style="display:none">
+            <select id="tc9">
+                <option value="false">Virtual-Hosted 虚拟主机风格（Cloudflare R2 / AWS S3 默认）</option>
+                <option value="true">Path-Style 路径风格（自建 MinIO / 局域网存储推荐）</option>
+            </select>
+        </div>
         <div class="fn__clear" id="tuChuangCfg" style="display: none">
             <button type="button" onclick="save()" class="fn__left">${saveConfigPicBedLabel}</button>
             <button type="button" id="clearPicSecretBtn" onclick="clearPicBedSecret()" class="fn__left" style="display:none;margin-left:8px">清空已存密钥</button>
+            <button type="button" id="testS3PicBedBtn" onclick="testS3PicBedConfig()" class="fn__left" style="display:none;margin-left:8px">测试 S3 连通性</button>
         </div>
         <script>
             function loadRemind() {
@@ -375,7 +414,19 @@
                         $('#td6').show(); $('#tc6').show();
                         $('#td6').html('${picBed32Label}');
                         $('#td7').show(); $('#tc7').show();
-                        $('#td7').html('${picBed33Label}')
+                        $('#td7').html('${picBed33Label}');
+                        break;
+                    case 's3':
+                        $('#td1').show().html('原生 AWS Signature V4 协议直传（零重型 SDK），兼容 Cloudflare R2、MinIO、AWS S3、Backblaze B2 及各大云 S3 兼容端点。');
+                        $('#td2').show().html('<b>S3 Endpoint 端点地址</b>（含 http:// 或 https://）'); $('#tc2').show().attr('placeholder', '例如 https://xxx.r2.cloudflarestorage.com');
+                        $('#td3').show().html('<b>AccessKey ID</b>'); $('#tc3').show();
+                        $('#td4').show().html('<b>SecretAccessKey</b>'); $('#tc4').show();
+                        $('#td5').show().html('<b>Bucket 存储桶名称</b>'); $('#tc5').show();
+                        $('#td6').show().html('<b>Region 区域</b>（Cloudflare R2 可填 auto）'); $('#tc6').show().attr('placeholder', 'auto');
+                        $('#td7').show().html('<b>自定义公开访问域名（可选）</b>'); $('#tc7').show().attr('placeholder', '例如 https://cdn.example.com，留空使用端点地址');
+                        $('#td8').show().html('<b>存储子目录前缀（可选）</b>'); $('#tc8').show().attr('placeholder', '例如 uploads/images');
+                        $('#td9').show().html('<b>Bucket 寻址模式</b>'); $('#tc9Wrap').show(); $('#tc9').val('false');
+                        $('#testS3PicBedBtn').show();
                         break;
                 }
                 var stc = $('#sourceTC').text().split('<<>>');
@@ -384,7 +435,7 @@
                         $('#tc' + (i + 1)).val(stc[i]);
                     }
                 }
-                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : (sel === 'upyun' ? '#tc4' : '');
+                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : ((sel === 'upyun' || sel === 's3') ? '#tc4' : '');
                 var hasSavedSecret = !!(secretInput && admin.preference && admin.preference.tuChuangSecretSet && admin.preference.tuChuangType === sel);
                 if (secretInput) {
                     $(secretInput).attr('type', 'password').attr('autocomplete', 'new-password')
@@ -396,6 +447,10 @@
 
             function clear() {
                 $('#clearPicSecretBtn').hide();
+                $('#testS3PicBedBtn').hide();
+                $('#td9').hide();
+                $('#tc9Wrap').hide();
+                $('#tc9').val('false');
                 for (var i = 1; i <= 8; i++) {
                     $('#tc' + i).val('').attr('type', 'text').attr('placeholder', '').attr('autocomplete', 'off').hide();
                     $('#td' + i).hide();
@@ -404,7 +459,7 @@
 
             function clearPicBedSecret() {
                 var sel = $('#tcS').val();
-                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : (sel === 'upyun' ? '#tc4' : '');
+                var secretInput = (sel === 'picuang' || sel === 'qiniu' || sel === 'aliyun' || sel === 'tencent') ? '#tc3' : ((sel === 'upyun' || sel === 's3') ? '#tc4' : '');
                 if (!secretInput) return;
                 $(secretInput).val('__VOLO_CLEAR_SECRET__');
                 save();
@@ -442,6 +497,9 @@
                     case 'tencent':
                         $('#sourceTC').text('tencent<<>>' + $('#tc2').val() + '<<>>' + $('#tc3').val() + '<<>>' + $('#tc4').val() + '<<>>' + $('#tc5').val() + '<<>>' + $('#tc6').val() + '<<>>' + $('#tc7').val());
                         break;
+                    case 's3':
+                        $('#sourceTC').text('s3<<>>' + $.trim($('#tc2').val()) + '<<>>' + $.trim($('#tc3').val()) + '<<>>' + $('#tc4').val() + '<<>>' + $.trim($('#tc5').val()) + '<<>>' + ($.trim($('#tc6').val()) || 'auto') + '<<>>' + $.trim($('#tc7').val()) + '<<>>' + $.trim($('#tc8').val()) + '<<>>' + ($('#tc9').val() === 'true' ? 'true' : 'false'));
+                        break;
                 }
                 admin.preference.update();
                 noBtnSwal('${picBed24Label}');
@@ -470,6 +528,34 @@
                         noBtnSwal(res.msg);
                     }
                 })
+            }
+        </script>
+        <script>
+            function testS3PicBedConfig() {
+                var btn = $('#testS3PicBedBtn');
+                btn.prop('disabled', true);
+                $.ajax({
+                    type: 'POST',
+                    url: Label.servePath + '/console/s3/check',
+                    contentType: 'application/json;charset=UTF-8',
+                    data: JSON.stringify({
+                        endpoint: $.trim($('#tc2').val()),
+                        accessKey: $.trim($('#tc3').val()),
+                        secretKey: $('#tc4').val(),
+                        bucket: $.trim($('#tc5').val()),
+                        region: $.trim($('#tc6').val()) || 'auto',
+                        pathStyle: $('#tc9').val() === 'true'
+                    }),
+                    success: function (res) {
+                        admin.showNotice((res && res.msg) || (res && res.sc ? 'S3 连通性测试成功。' : 'S3 连通性测试失败。'), res && res.sc ? 'info' : 'error');
+                    },
+                    error: function (xhr) {
+                        admin.showNotice((xhr.responseJSON && xhr.responseJSON.msg) || 'S3 连通性测试失败，请检查端点与凭证。', 'error');
+                    },
+                    complete: function () {
+                        btn.prop('disabled', false);
+                    }
+                });
             }
         </script>
         <div>${picBed25Label}</div>

@@ -50,7 +50,7 @@ public class OptionRepository extends AbstractRepository {
         super(Option.OPTION);
     }
     /** Discard a potentially uncommitted cached option after a document transaction. */
-    public void evictOption(final String id) { if (optionCache != null) optionCache.removeOption(id); }
+    public void evictOption(final String id) { if (optionCache != null) optionCache.evictOption(id); }
 
     @Override
     public String add(final JSONObject option) throws RepositoryException {
@@ -74,7 +74,7 @@ public class OptionRepository extends AbstractRepository {
         optionCache.markMissing(id);
 
         final String category = option.optString(Option.OPTION_CATEGORY);
-        optionCache.removeCategory(category);
+        // Category snapshot updated in-place inside OptionCache.removeOption
     }
 
     @Override

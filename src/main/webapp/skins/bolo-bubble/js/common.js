@@ -27,25 +27,47 @@
  */
 var Skin = {
   init: function () {
-    $('#headerDown').click(function () {
+    $(window).off('.boloBubble')
+
+    $('#headerDown').off('click.boloBubble').on('click.boloBubble', function () {
       $('html, body').animate({scrollTop: $(window).height()}, 300)
     })
 
-    $(window).scroll(function (event) {
-      $('.fn__progress').attr('value', parseInt($(window).scrollTop())).
-        attr('max', parseInt($('body').outerHeight() -
-          $(window).height()))
+    var scrollRaf = 0
+    var lastEdge = null
+    var lastTopVisible = null
+    var $progress = $('.fn__progress')
+    var $sideMenu = $('.side__menu')
+    var $sideTop = $('#sideTop')
 
-      if ($(window).scrollTop() > $(window).height() / 2 - 20) {
-        $('.side__menu').addClass('side__menu--edge')
-      } else {
-        $('.side__menu').removeClass('side__menu--edge')
+    function syncScrollState () {
+      scrollRaf = 0
+      var scrollTop = $(window).scrollTop()
+      var winHeight = $(window).height()
+      if ($progress.length) {
+        $progress.attr('value', parseInt(scrollTop, 10)).
+          attr('max', Math.max(1, parseInt($('body').outerHeight() - winHeight, 10)))
       }
-      $('#sideTop').toggleClass('is-visible', $(window).scrollTop() > 180)
+      var edge = scrollTop > winHeight / 2 - 20
+      if (edge !== lastEdge) {
+        lastEdge = edge
+        $sideMenu.toggleClass('side__menu--edge', edge)
+      }
+      var topVisible = scrollTop > 180
+      if (topVisible !== lastTopVisible) {
+        lastTopVisible = topVisible
+        $sideTop.toggleClass('is-visible', topVisible)
+      }
+    }
+
+    $(window).on('scroll.boloBubble', function () {
+      if (!scrollRaf) {
+        scrollRaf = requestAnimationFrame(syncScrollState)
+      }
     })
 
-    var closeMenuTimer
-    $('.side__menu').click(function () {
+    var closeMenuTimer = 0
+    $sideMenu.off('click.boloBubble').on('click.boloBubble', function () {
       clearTimeout(closeMenuTimer)
       $(this).attr('aria-expanded', 'true')
       $('.side__main').addClass('side__main--show').show()
@@ -60,17 +82,18 @@ var Skin = {
         $('.side__main').hide()
       }, 250)
     }
-    $('.side__bg, .side__close').click(closeMenu)
-    document.addEventListener('keydown', function (event) {
+    $('.side__bg, .side__close').off('click.boloBubble').on('click.boloBubble', closeMenu)
+    function onKeyDown (event) {
       if (event.key === 'Escape' && $('.side__main').hasClass('side__main--show')) closeMenu()
-    })
-    $('#sideTop').click(function () {
+    }
+    document.addEventListener('keydown', onKeyDown)
+    $sideTop.off('click.boloBubble').on('click.boloBubble', function () {
       Util.goTop()
     })
 
     var timer = 0
-    var blogTitle = $('.header__h1').text()
-    document.addEventListener('visibilitychange', function () {
+    var blogTitle = $('.header__h1').text() || document.title
+    function onVisibilityChange () {
       if (timer) clearTimeout(timer)
       if (document.hidden) {
         timer = setTimeout(function () {
@@ -82,9 +105,10 @@ var Skin = {
           document.title = blogTitle
         }, 1000)
       }
-    }, false)
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange, false)
 
-    new Ribbons({
+    var ribbonsInstance = new Ribbons({
       colorSaturation: '60%',
       colorBrightness: '50%',
       colorAlpha: 0.5,
@@ -97,11 +121,28 @@ var Skin = {
       animateSections: true,
     })
 
-    if ($('#comments').length === 1) {
-      return
-    } else {
-      $(window).scroll()
+    if (window.BoloNavigation) {
+      window.BoloNavigation.onLeave(function () {
+        if (scrollRaf) {
+          cancelAnimationFrame(scrollRaf)
+          scrollRaf = 0
+        }
+        clearTimeout(closeMenuTimer)
+        clearTimeout(timer)
+        $(window).off('.boloBubble')
+        document.removeEventListener('keydown', onKeyDown)
+        document.removeEventListener('visibilitychange', onVisibilityChange, false)
+        if (ribbonsInstance && typeof ribbonsInstance.destroy === 'function') {
+          ribbonsInstance.destroy()
+        }
+      })
     }
+
+    if ($('#comments').length === 1) {
+      syncScrollState()
+      return
+    }
+    syncScrollState()
 
     $('.header').circleMagic({
       clearOffset: 0.3,
@@ -115,10 +156,10 @@ var Skin = {
 
     initCanvas('articleTop')
 
-    if ($(window).width() >= 1400) {
+    var contentEl = document.querySelector('.article__content')
+    if ($(window).width() >= 1400 && contentEl) {
       $('.post__toc').css({
-        left: document.querySelector('.article__content').
-          getBoundingClientRect().right + 20,
+        left: contentEl.getBoundingClientRect().right + 20,
         right: 'auto',
         display: 'block',
       })
@@ -127,7 +168,7 @@ var Skin = {
     var $articleTocs = $('.vditor-reset [id^=b3_solo_h]')
     var $articleToc = $('.article__toc')
 
-    $articleToc.find('a').click(function (event) {
+    $articleToc.find('a').off('click.boloBubble').on('click.boloBubble', function (event) {
       var id = $(this).attr('href')
       window.location.hash = id
       $(window).scrollTop($(id).offset().top)
@@ -139,21 +180,22 @@ var Skin = {
       return false
     })
 
-    $(window).scroll(function (event) {
+    var articleTocRaf = 0
+    function syncArticleToc () {
+      articleTocRaf = 0
       if ($('.article__toc li').length === 0) {
         return false
       }
 
-      // 界面各种图片加载会导致帖子目录定位
       var toc = []
-      $articleTocs.each(function (i) {
+      $articleTocs.each(function () {
         toc.push({
           id: this.id,
           offsetTop: $(this).offset().top,
         })
       })
+      if (!toc.length) return false
 
-      // 当前目录样式
       var scrollTop = $(window).scrollTop() + 10
       for (var i = 0, iMax = toc.length; i < iMax; i++) {
         if (scrollTop < toc[i].offsetTop) {
@@ -169,8 +211,23 @@ var Skin = {
         $articleToc.find('li').removeClass('current')
         $articleToc.find('li:last').addClass('current')
       }
+    }
+
+    $(window).off('scroll.boloBubbleArticle').on('scroll.boloBubbleArticle', function () {
+      if (!articleTocRaf) {
+        articleTocRaf = requestAnimationFrame(syncArticleToc)
+      }
     })
-    $(window).scroll()
+    syncArticleToc()
+    if (window.BoloNavigation) {
+      window.BoloNavigation.onLeave(function () {
+        if (articleTocRaf) {
+          cancelAnimationFrame(articleTocRaf)
+          articleTocRaf = 0
+        }
+        $(window).off('.boloBubbleArticle')
+      })
+    }
   },
 }
 

@@ -7,6 +7,7 @@
     <!-- Plugin API routes such as /plugins/kanbanniang/assets/list need cookie parsing. -->
     <include path="/plugins/**/*.*"/>
     <include path="/images/**"/>
+    <include path="/image/**"/>
     <include path="/favicon.ico"/>
     <include path="/robots.txt"/>
     <include path="/sw.js"/>

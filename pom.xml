@@ -120,6 +120,8 @@
 
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <kanbanniang.exclude.1>plugins/kanbanniang/assets/model/Potion-Maker/**</kanbanniang.exclude.1>
+        <kanbanniang.exclude.2>plugins/kanbanniang/assets/model/HyperdimensionNeptunia/**</kanbanniang.exclude.2>
     </properties>
 
     <!-- Keep transitive dependencies on maintained versions, including Latke's dependencies. -->
@@ -204,7 +206,7 @@
                 <artifactId>tencentcloud-sdk-java-kms</artifactId>
                 <version>3.2.48</version>
             </dependency>
-        </dependencies>
+            </dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -373,6 +375,12 @@
         <dependency>
             <groupId>com.qiniu</groupId>
             <artifactId>qiniu-java-sdk</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.projectlombok</groupId>
+                    <artifactId>lombok</artifactId>
+                </exclusion>
+            </exclusions>
             <version>7.19.0</version>
         </dependency>
 
@@ -424,6 +432,10 @@
                     <artifactId>bcprov-jdk15on</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
         </dependency>
     </dependencies>
 
@@ -580,13 +592,27 @@
 
     <profiles>
         <profile>
+            <id>full-models</id>
+            <activation>
+                <property>
+                    <name>fullModels</name>
+                </property>
+            </activation>
+            <properties>
+                <kanbanniang.exclude.1>__none__/**</kanbanniang.exclude.1>
+                <kanbanniang.exclude.2>__none__/**</kanbanniang.exclude.2>
+            </properties>
+        </profile>
+        <profile>
             <id>ci</id>
         </profile>
 
         <profile>
             <id>dev</id>
             <activation>
-                <activeByDefault>true</activeByDefault>
+                <property>
+                    <name>!skipDevRepo</name>
+                </property>
             </activation>
             <repositories>
                 <repository>

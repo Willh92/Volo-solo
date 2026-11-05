@@ -4,7 +4,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <@head title="${title} - ${blogTitle!'Volo'}">
+    <@head title="${title} - ${blogTitle!'Volo'}" isErrorPage=(type == 'error')>
         <meta name="robots" content="noindex,follow"/>
     </@head>
 </head>

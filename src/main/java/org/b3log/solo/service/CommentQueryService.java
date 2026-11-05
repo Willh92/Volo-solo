@@ -18,13 +18,19 @@
 package org.b3log.solo.service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.CommentCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
@@ -84,6 +90,9 @@ public class CommentQueryService {
     @Inject
     private PageRepository pageRepository;
 
+    @Inject
+    private CommentCache commentCache;
+
     /**
      * Can the specified user access a comment specified by the given comment id?
      *
@@ -124,26 +133,8 @@ public class CommentQueryService {
     /**
      * Gets comments with the specified request json object, request and response.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10
-     * @return for example,
-     * <pre>
-     * {
-     *     "comments": [{
-     *         "oId": "",
-     *         "commentTitle": "",
-     *         "commentName": "",
-     *         "thumbnailUrl": "",
-     *         "commentURL": "",
-     *         "commentContent": "",
-     *         "commentTime": long,
-     *         "commentSharpURL": ""
-     *      }, ....]
-     *     "sc": "GET_COMMENTS_SUCC"
-     * }
-     * </pre>
+     * @param requestJSONObject the specified request json object
+     * @return comments result JSON
      * @throws ServiceException service exception
      * @see Pagination
      */
@@ -187,14 +178,16 @@ public class CommentQueryService {
             }
             final JSONObject result = commentRepository.get(query);
             final JSONArray comments = org.b3log.solo.util.QueryResults.array(result);
+            final Map<String, JSONObject> preloadedArticles = preloadCommentArticles(comments);
+            final JSONArray validComments = new JSONArray();
 
             // Sets comment title and content escaping
             for (int i = 0; i < comments.length(); i++) {
                 final JSONObject comment = comments.getJSONObject(i);
-                String title;
-
                 final String onId = comment.getString(Comment.COMMENT_ON_ID);
-                final JSONObject article = articleRepository.get(onId);
+                final JSONObject article = null != preloadedArticles
+                        ? preloadedArticles.get(onId)
+                        : articleRepository.get(onId);
                 if (null == article) {
                     // 某种情况下导致的数据不一致：文章已经被删除了，但是评论还在
                     // 为了保持数据一致性，需要删除该条评论 https://ld246.com/article/1556060195022
@@ -202,13 +195,20 @@ public class CommentQueryService {
                     final String commentId = comment.optString(Keys.OBJECT_ID);
                     commentRepository.remove(commentId);
                     transaction.commit();
+                    if (null != commentCache) {
+                        commentCache.invalidateArticleComments(onId);
+                    }
 
                     continue;
                 }
 
-                title = article.getString(Article.ARTICLE_TITLE);
+                final String title = article.getString(Article.ARTICLE_TITLE);
                 comment.put(Common.TYPE, Common.ARTICLE_COMMENT_TYPE);
                 comment.put(Common.COMMENT_TITLE, title);
+                final String permalink = article.optString(Article.ARTICLE_PERMALINK);
+                if (!permalink.isEmpty() && !comment.has(Comment.COMMENT_SHARP_URL)) {
+                    comment.put(Comment.COMMENT_SHARP_URL, permalink + "#" + comment.optString(Keys.OBJECT_ID));
+                }
 
                 String commentContent = comment.optString(Comment.COMMENT_CONTENT);
                 commentContent = comment.optBoolean("commentDeleted") ? "<p class=\"comment-tombstone\">这条评论已删除</p>" : Markdowns.toHTML(commentContent);
@@ -222,6 +222,7 @@ public class CommentQueryService {
                 comment.remove(org.b3log.solo.util.CommentOwnership.KEY_HASH);
                 if (!administrator) org.b3log.solo.util.IpAddresses.hidePrivateAddress(comment);
                 else comment.put("commentRegion", org.b3log.solo.util.IpGeo.region(comment.optString(org.b3log.solo.util.IpAddresses.COMMENT_IP)));
+                validComments.put(comment);
             }
 
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);
@@ -231,7 +232,7 @@ public class CommentQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
-            ret.put(Comment.COMMENTS, comments);
+            ret.put(Comment.COMMENTS, validComments);
             ret.put(Pagination.PAGINATION, pagination);
             ret.put("pendingCount", commentRepository.countPendingComments());
 
@@ -243,6 +244,50 @@ public class CommentQueryService {
         }
     }
 
+    private Map<String, JSONObject> preloadCommentArticles(final JSONArray comments) {
+        if (null == comments || 0 == comments.length()) {
+            return Collections.emptyMap();
+        }
+        if (null == articleRepository
+                || org.b3log.latke.Latkes.RuntimeDatabase.NONE == org.b3log.latke.Latkes.getRuntimeDatabase()) {
+            return null;
+        }
+        try {
+            final Set<String> onIds = new LinkedHashSet<>(comments.length());
+            for (int i = 0; i < comments.length(); i++) {
+                final JSONObject comment = comments.optJSONObject(i);
+                if (null != comment) {
+                    final String onId = comment.optString(Comment.COMMENT_ON_ID);
+                    if (!onId.isEmpty()) {
+                        onIds.add(onId);
+                    }
+                }
+            }
+            if (onIds.isEmpty()) {
+                return Collections.emptyMap();
+            }
+            final String placeholders = String.join(",", Collections.nCopies(onIds.size(), "?"));
+            final List<JSONObject> rows = articleRepository.select(
+                    "SELECT oId, articleTitle, articlePermalink FROM " + articleRepository.getName()
+                            + " WHERE oId IN (" + placeholders + ")",
+                    onIds.toArray());
+            if (null == rows) {
+                return null;
+            }
+            final Map<String, JSONObject> map = new HashMap<>(rows.size() * 2);
+            for (final JSONObject row : rows) {
+                final String id = row.optString(Keys.OBJECT_ID);
+                if (!id.isEmpty()) {
+                    map.put(id, row);
+                }
+            }
+            return map;
+        } catch (final Exception e) {
+            LOGGER.log(Level.DEBUG, "Batch article preload for comments fell back to per-comment lookup", e);
+            return null;
+        }
+    }
+
     /**
      * Gets comments of an article or page specified by the on id.
      *
@@ -251,6 +296,15 @@ public class CommentQueryService {
      * @throws ServiceException service exception
      */
     public List<JSONObject> getComments(final String onId) throws ServiceException {
+        if (StringUtils.isBlank(onId)) {
+            return new ArrayList<>();
+        }
+        if (null != commentCache) {
+            final List<JSONObject> cached = commentCache.getCommentsByArticleId(onId);
+            if (null != cached) {
+                return cached;
+            }
+        }
         try {
             final List<JSONObject> ret = new ArrayList<>();
             final List<JSONObject> comments = commentRepository.getComments(onId, 1, Integer.MAX_VALUE);
@@ -280,7 +334,11 @@ public class CommentQueryService {
                 ret.add(comment);
             }
 
-            return org.b3log.solo.util.CommentThreads.forDisplay(ret);
+            final List<JSONObject> display = org.b3log.solo.util.CommentThreads.forDisplay(ret);
+            if (null != commentCache) {
+                commentCache.putCommentsByArticleId(onId, display);
+            }
+            return display;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets comments failed", e);
             throw new ServiceException(e);

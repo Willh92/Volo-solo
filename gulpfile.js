@@ -102,7 +102,8 @@ async function vendorAssets () {
 }
 
 function minJS () {
-  // minify js
+  // Minify core webapp scripts including common.min.js, page.min.js, blog-enhancements.min.js,
+  // auth-navigation.min.js, appearance.min.js, toc-navigation.min.js, and captcha.min.js.
   return gulp.src(['./src/main/webapp/js/*.js', '!./src/main/webapp/js/*.min.js']).
     pipe(rename({ suffix: '.min' })).
     pipe(terser({
@@ -175,11 +176,10 @@ function miniAdminLibs () {
 }
 
 function miniPjax () {
-  // concat js
+  // Shared public bundle: BoloNavigation handles PJAX & progress bar natively,
+  // so legacy jquery.pjax.js and nprogress.js dead code are omitted.
   const jsPjax = [
-    './src/main/webapp/js/lib/jquery/jquery.min.js',
-    './src/main/webapp/js/lib/jquery/jquery.pjax.js',
-    './src/main/webapp/js/lib/nprogress/nprogress.js']
+    './src/main/webapp/js/lib/jquery/jquery.min.js']
   return gulp.src(jsPjax).
     pipe(terser({
       output: {
@@ -192,7 +192,7 @@ function miniPjax () {
 
 function minSkinJS () {
   // minify js
-  return gulp.src('./src/main/webapp/skins/*/js/*.js').
+  return gulp.src(['./src/main/webapp/skins/*/js/*.js', '!./src/main/webapp/skins/*/js/*.min.js']).
     pipe(rename({ suffix: '.min' })).
     pipe(terser({
       output: {
@@ -208,6 +208,7 @@ function cleanProcess () {
     './src/main/webapp/js/admin/admin.min.js',
     './src/main/webapp/js/lib/compress/*.min.js',
     './src/main/webapp/skins/*/js/*.min.js',
+    './src/main/webapp/*.gz',
     './src/main/webapp/**/*.gz'])
 }
 
@@ -215,8 +216,17 @@ async function compressStaticAssets () {
   const fs = require('node:fs/promises')
   const path = require('node:path')
   const zlib = require('node:zlib')
-  const roots = ['js', 'scss', 'skins', 'plugins', 'images'].map(dir => path.resolve(__dirname, 'src/main/webapp', dir))
+  const webappRoot = path.resolve(__dirname, 'src/main/webapp')
+  const roots = ['js', 'scss', 'skins', 'plugins', 'images'].map(dir => path.resolve(webappRoot, dir))
   const compressible = /\.(?:js|css|svg|json)$/i
+  async function compressFile (fullPath) {
+    const raw = await fs.readFile(fullPath)
+    if (raw.length < 128) return
+    const gz = zlib.gzipSync(raw, { level: 9 })
+    if (gz.length < raw.length) {
+      await fs.writeFile(fullPath + '.gz', gz)
+    }
+  }
   async function walk (dir) {
     let entries
     try {
@@ -229,13 +239,14 @@ async function compressStaticAssets () {
       if (entry.isDirectory()) {
         await walk(fullPath)
       } else if (entry.isFile() && compressible.test(entry.name)) {
-        const raw = await fs.readFile(fullPath)
-        if (raw.length < 1024) continue
-        const gz = zlib.gzipSync(raw, { level: 9 })
-        if (gz.length < raw.length) {
-          await fs.writeFile(fullPath + '.gz', gz)
-        }
+        await compressFile(fullPath)
       }
+    }
+  }
+  const topEntries = await fs.readdir(webappRoot, { withFileTypes: true })
+  for (const entry of topEntries) {
+    if (entry.isFile() && compressible.test(entry.name)) {
+      await compressFile(path.join(webappRoot, entry.name))
     }
   }
   for (const root of roots) {

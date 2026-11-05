@@ -42,6 +42,7 @@ final class Controllers {
         org.b3log.solo.processor.console.OpsConsole.class,
         org.b3log.solo.processor.console.OtherConsole.class,
         org.b3log.solo.processor.console.PageConsole.class,
+        org.b3log.solo.processor.console.PasskeyConsole.class,
         org.b3log.solo.processor.console.PluginConsole.class,
         org.b3log.solo.processor.console.PreferenceConsole.class,
         org.b3log.solo.processor.console.RepairConsole.class,

@@ -119,8 +119,13 @@ public final class SoloApplication {
     private static final java.util.Set<String> SESSION_TRACKED =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
     private record UaFlags(boolean searchEngineBot, boolean mobileBot) { }
-    private static final java.util.concurrent.ConcurrentHashMap<String, UaFlags> UA_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>(256);
+    private static final java.util.Map<String, UaFlags> UA_CACHE =
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, UaFlags>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final java.util.Map.Entry<String, UaFlags> eldest) {
+                    return size() > 512;
+                }
+            });
     private static final org.b3log.solo.web.WebResources WEB_RESOURCES = new org.b3log.solo.web.WebResources(
             java.nio.file.Path.of(System.getProperty("bolo.webRoot", java.nio.file.Files.isDirectory(java.nio.file.Path.of("src/main/webapp")) ? "src/main/webapp" : ".")));
     public static org.b3log.solo.web.WebResources getWebResources() { return WEB_RESOURCES; }
@@ -131,19 +136,8 @@ public final class SoloApplication {
         org.b3log.latke.http.Dispatcher.startRequestHandler = context -> {
             final Request req = context.getRequest();
             final org.b3log.latke.http.Session session = req.getSession();
-            boolean hadIncomingSession = false;
-            if (session != null) {
-                final java.util.Set<org.b3log.latke.http.Cookie> reqCookies = req.getCookies();
-                if (reqCookies != null) {
-                    for (final org.b3log.latke.http.Cookie cookie : reqCookies) {
-                        if (org.b3log.latke.http.Session.LATKE_SESSION_ID.equals(cookie.getName())
-                                && session.getId().equals(cookie.getValue())) {
-                            hadIncomingSession = true;
-                            break;
-                        }
-                    }
-                }
-            }
+            final boolean hadIncomingSession = session != null
+                    && hasIncomingSessionCookie(req.getHeader("Cookie"), session.getId());
             req.setAttribute("bolo.hadIncomingSession", hadIncomingSession);
             // Incoming browser cookies have no Path/expiry/SameSite/Secure attributes. Never echo them back;
             // handlers that mint or update cookies attach explicit properly attributed Cookie instances.
@@ -239,27 +233,158 @@ public final class SoloApplication {
     public void shutdown() {
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
         cronMgmtService.stop();
+        try {
+            if (null != beanManager) {
+                try {
+                    final var pk = beanManager.getReference(org.b3log.solo.service.PasskeyService.class);
+                    if (null != pk) {
+                        pk.flushIfDirty();
+                    }
+                } catch (final Throwable ignored) {
+                }
+                final org.b3log.solo.service.AnalyticsTrendService analyticsTrendService =
+                        beanManager.getReference(org.b3log.solo.service.AnalyticsTrendService.class);
+                if (null != analyticsTrendService) {
+                    analyticsTrendService.flushIfDirty();
+                }
+                final StatisticMgmtService statisticMgmtService =
+                        beanManager.getReference(StatisticMgmtService.class);
+                if (null != statisticMgmtService) {
+                    statisticMgmtService.flushPendingViewCounts();
+                }
+                final org.b3log.solo.service.ArticleMgmtService articleMgmtService =
+                        beanManager.getReference(org.b3log.solo.service.ArticleMgmtService.class);
+                if (null != articleMgmtService) {
+                    articleMgmtService.flushPendingViewCounts();
+                }
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARN, "Flushes analytics trends on shutdown failed", e);
+        } finally {
+            try {
+                org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
+            } catch (final Exception ignored) {
+            }
+        }
+        org.b3log.solo.service.ImportService.shutdown();
+        org.b3log.solo.service.RemoteBackupSyncService.shutdown();
+        org.b3log.solo.service.IndexNowService.shutdown();
+        org.b3log.solo.service.WebhookNotifyService.shutdown();
+        org.b3log.solo.service.LinkHealthService.shutdown();
+        org.b3log.solo.bolo.prop.MailProcessor.shutdown();
+        Markdowns.shutdown();
         org.b3log.solo.event.BackgroundEvents.shutdown();
         org.b3log.solo.improve.SharedExecutorPool.shutdown();
         org.b3log.solo.util.IpGeo.close();
+        org.b3log.solo.log4j.RamAppender.close();
         Latkes.shutdown();
 
         LOGGER.info("Destroyed the context");
     }
+    public static boolean hasIncomingSessionCookie(final String rawCookieHeader, final String sessionId) {
+        if (rawCookieHeader == null || rawCookieHeader.isEmpty() || sessionId == null || sessionId.isEmpty()) {
+            return false;
+        }
+        final String targetName = org.b3log.latke.http.Session.LATKE_SESSION_ID;
+        final int targetNameLen = targetName.length();
+        final int sessionIdLen = sessionId.length();
+        final int headerLen = rawCookieHeader.length();
+        int idx = 0;
+        while (idx < headerLen) {
+            int semi = rawCookieHeader.indexOf(';', idx);
+            if (semi < 0) {
+                semi = headerLen;
+            }
+            int start = idx;
+            int end = semi;
+            while (start < end && rawCookieHeader.charAt(start) <= ' ') {
+                start++;
+            }
+            while (end > start && rawCookieHeader.charAt(end - 1) <= ' ') {
+                end--;
+            }
+            if (end > start) {
+                final int eq = rawCookieHeader.indexOf('=', start);
+                if (eq > start && eq < end) {
+                    int nameEnd = eq;
+                    while (nameEnd > start && rawCookieHeader.charAt(nameEnd - 1) <= ' ') {
+                        nameEnd--;
+                    }
+                    if (nameEnd - start == targetNameLen
+                            && rawCookieHeader.regionMatches(start, targetName, 0, targetNameLen)) {
+                        int valStart = eq + 1;
+                        int valEnd = end;
+                        while (valStart < valEnd && rawCookieHeader.charAt(valStart) <= ' ') {
+                            valStart++;
+                        }
+                        if (valEnd - valStart >= 2
+                                && rawCookieHeader.charAt(valStart) == '"'
+                                && rawCookieHeader.charAt(valEnd - 1) == '"') {
+                            valStart++;
+                            valEnd--;
+                        }
+                        if (valEnd - valStart == sessionIdLen
+                                && rawCookieHeader.regionMatches(valStart, sessionId, 0, sessionIdLen)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            idx = semi + 1;
+        }
+        return false;
+    }
+
+    public static boolean hasSessionAttributes(final String sessionId) {
+        return hasSessionAttributes(sessionId, null);
+    }
+
+    private static boolean hasSessionAttributes(final String sessionId, final org.b3log.latke.http.Session session) {
+        if (sessionId != null && !sessionId.isEmpty()) {
+            final JSONObject data = org.b3log.latke.http.Sessions.CACHE.get(sessionId);
+            if (data != null && data.length() > 1) {
+                for (final String key : data.keySet()) {
+                    if ("id".equals(key) || data.isNull(key)) {
+                        continue;
+                    }
+                    final Object rawVal = data.opt(key);
+                    final String strVal = rawVal == null ? "" : String.valueOf(rawVal);
+                    if (!strVal.isBlank() && !"{}".equals(strVal)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if (session != null) {
+            final String viewPwds = session.getAttribute(org.b3log.solo.model.Common.ARTICLES_VIEW_PWD);
+            return viewPwds != null && !viewPwds.isBlank() && !"{}".equals(viewPwds);
+        }
+        return false;
+    }
+
     public static void evictTransientSession(final Request request) {
         if (request == null) return;
         final org.b3log.latke.http.Session session = request.getSession();
         if (session != null) {
             final String sessionId = session.getId();
-            if (Boolean.FALSE.equals(request.getAttribute("bolo.hadIncomingSession"))) {
-                final String viewPwds = session.getAttribute(org.b3log.solo.model.Common.ARTICLES_VIEW_PWD);
-                if (viewPwds == null || viewPwds.isBlank() || "{}".equals(viewPwds)) {
+            final boolean hadIncoming = Boolean.TRUE.equals(request.getAttribute("bolo.hadIncomingSession"));
+            if (!hadIncoming) {
+                if (!hasSessionAttributes(sessionId, session)) {
                     org.b3log.latke.http.Sessions.CACHE.remove(sessionId);
-                } else if (SESSION_TRACKED.add(sessionId)) {
+                    SESSION_TRACKED.remove(sessionId);
+                } else if (org.b3log.latke.http.Sessions.CACHE.contains(sessionId)) {
+                    if (SESSION_TRACKED.add(sessionId)) {
+                        SESSION_ORDER.offer(sessionId);
+                    }
+                } else {
+                    SESSION_TRACKED.remove(sessionId);
+                }
+            } else if (org.b3log.latke.http.Sessions.CACHE.contains(sessionId)) {
+                if (SESSION_TRACKED.add(sessionId)) {
                     SESSION_ORDER.offer(sessionId);
                 }
-            } else if (SESSION_TRACKED.add(sessionId)) {
-                SESSION_ORDER.offer(sessionId);
+            } else {
+                SESSION_TRACKED.remove(sessionId);
             }
         }
         while (org.b3log.latke.http.Sessions.CACHE.size() > MAX_SESSIONS) {
@@ -432,9 +557,6 @@ public final class SoloApplication {
             }
             flags = new UaFlags(BrowserType.ROBOT == browserType, BrowserType.MOBILE_BROWSER == browserType);
             if (key.length() <= 512) {
-                if (UA_CACHE.size() >= 512) {
-                    UA_CACHE.clear();
-                }
                 UA_CACHE.put(key, flags);
             }
         }

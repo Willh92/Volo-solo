@@ -17,9 +17,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<link type="text/css" rel="stylesheet" href="${staticServePath}/plugins/kanbanniang/index.css"/>
-<script defer src="${staticServePath}/plugins/kanbanniang/loader.js"></script>
-<div class="solo-kanbanniang" style="display:none" aria-label="看板娘">
+<link type="text/css" rel="stylesheet" href="${staticServePath}/plugins/kanbanniang/index.css?${staticResourceVersion!''}"/>
+<script data-bolo-navigation="once" defer src="${staticServePath}/plugins/kanbanniang/loader.js?${staticResourceVersion!''}"></script>
+<div id="boloKanBanNiangContainer" class="solo-kanbanniang" style="display:none" aria-label="看板娘">
     <div class="solo-kanbanniang__tip" role="status" aria-live="polite"></div>
     <canvas id="soloKanbanniang" width="280" height="250"></canvas>
     <div class="solo-kanbanniang__tool">

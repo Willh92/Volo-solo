@@ -26,6 +26,7 @@ import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Tag;
+import org.b3log.solo.service.ArticleQueryService;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -40,6 +41,20 @@ import java.util.List;
  */
 @Repository
 public class TagArticleRepository extends AbstractRepository {
+
+    private static final String ARTICLE_A_COLS_WITHOUT_CONTENT = buildAliasedArticleColumns();
+
+    private static String buildAliasedArticleColumns() {
+        final String[] cols = ArticleQueryService.articleColumnsWithoutContent();
+        final StringBuilder sb = new StringBuilder(cols.length * 20);
+        for (int i = 0; i < cols.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append("a.").append(cols[i]);
+        }
+        return sb.toString();
+    }
 
     @Inject
     private ArticleRepository articleRepository;
@@ -101,10 +116,7 @@ public class TagArticleRepository extends AbstractRepository {
     }
 
     /**
-     * Gets published article count of a tag specified by the given tag id.
-     *
-     * @param tagId the given tag id
-     * @return published article count, returns {@code -1} if occurred an exception
+     * Gets published article counts grouped by tag id.
      */
     public java.util.Map<String, Integer> getPublishedArticleCountsByTag() throws RepositoryException {
         final java.util.Map<String, Integer> counts = new java.util.HashMap<>();
@@ -137,8 +149,20 @@ public class TagArticleRepository extends AbstractRepository {
     /** Returns published articles after filtering, so drafts and duplicate links cannot consume a page. */
     public List<JSONObject> getPublishedArticles(final String tagId, final int currentPageNum, final int pageSize)
             throws RepositoryException {
+        return getPublishedArticles(tagId, currentPageNum, pageSize, true);
+    }
+
+    /**
+     * Returns published articles for the specified tag, optionally projecting out {@code articleContent}
+     * for summary list modes.
+     */
+    public List<JSONObject> getPublishedArticles(final String tagId,
+                                                 final int currentPageNum,
+                                                 final int pageSize,
+                                                 final boolean includeContent) throws RepositoryException {
         if (currentPageNum < 1 || pageSize < 1) return new ArrayList<>();
-        return articleRepository.select("SELECT a.* FROM " + articleRepository.getName()
+        final String selectCols = includeContent ? "a.*" : ARTICLE_A_COLS_WITHOUT_CONTENT;
+        return articleRepository.select("SELECT " + selectCols + " FROM " + articleRepository.getName()
                 + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + getName()
                 + " AS t WHERE t.article_oId = a.oId AND t.tag_oId = ?)"
                 + " ORDER BY a.oId DESC LIMIT ? OFFSET ?", Article.ARTICLE_STATUS_C_PUBLISHED, tagId,
@@ -149,14 +173,7 @@ public class TagArticleRepository extends AbstractRepository {
      * Gets tag-article relations by the specified article id.
      *
      * @param articleId the specified article id
-     * @return for example
-     * <pre>
-     * [{
-     *         "oId": "",
-     *         "tag_oId": "",
-     *         "article_oId": articleId
-     * }, ....], returns an empty list if not found
-     * </pre>
+     * @return tag-article relation list
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getByArticleId(final String articleId) throws RepositoryException {
@@ -170,23 +187,9 @@ public class TagArticleRepository extends AbstractRepository {
      * Gets tag-article relations by the specified tag id.
      *
      * @param tagId          the specified tag id
-     * @param currentPageNum the specified current page number, MUST greater
-     *                       then {@code 0}
-     * @param pageSize       the specified page size(count of a page contains objects),
-     *                       MUST greater then {@code 0}
-     * @return for example
-     * <pre>
-     * {
-     *     "pagination": {
-     *       "paginationPageCount": 88250
-     *     },
-     *     "rslts": [{
-     *         "oId": "",
-     *         "tag_oId": tagId,
-     *         "article_oId": ""
-     *     }, ....]
-     * }
-     * </pre>
+     * @param currentPageNum the specified current page number, MUST greater then {@code 0}
+     * @param pageSize       the specified page size, MUST greater then {@code 0}
+     * @return paginated relations
      * @throws RepositoryException repository exception
      */
     public JSONObject getByTagId(final String tagId, final int currentPageNum, final int pageSize) throws RepositoryException {

@@ -32,6 +32,8 @@ import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Ids;
+import org.b3log.solo.cache.ArticleCache;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.event.B3ArticleSender;
 import org.b3log.solo.event.EventTypes;
 import org.b3log.solo.event.FishPiArticleSender;
@@ -40,16 +42,19 @@ import org.b3log.solo.repository.*;
 import org.b3log.solo.util.GitHubs;
 import org.b3log.solo.util.GitHubStats;
 import org.b3log.solo.util.PluginUtil;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 
 import static org.b3log.solo.model.Article.*;
 
@@ -68,6 +73,10 @@ public class ArticleMgmtService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(ArticleMgmtService.class);
+
+    public static final int MAX_PENDING_VIEW_ARTICLES = 4096;
+    private static final int VIEW_FLUSH_BATCH_SIZE = 500;
+    private static volatile ArticleMgmtService activeInstance;
 
     /**
      * Category service.
@@ -213,6 +222,64 @@ public class ArticleMgmtService {
     @Inject
     private InstantSearchService instantSearchService;
 
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
+    @Inject
+    private BacklinkService backlinkService;
+
+    @Inject
+    private IndexNowService indexNowService;
+
+    @Inject
+    private ArticleCache articleCache;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private final ConcurrentHashMap<String, LongAdder> pendingArticleViewDeltas = new ConcurrentHashMap<>();
+    private final Object viewFlushLock = new Object();
+
+    public ArticleMgmtService() {
+        activeInstance = this;
+    }
+
+    /**
+     * Returns any un-flushed write-behind view delta from the active service instance (0 if none).
+     */
+    public static long peekPendingViewDelta(final String articleId) {
+        final ArticleMgmtService instance = activeInstance;
+        return null == instance ? 0L : instance.getPendingViewDelta(articleId);
+    }
+
+    private void invalidateContentCaches() {
+        if (null != instantSearchService) {
+            instantSearchService.invalidate();
+        }
+        if (null != syndicationCacheService) {
+            syndicationCacheService.invalidate();
+        }
+        if (null != backlinkService) {
+            backlinkService.invalidate();
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateAll();
+        }
+    }
+
+    private void notifyIndexNowIfPublic(final JSONObject article) {
+        if (null == indexNowService || null == article) {
+            return;
+        }
+        if (Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(ARTICLE_STATUS)
+                && StringUtils.isBlank(article.optString(ARTICLE_VIEW_PWD))) {
+            final String permalink = StringUtils.trimToEmpty(article.optString(ARTICLE_PERMALINK));
+            if (!permalink.isEmpty()) {
+                indexNowService.notifyUrlsAsync(List.of(permalink, "/"));
+            }
+        }
+    }
+
     /**
      * Refreshes GitHub repos. 同步拉取 GitHub 仓库 https://github.com/b3log/solo/issues/12514
      */
@@ -304,8 +371,15 @@ public class ArticleMgmtService {
                     // 新建文章时，删除有可能存在的旧 permalink （用户手动删除文章后残留）
                     JSONObject page = pageRepository.getByPermalink(permalink);
                     final Transaction transaction = pageRepository.beginTransaction();
-                    pageRepository.remove(page.optString("oId"));
-                    transaction.commit();
+                    try {
+                        pageRepository.remove(page.optString("oId"));
+                        transaction.commit();
+                    } catch (final Exception ex) {
+                        if (transaction.isActive()) {
+                            transaction.rollback();
+                        }
+                        throw ex;
+                    }
                 } catch (NullPointerException ignored) {
                 }
                 article = new JSONObject();
@@ -324,37 +398,61 @@ public class ArticleMgmtService {
                 addArticleReq.put(Article.ARTICLE, article);
                 addArticle(addArticleReq);
             } else {
-                article.put(Article.ARTICLE_CONTENT, content);
-                article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(content));
-                article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(content));
-                article.put(Article.ARTICLE_UPDATED, System.currentTimeMillis());
-
                 final String articleId = article.optString(Keys.OBJECT_ID);
+                final long drainedDelta = drainPendingViewDelta(articleId);
                 final Transaction transaction = articleRepository.beginTransaction();
-                articleRepository.update(articleId, article);
-                transaction.commit();
+                try {
+                    final JSONObject baseArticle = articleRepository.get(articleId);
+                    if (null != baseArticle) {
+                        article = baseArticle;
+                    }
+                    article.put(Article.ARTICLE_VIEW_COUNT, (int) Math.min(
+                            Integer.MAX_VALUE,
+                            Math.max(0L, article.optLong(Article.ARTICLE_VIEW_COUNT, 0L) + drainedDelta)));
+                    article.put(Article.ARTICLE_CONTENT, content);
+                    article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(content));
+                    article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(content));
+                    article.put(Article.ARTICLE_UPDATED, System.currentTimeMillis());
+
+                    articleRepository.update(articleId, article);
+                    transaction.commit();
+                } catch (final Exception ex) {
+                    if (transaction.isActive()) {
+                        transaction.rollback();
+                    }
+                    if (null != articleCache) {
+                        articleCache.clear();
+                    }
+                    restorePendingViewDelta(articleId, drainedDelta);
+                    throw ex;
+                }
             }
 
-            if (null != instantSearchService) {
-                instantSearchService.invalidate();
-            }
             final Transaction transaction = pageRepository.beginTransaction();
-            JSONObject page = pageRepository.getByPermalink(permalink);
-            if (null == page) {
-                page = new JSONObject();
-                final int maxOrder = pageRepository.getMaxOrder();
-                page.put(Page.PAGE_ORDER, maxOrder + 1);
-                page.put(Page.PAGE_TITLE, "我的开源");
-                page.put(Page.PAGE_OPEN_TARGET, "_self");
-                page.put(Page.PAGE_PERMALINK, permalink);
-                page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
-                pageRepository.add(page);
-            } else {
-                page.put(Page.PAGE_OPEN_TARGET, "_self");
-                page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
-                pageRepository.update(page.optString(Keys.OBJECT_ID), page);
+            try {
+                JSONObject page = pageRepository.getByPermalink(permalink);
+                if (null == page) {
+                    page = new JSONObject();
+                    final int maxOrder = pageRepository.getMaxOrder();
+                    page.put(Page.PAGE_ORDER, maxOrder + 1);
+                    page.put(Page.PAGE_TITLE, "我的开源");
+                    page.put(Page.PAGE_OPEN_TARGET, "_self");
+                    page.put(Page.PAGE_PERMALINK, permalink);
+                    page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
+                    pageRepository.add(page);
+                } else {
+                    page.put(Page.PAGE_OPEN_TARGET, "_self");
+                    page.put(Page.PAGE_ICON, Latkes.getContextPath() + "/images/github-icon.png");
+                    pageRepository.update(page.optString(Keys.OBJECT_ID), page);
+                }
+                transaction.commit();
+            } catch (final Exception ex) {
+                if (transaction.isActive()) {
+                    transaction.rollback();
+                }
+                throw ex;
             }
-            transaction.commit();
+            invalidateContentCaches();
             LOGGER.log(Level.INFO, "My github repos page has been generated.");
             return true;
         } catch (final Exception e) {
@@ -410,6 +508,9 @@ public class ArticleMgmtService {
         final int commentCnt = article.getInt(Article.ARTICLE_COMMENT_COUNT);
         newArticle.put(Article.ARTICLE_COMMENT_COUNT, commentCnt + 1);
         articleRepository.update(articleId, newArticle, ARTICLE_COMMENT_COUNT);
+        if (null != publicViewCache) {
+            publicViewCache.invalidateCommon();
+        }
     }
 
     /**
@@ -427,12 +528,13 @@ public class ArticleMgmtService {
             articleRepository.update(articleId, article, ARTICLE_STATUS);
 
             transaction.commit();
-            if (null != instantSearchService) {
-                instantSearchService.invalidate();
-            }
+            invalidateContentCaches();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (null != articleCache) {
+                articleCache.removeArticle(articleId);
             }
 
             LOGGER.log(Level.ERROR, "Cancels publish article failed", e);
@@ -458,9 +560,13 @@ public class ArticleMgmtService {
             articleRepository.update(articleId, topArticle, ARTICLE_PUT_TOP);
 
             transaction.commit();
+            invalidateContentCaches();
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (null != articleCache) {
+                articleCache.removeArticle(articleId);
             }
 
             LOGGER.log(Level.ERROR, "Can't put the article[oId{0}] to top", articleId);
@@ -491,6 +597,8 @@ public class ArticleMgmtService {
      */
     public void updateArticle(final JSONObject requestJSONObject) throws ServiceException {
         final Transaction transaction = articleRepository.beginTransaction();
+        String articleId = null;
+        long drainedDelta = 0L;
 
         try {
             final JSONObject article = requestJSONObject.getJSONObject(ARTICLE);
@@ -501,7 +609,8 @@ public class ArticleMgmtService {
             }
             article.put(Article.ARTICLE_TAGS_REF, tagsString);
 
-            final String articleId = article.getString(Keys.OBJECT_ID);
+            articleId = article.getString(Keys.OBJECT_ID);
+            drainedDelta = drainPendingViewDelta(articleId);
             // Set permalink
             final JSONObject oldArticle = articleRepository.get(articleId);
             final String permalink = getPermalinkForUpdateArticle(oldArticle, article, oldArticle.optLong(ARTICLE_CREATED));
@@ -511,6 +620,11 @@ public class ArticleMgmtService {
 
             // Normalize the date before deriving its archive month.
             fillAutoProperties(oldArticle, article);
+            if (drainedDelta > 0L) {
+                article.put(ARTICLE_VIEW_COUNT, (int) Math.min(
+                        Integer.MAX_VALUE,
+                        Math.max(0L, article.optLong(ARTICLE_VIEW_COUNT, 0L) + drainedDelta)));
+            }
             archiveDate(article);
 
             if (!oldArticle.getString(Article.ARTICLE_PERMALINK).equals(permalink)) { // The permalink has been updated
@@ -586,13 +700,16 @@ public class ArticleMgmtService {
             if (hasSeriesField && null != seriesAndBookshelfService) {
                 seriesAndBookshelfService.assignArticleSeries(articleId, seriesId);
             }
-            if (null != instantSearchService) {
-                instantSearchService.invalidate();
-            }
+            invalidateContentCaches();
+            notifyIndexNowIfPublic(article);
         } catch (final ServiceException e) {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (null != articleCache) {
+                articleCache.clear();
+            }
+            restorePendingViewDelta(articleId, drainedDelta);
 
             LOGGER.log(Level.ERROR, "Updates an article failed", e);
 
@@ -601,6 +718,10 @@ public class ArticleMgmtService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (null != articleCache) {
+                articleCache.clear();
+            }
+            restorePendingViewDelta(articleId, drainedDelta);
 
             LOGGER.log(Level.ERROR, "Updates an article failed", e);
 
@@ -716,11 +837,10 @@ public class ArticleMgmtService {
             if (hasSeriesField && null != seriesAndBookshelfService) {
                 seriesAndBookshelfService.assignArticleSeries(ret, seriesId);
             }
-            if (null != instantSearchService) {
-                instantSearchService.invalidate();
-            }
+            invalidateContentCaches();
 
             article.put(Common.POST_TO_COMMUNITY, postToCommunity);
+            notifyIndexNowIfPublic(article);
             if (Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(ARTICLE_STATUS)) {
                 final JSONObject eventData = new JSONObject();
                 eventData.put(Article.ARTICLE, article);
@@ -731,6 +851,9 @@ public class ArticleMgmtService {
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (null != articleCache) {
+                articleCache.clear();
             }
 
             throw new ServiceException(e.getMessage());
@@ -751,19 +874,23 @@ public class ArticleMgmtService {
             articleRepository.remove(articleId);
             commentRepository.removeComments(articleId);
             transaction.commit();
+            if (null != articleId) {
+                pendingArticleViewDeltas.remove(articleId);
+            }
             if (null != articleRevisionService) {
                 articleRevisionService.removeRevisions(articleId);
             }
             if (null != seriesAndBookshelfService) {
                 seriesAndBookshelfService.removeArticleFromAllSeries(articleId);
             }
-            if (null != instantSearchService) {
-                instantSearchService.invalidate();
-            }
+            invalidateContentCaches();
             eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_ARTICLE, articleId));
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (null != articleCache) {
+                articleCache.clear();
             }
 
             LOGGER.log(Level.ERROR, "Removes an article[id=" + articleId + "] failed", e);
@@ -780,9 +907,10 @@ public class ArticleMgmtService {
      */
     public void updateArticlesRandomValue(final int updateCnt) throws ServiceException {
         final Transaction transaction = articleRepository.beginTransaction();
+        List<JSONObject> randomArticles = null;
 
         try {
-            final List<JSONObject> randomArticles = articleRepository.getRandomly(updateCnt);
+            randomArticles = articleRepository.getRandomly(updateCnt);
 
             for (final JSONObject article : randomArticles) {
                 article.put(Article.ARTICLE_RANDOM_DOUBLE, Math.random());
@@ -795,6 +923,13 @@ public class ArticleMgmtService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            if (null != articleCache && null != randomArticles) {
+                for (final JSONObject article : randomArticles) {
+                    if (null != article && null != articleCache.getArticle(article.optString(Keys.OBJECT_ID))) {
+                        articleCache.removeArticle(article.optString(Keys.OBJECT_ID));
+                    }
+                }
+            }
 
             LOGGER.log(Level.WARN, "Updates article random value failed");
 
@@ -803,41 +938,179 @@ public class ArticleMgmtService {
     }
 
     /**
-     * Increments the view count of the article specified by the given article id.
+     * Increments the view count of the article specified by the given article id (lock-free write-behind).
      *
      * @param articleId the given article id
      * @throws ServiceException service exception
      */
     public void incViewCount(final String articleId) throws ServiceException {
-        JSONObject article;
-
-        try {
-            article = articleRepository.get(articleId);
-
-            if (null == article) {
-                return;
-            }
-        } catch (final RepositoryException e) {
-            LOGGER.log(Level.ERROR, "Gets article [id=" + articleId + "] failed", e);
-
+        if (StringUtils.isBlank(articleId)) {
             return;
         }
+        if (!pendingArticleViewDeltas.containsKey(articleId)
+                && pendingArticleViewDeltas.size() >= MAX_PENDING_VIEW_ARTICLES) {
+            flushPendingViewCounts();
+        }
+        pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).increment();
+        if (null != articleCache) {
+            articleCache.incrementViewCountInPlace(articleId, 1L);
+        }
+    }
 
-        final Transaction transaction = articleRepository.beginTransaction();
+    /**
+     * Returns the un-flushed write-behind view delta for an article.
+     *
+     * @param articleId article object ID
+     * @return non-negative pending view delta
+     */
+    public long getPendingViewDelta(final String articleId) {
+        if (StringUtils.isBlank(articleId)) {
+            return 0L;
+        }
+        final LongAdder adder = pendingArticleViewDeltas.get(articleId);
+        return null == adder ? 0L : Math.max(0L, adder.sum());
+    }
 
-        try {
-            article.put(Article.ARTICLE_VIEW_COUNT, article.getInt(Article.ARTICLE_VIEW_COUNT) + 1);
-            articleRepository.update(articleId, article, ARTICLE_VIEW_COUNT);
-
-            transaction.commit();
-        } catch (final Exception e) {
-            if (transaction.isActive()) {
-                transaction.rollback();
+    /**
+     * Atomically drains any un-flushed write-behind view delta for {@code articleId} under {@code viewFlushLock}
+     * and aligns any cached {@link ArticleCache} entry back to its persisted base count so callers can add
+     * the returned delta once without double-counting on either {@code idCache} hits or misses.
+     *
+     * @param articleId article object ID
+     * @return non-negative drained view delta
+     */
+    public long drainPendingViewDelta(final String articleId) {
+        if (StringUtils.isBlank(articleId)) {
+            return 0L;
+        }
+        synchronized (viewFlushLock) {
+            final LongAdder adder = pendingArticleViewDeltas.remove(articleId);
+            if (null == adder) {
+                return 0L;
             }
+            final long delta = Math.max(0L, adder.sum());
+            if (delta > 0L && null != articleCache) {
+                final JSONObject cached = articleCache.getArticle(articleId);
+                if (null != cached) {
+                    final long baseCount = Math.max(0L, cached.optLong(ARTICLE_VIEW_COUNT, 0L) - delta);
+                    cached.put(ARTICLE_VIEW_COUNT, (int) Math.min(Integer.MAX_VALUE, baseCount));
+                    articleCache.putArticle(cached);
+                }
+            }
+            return delta;
+        }
+    }
 
-            LOGGER.log(Level.WARN, "Updates article view count failed");
+    /**
+     * Restores a previously drained write-behind view delta if a full-article update transaction rolls back.
+     *
+     * @param articleId article object ID
+     * @param delta     positive delta to restore
+     */
+    public void restorePendingViewDelta(final String articleId, final long delta) {
+        if (StringUtils.isBlank(articleId) || delta <= 0L) {
+            return;
+        }
+        synchronized (viewFlushLock) {
+            pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).add(delta);
+            if (null != articleCache) {
+                final JSONObject cached = articleCache.getArticle(articleId);
+                if (null != cached) {
+                    final long restored = Math.max(0L, cached.optLong(ARTICLE_VIEW_COUNT, 0L) + delta);
+                    cached.put(ARTICLE_VIEW_COUNT, (int) Math.min(Integer.MAX_VALUE, restored));
+                    articleCache.putArticle(cached);
+                }
+            }
+        }
+    }
 
-            throw new ServiceException(e);
+    /**
+     * Clears all un-flushed write-behind article view deltas (used when restoring a backup).
+     */
+    public void resetPendingViewDeltas() {
+        synchronized (viewFlushLock) {
+            pendingArticleViewDeltas.clear();
+        }
+    }
+
+    /**
+     * Atomically drains accumulated write-behind article view deltas and batch-updates
+     * {@code b3_solo_article} in a transaction, restoring drained deltas if rollback occurs.
+     */
+    public void flushPendingViewCounts() {
+        if (null == articleRepository || pendingArticleViewDeltas.isEmpty()) {
+            return;
+        }
+        synchronized (viewFlushLock) {
+            final Map<String, Long> drained = new LinkedHashMap<>();
+            for (final Map.Entry<String, LongAdder> entry : pendingArticleViewDeltas.entrySet()) {
+                final long delta = entry.getValue().sumThenReset();
+                if (delta > 0L) {
+                    drained.put(entry.getKey(), delta);
+                } else {
+                    pendingArticleViewDeltas.remove(entry.getKey(), entry.getValue());
+                }
+            }
+            if (drained.isEmpty()) {
+                return;
+            }
+            final Transaction transaction = articleRepository.beginTransaction();
+            final List<String> ids = new ArrayList<>(drained.keySet());
+            int updated = 0;
+            try {
+                for (int start = 0; start < ids.size(); start += VIEW_FLUSH_BATCH_SIZE) {
+                    final List<String> chunk = ids.subList(start, Math.min(ids.size(), start + VIEW_FLUSH_BATCH_SIZE));
+                    final Query query = new Query()
+                            .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, chunk))
+                            .select(Keys.OBJECT_ID, ARTICLE_VIEW_COUNT)
+                            .setPageCount(1);
+                    final JSONArray rows = QueryResults.array(articleRepository.get(query));
+                    for (int i = 0; i < rows.length(); i++) {
+                        final JSONObject row = rows.optJSONObject(i);
+                        if (null == row) {
+                            continue;
+                        }
+                        final String id = row.optString(Keys.OBJECT_ID);
+                        final Long delta = drained.get(id);
+                        if (null == delta || delta <= 0L) {
+                            continue;
+                        }
+                        final int updatedCount = (int) Math.min(
+                                Integer.MAX_VALUE,
+                                Math.max(0L, row.optLong(ARTICLE_VIEW_COUNT, 0L) + delta));
+                        final JSONObject patch = new JSONObject();
+                        patch.put(Keys.OBJECT_ID, id);
+                        patch.put(ARTICLE_VIEW_COUNT, updatedCount);
+                        articleRepository.update(id, patch, ARTICLE_VIEW_COUNT);
+                        updated++;
+                    }
+                }
+                transaction.commit();
+                for (final String id : ids) {
+                    final LongAdder adder = pendingArticleViewDeltas.get(id);
+                    if (null != adder && adder.sum() <= 0L) {
+                        pendingArticleViewDeltas.remove(id, adder);
+                    }
+                }
+                if (updated > 0 && null != publicViewCache) {
+                    publicViewCache.invalidateSidebarViewWidgets();
+                }
+            } catch (final Exception e) {
+                if (null != transaction && transaction.isActive()) {
+                    transaction.rollback();
+                }
+                if (null != articleCache) {
+                    for (final String id : ids) {
+                        if (null != articleCache.getArticle(id)) {
+                            articleCache.removeArticle(id);
+                        }
+                    }
+                }
+                for (final Map.Entry<String, Long> entry : drained.entrySet()) {
+                    pendingArticleViewDeltas.computeIfAbsent(entry.getKey(), k -> new LongAdder()).add(entry.getValue());
+                }
+                LOGGER.log(Level.WARN, "Flushes pending article view counts failed", e);
+            }
         }
     }
 
@@ -1280,18 +1553,24 @@ public class ArticleMgmtService {
         int publishedCount = 0;
         for (final JSONObject draft : dueArticles) {
             final String articleId = draft.optString(Keys.OBJECT_ID);
+            final long drainedDelta = drainPendingViewDelta(articleId);
             final Transaction tx = articleRepository.beginTransaction();
             try {
                 final JSONObject current = articleRepository.get(articleId);
                 if (null == current || Article.ARTICLE_STATUS_C_DRAFT != current.optInt(ARTICLE_STATUS)) {
                     tx.commit();
+                    restorePendingViewDelta(articleId, drainedDelta);
                     continue;
                 }
                 final long scheduledAt = current.optLong(ARTICLE_SCHEDULE_TIME, 0L);
                 if (scheduledAt <= 0L || scheduledAt > now) {
                     tx.commit();
+                    restorePendingViewDelta(articleId, drainedDelta);
                     continue;
                 }
+                current.put(ARTICLE_VIEW_COUNT, (int) Math.min(
+                        Integer.MAX_VALUE,
+                        Math.max(0L, current.optLong(ARTICLE_VIEW_COUNT, 0L) + drainedDelta)));
                 current.put(ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
                 current.put(ARTICLE_SCHEDULE_TIME, 0L);
                 current.put(ARTICLE_UPDATED, now);
@@ -1299,6 +1578,7 @@ public class ArticleMgmtService {
                 articleRepository.update(articleId, current);
                 tx.commit();
                 publishedCount++;
+                notifyIndexNowIfPublic(current);
 
                 final JSONObject eventData = new JSONObject();
                 eventData.put(ARTICLE, current);
@@ -1309,11 +1589,15 @@ public class ArticleMgmtService {
                 if (tx.isActive()) {
                     tx.rollback();
                 }
+                if (null != articleCache) {
+                    articleCache.removeArticle(articleId);
+                }
+                restorePendingViewDelta(articleId, drainedDelta);
                 LOGGER.log(Level.ERROR, "Auto-publishes scheduled article failed [id=" + articleId + "]", e);
             }
         }
-        if (publishedCount > 0 && null != instantSearchService) {
-            instantSearchService.invalidate();
+        if (publishedCount > 0) {
+            invalidateContentCaches();
         }
         return publishedCount;
     }

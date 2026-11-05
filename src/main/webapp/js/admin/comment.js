@@ -97,7 +97,6 @@ admin.comment = {
         $('#' + fromId + 'Comments').html(commentsHTML)
 
         Util.parseMarkdown()
-        Util.parseLanguage()
         $('#loadMsg').text('')
       },
     })

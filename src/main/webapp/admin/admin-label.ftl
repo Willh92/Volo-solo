@@ -29,6 +29,8 @@
     Label.uploadMsg = "${uploadMsg?js_string}"
     Label.uploadToken = "${uploadToken?js_string}"
     Label.uploadURL = "${uploadURL?js_string}"
+    Label.imageWebpAdaptive = "${(imageWebpAdaptive!'false')?js_string}"
+    Label.imageUploadCompress = "${(imageUploadCompress!'1.0')?js_string}"
     Label.skinDirName = "${skinDirName}"
     Label.userRole = "${userRole}"
     Label.PAGE_SIZE = "${articleListDisplayCount}"

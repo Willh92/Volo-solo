@@ -17,46 +17,39 @@
  */
 package org.b3log.solo.processor;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLDecoder;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.b3log.solo.web.WebResources;
-import org.b3log.latke.http.Response;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
-import org.b3log.latke.model.Pagination;
-import org.b3log.latke.model.User;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.RequestProcessing;
-import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.JsonRenderer;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.model.Pagination;
+import org.b3log.latke.model.User;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.prop.FaviconCache;
-import org.b3log.solo.bolo.tool.EditIMG;
-import org.b3log.solo.bolo.tool.MediaFileUtil;
+import org.b3log.solo.cache.PublicViewCache;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.service.ArticleQueryService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.StatisticQueryService;
 import org.b3log.solo.service.TagQueryService;
 import org.b3log.solo.service.UserQueryService;
+import org.b3log.solo.web.JsonResponses;
+import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -97,6 +90,9 @@ public class BlogProcessor {
      */
     private static final Logger LOGGER = Logger.getLogger(BlogProcessor.class);
 
+    private static final int[] STANDARD_FAVICON_SIZES = {16, 32, 48, 64, 72, 96, 128, 144, 180, 192, 256, 512};
+    private static final int MAX_FAVICON_CACHE_ENTRIES = 32;
+
     @Inject
     private org.b3log.solo.service.GitHubRepositoryService gitHubRepositoryService;
 
@@ -105,6 +101,12 @@ public class BlogProcessor {
      */
     @Inject
     private ArticleQueryService articleQueryService;
+
+    @Inject
+    private ArticleRepository articleRepository;
+
+    @Inject
+    private PublicViewCache publicViewCache;
 
     /**
      * Tag query service.
@@ -136,9 +138,14 @@ public class BlogProcessor {
     private static String PWA_MANIFESTO_JSON;
 
     /**
-     * The cache of favicon.
+     * Bounded LRU cache of rendered favicons restricted to standard icon dimensions.
      */
-    HashMap<String, FaviconCache> faviconCache = new HashMap<>();
+    HashMap<String, FaviconCache> faviconCache = new LinkedHashMap<>(48, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(final Map.Entry<String, FaviconCache> eldest) {
+            return size() > MAX_FAVICON_CACHE_ENTRIES;
+        }
+    };
 
     static {
         try (final InputStream tplStream = BlogProcessor.class.getResourceAsStream("/manifest.json.tpl")) {
@@ -153,13 +160,17 @@ public class BlogProcessor {
      *
      * @param context the specified context
      */
-    @RequestProcessing(value = "/manifest.json", method = HttpMethod.GET)
+    @RequestProcessing(value = "/manifest.json", method = {HttpMethod.GET, HttpMethod.HEAD})
     public void getPWAManifestJSON(final RequestContext context) {
         final JsonRenderer renderer = new JsonRenderer();
         renderer.setPretty(true);
         context.setRenderer(renderer);
         final JSONObject preference = optionQueryService.getPreference();
         if (null == preference) {
+            if ("HEAD".equalsIgnoreCase(context.method()) && context.getResponse() != null) {
+                context.getResponse().setContentType("application/json; charset=UTF-8");
+                context.sendBytes(new byte[0]);
+            }
             return;
         }
         final String name = preference.optString(Option.ID_C_BLOG_TITLE);
@@ -171,6 +182,10 @@ public class BlogProcessor {
         jsonObject.put("theme_color", org.b3log.solo.util.SiteAppearance.color());
         jsonObject.put("background_color", "#f6f7f3");
         renderer.setJSONObject(jsonObject);
+        if ("HEAD".equalsIgnoreCase(context.method()) && context.getResponse() != null) {
+            JsonResponses.applyCompression(context);
+            context.getRenderer().render(context);
+        }
     }
 
     /**
@@ -180,16 +195,18 @@ public class BlogProcessor {
      */
     @RequestProcessing(value = "/favicon/{width}/{height}", method = HttpMethod.GET)
     public void getFavicon(final RequestContext context) {
-        final int width, height;
+        final int rawWidth, rawHeight;
         try {
-            width = Integer.parseInt(context.pathVar("width"));
-            height = Integer.parseInt(context.pathVar("height"));
-            if (width < 16 || height < 16 || width > 512 || height > 512) throw new IllegalArgumentException();
+            rawWidth = Integer.parseInt(context.pathVar("width"));
+            rawHeight = Integer.parseInt(context.pathVar("height"));
+            if (rawWidth < 16 || rawHeight < 16 || rawWidth > 512 || rawHeight > 512) throw new IllegalArgumentException();
         } catch (IllegalArgumentException exception) {
             context.setStatus(400);
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "图标尺寸应介于 16 和 512 像素。"));
             return;
         }
+        final int width = snapFaviconDimension(rawWidth);
+        final int height = snapFaviconDimension(rawHeight);
         final JSONObject preference = optionQueryService.getPreference();
         final String source = preference == null ? "" : preference.optString(Option.ID_C_FAVICON_URL);
         final String key = source + ":" + width + ":" + height;
@@ -199,7 +216,6 @@ public class BlogProcessor {
                 FaviconCache found = faviconCache.get(key);
                 if (found == null) {
                     found = new FaviconCache("image/png", org.b3log.solo.util.Favicons.render(source, width, height, SoloApplication.getWebResources()));
-                    if (faviconCache.size() >= 64) faviconCache.clear();
                     faviconCache.put(key, found);
                 }
                 icon = found;
@@ -212,6 +228,20 @@ public class BlogProcessor {
             LOGGER.log(Level.ERROR, "Cannot render favicon", exception);
             context.sendError(500);
         }
+    }
+
+    static int snapFaviconDimension(final int requested) {
+        int best = STANDARD_FAVICON_SIZES[0];
+        int bestDiff = Math.abs(requested - best);
+        for (int i = 1; i < STANDARD_FAVICON_SIZES.length; i++) {
+            final int candidate = STANDARD_FAVICON_SIZES[i];
+            final int diff = Math.abs(requested - candidate);
+            if (diff <= bestDiff) {
+                best = candidate;
+                bestDiff = diff;
+            }
+        }
+        return best;
     }
 
     /**
@@ -273,25 +303,6 @@ public class BlogProcessor {
      */
     @RequestProcessing(value = "/blog/articles-tags", method = HttpMethod.GET)
     public void getArticlesTags(final RequestContext context) {
-        final JSONObject requestJSONObject = new JSONObject();
-        requestJSONObject.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, 1);
-        requestJSONObject.put(Pagination.PAGINATION_PAGE_SIZE, Integer.MAX_VALUE);
-        requestJSONObject.put(Pagination.PAGINATION_WINDOW_SIZE, Integer.MAX_VALUE);
-        requestJSONObject.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
-
-        final JSONArray excludes = new JSONArray();
-
-        excludes.put(Article.ARTICLE_CONTENT);
-        excludes.put(Article.ARTICLE_UPDATED);
-        excludes.put(Article.ARTICLE_CREATED);
-        excludes.put(Article.ARTICLE_AUTHOR_ID);
-        excludes.put(Article.ARTICLE_RANDOM_DOUBLE);
-
-        requestJSONObject.put(Keys.EXCLUDES, excludes);
-
-        final JSONObject result = articleQueryService.getArticles(requestJSONObject);
-        final JSONArray articles = result.optJSONArray(Article.ARTICLES);
-
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();
@@ -299,22 +310,39 @@ public class BlogProcessor {
 
         final JSONArray data = new JSONArray();
         ret.put("data", data);
+        ret.put(Keys.MSG, "SC_OK");
 
-        for (int i = 0; i < articles.length(); i++) {
-            final JSONObject article = articles.optJSONObject(i);
-            final String tagString = article.optString(Article.ARTICLE_TAGS_REF);
-
-            final JSONArray tagArray = new JSONArray();
-            data.put(tagArray);
-
-            final String[] tags = tagString.split(",");
-
-            for (final String tag : tags) {
-                final String trim = tag.trim();
-                if (StringUtils.isNotBlank(trim)) {
-                    tagArray.put(tag);
+        try {
+            List<JSONObject> articles = null == publicViewCache
+                    ? null
+                    : publicViewCache.getWidgetList("blogArticlesTags");
+            if (null == articles) {
+                articles = articleRepository.select(
+                        "SELECT articleTags FROM " + articleRepository.getName() + " WHERE articleStatus = ?",
+                        Article.ARTICLE_STATUS_C_PUBLISHED);
+                if (null == articles) {
+                    articles = Collections.emptyList();
+                }
+                if (null != publicViewCache) {
+                    publicViewCache.putWidgetList("blogArticlesTags", articles);
                 }
             }
+
+            for (final JSONObject article : articles) {
+                final String tagString = article.optString(Article.ARTICLE_TAGS_REF);
+                final JSONArray tagArray = new JSONArray();
+                data.put(tagArray);
+
+                final String[] tags = tagString.split(",");
+                for (final String tag : tags) {
+                    final String trim = tag.trim();
+                    if (StringUtils.isNotBlank(trim)) {
+                        tagArray.put(tag);
+                    }
+                }
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Gets articles tags failed", e);
         }
     }
 }

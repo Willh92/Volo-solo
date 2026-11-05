@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 !function (t, e) {
-    "object" == typeof exports && "object" == typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define([], e) : "object" == typeof exports ? exports.POWERMODE = e() : t.POWERMODE = e()
+    "object" == typeof exports && "object" == typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define([], e) : "object" == typeof exports ? exports.POWERMODE = e() : t.POWERMODE = t.POWERMODE || e()
 }(this, (function () {
     return function (t) {
         var e = {};
@@ -30,11 +30,25 @@
         return o.m = t, o.c = e, o.p = "", o(0)
     }([function (t, e, o) {
         "use strict";
-        var n = document.createElement("canvas");
-        n.width = window.innerWidth, n.height = window.innerHeight, n.style.cssText = "position:fixed;top:0;left:0;pointer-events:none;z-index:999999", window.addEventListener("resize", (function () {
-            n.width = window.innerWidth, n.height = window.innerHeight
-        })), document.body.appendChild(n);
-        var r = n.getContext("2d"), i = [], a = 0, d = !1;
+        var n = document.getElementById("bolo-power-mode-canvas");
+        if (!n) {
+            n = document.createElement("canvas");
+            n.id = "bolo-power-mode-canvas";
+            n.style.cssText = "position:fixed;top:0;left:0;pointer-events:none;z-index:999999;will-change:transform";
+            if (document.body) document.body.appendChild(n);
+            else document.addEventListener("DOMContentLoaded", function () { document.body && !n.isConnected && document.body.appendChild(n) }, {once: !0});
+        }
+        function syncSize() {
+            n.width = window.innerWidth;
+            n.height = window.innerHeight;
+        }
+        syncSize();
+        if (!window._boloPowerModeResizeBound) {
+            window._boloPowerModeResizeBound = !0;
+            window.addEventListener("resize", syncSize, {passive: !0});
+        }
+        var r = n.getContext("2d"), i = [], d = !1, joltTimer = 0;
+        var reducedMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
         function l(t, e) {
             return Math.random() * (e - t) + t
@@ -53,14 +67,16 @@
         }
 
         function p() {
+            if (document.hidden || (reducedMotion && reducedMotion.matches)) return;
+            if (!n.isConnected && document.body) document.body.appendChild(n);
             for (var t = function () {
                 var t, e = document.activeElement;
-                if ("TEXTAREA" === e.tagName || "INPUT" === e.tagName && "text" === e.getAttribute("type")) {
+                if (e && ("TEXTAREA" === e.tagName || "INPUT" === e.tagName && "text" === e.getAttribute("type"))) {
                     var n = o(1)(e, e.selectionEnd);
                     return t = e.getBoundingClientRect(), {x: n.left + t.left, y: n.top + t.top, color: c(e)}
                 }
-                var r = window.getSelection();
-                if (r.rangeCount) {
+                var r = window.getSelection && window.getSelection();
+                if (r && r.rangeCount) {
                     var i = r.getRangeAt(0), a = i.startContainer;
                     return a.nodeType === document.TEXT_NODE && (a = a.parentNode), {
                         x: (t = i.getBoundingClientRect()).left,
@@ -69,24 +85,46 @@
                     }
                 }
                 return {x: 0, y: 0, color: "transparent"}
-            }(), e = 5 + Math.round(10 * Math.random()); e--;) i[a] = u(t.x, t.y, t.color), a = (a + 1) % 500;
+            }(), e = 5 + Math.round(10 * Math.random()); e--;) {
+                if (i.length >= 500) i.shift();
+                i.push(u(t.x, t.y, t.color));
+            }
             if (p.shake) {
-                var n = 1 + 2 * Math.random(), r = n * (Math.random() > .5 ? -1 : 1),
-                    l = n * (Math.random() > .5 ? -1 : 1);
-                document.body.style.marginLeft = r + "px", document.body.style.marginTop = l + "px", setTimeout((function () {
-                    document.body.style.marginLeft = "", document.body.style.marginTop = ""
+                var s = 1 + 2 * Math.random(), x = s * (Math.random() > .5 ? -1 : 1),
+                    y = s * (Math.random() > .5 ? -1 : 1);
+                n.style.transform = "translate3d(" + x.toFixed(1) + "px," + y.toFixed(1) + "px,0)";
+                clearTimeout(joltTimer);
+                joltTimer = setTimeout((function () {
+                    n.style.transform = ""
                 }), 75)
             }
-            d || requestAnimationFrame(f)
+            d || (d = !0, requestAnimationFrame(f))
         }
 
         function f() {
-            d = !0, r.clearRect(0, 0, n.width, n.height);
-            for (var t = !1, e = n.getBoundingClientRect(), o = 0; o < i.length; ++o) {
-                var a = i[o];
-                a.alpha <= .1 || (a.velocity.y += .075, a.x += a.velocity.x, a.y += a.velocity.y, a.alpha *= .96, r.globalAlpha = a.alpha, r.fillStyle = a.color, r.fillRect(Math.round(a.x - 1.5) - e.left, Math.round(a.y - 1.5) - e.top, 3, 3), t = !0)
+            if (document.hidden || 0 === i.length) {
+                d = !1;
+                i.length = 0;
+                r && r.clearRect(0, 0, n.width, n.height);
+                return;
             }
-            t ? requestAnimationFrame(f) : d = !1
+            r.clearRect(0, 0, n.width, n.height);
+            var writeIdx = 0;
+            for (var o = 0; o < i.length; ++o) {
+                var a = i[o];
+                if (a.alpha > .1) {
+                    a.velocity.y += .075;
+                    a.x += a.velocity.x;
+                    a.y += a.velocity.y;
+                    a.alpha *= .96;
+                    r.globalAlpha = a.alpha;
+                    r.fillStyle = a.color;
+                    r.fillRect(Math.round(a.x - 1.5), Math.round(a.y - 1.5), 3, 3);
+                    i[writeIdx++] = a;
+                }
+            }
+            i.length = writeIdx;
+            i.length > 0 ? requestAnimationFrame(f) : (d = !1, r.clearRect(0, 0, n.width, n.height))
         }
 
         p.shake = !0, p.colorful = !1, t.exports = p

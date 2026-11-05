@@ -79,8 +79,6 @@ var NexT = {
               'margin-top': '15px'
             });
           });
-
-
         });
 
         $('.logo-line-after i').animate({
@@ -94,8 +92,11 @@ var NexT = {
     if (!control) return;
     control.setAttribute('role', 'button');
     control.setAttribute('aria-label', '返回顶部');
+    var lastVisible = null;
     function update () {
       var visible = window.scrollY > 240;
+      if (visible === lastVisible) return;
+      lastVisible = visible;
       control.classList.toggle('is-visible', visible);
       control.setAttribute('aria-hidden', String(!visible));
       control.tabIndex = visible ? 0 : -1;
@@ -121,23 +122,24 @@ var NexT = {
   },
   initToc: function () {
     var $articleTocs = $('.vditor-reset [id^=b3_solo_h]'),
-      $articleToc = $('.article__toc');
+      $articleToc = $('.article__toc'),
+      tocRaf = 0;
 
-    $(window).scroll(function (event) {
+    function syncToc () {
+      tocRaf = 0;
       if ($('.article__toc li').length === 0) {
         return false;
       }
 
-      // 界面各种图片加载会导致帖子目录定位
       var toc = [];
-      $articleTocs.each(function (i) {
+      $articleTocs.each(function () {
         toc.push({
           id: this.id,
           offsetTop: this.offsetTop
         });
       });
+      if (!toc.length) return false;
 
-      // 当前目录样式
       var scrollTop = $(window).scrollTop();
       for (var i = 0, iMax = toc.length; i < iMax; i++) {
         if (scrollTop < toc[i].offsetTop + 200) {
@@ -151,9 +153,22 @@ var NexT = {
         $articleToc.find('li').removeClass('current');
         $articleToc.find('li:last').addClass('current');
       }
+    }
+
+    $(window).off('scroll.boloNextToc').on('scroll.boloNextToc', function () {
+      if (!tocRaf) {
+        tocRaf = requestAnimationFrame(syncToc);
+      }
     });
 
-    $(window).scroll();
+    syncToc();
+    window.BoloNavigation?.onLeave(function () {
+      if (tocRaf) {
+        cancelAnimationFrame(tocRaf);
+        tocRaf = 0;
+      }
+      $(window).off('scroll.boloNextToc');
+    });
   }
 };
 NexT.init();

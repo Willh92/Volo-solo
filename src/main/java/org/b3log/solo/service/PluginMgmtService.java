@@ -22,6 +22,7 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.plugin.AbstractPlugin;
@@ -76,6 +77,9 @@ public class PluginMgmtService {
      */
     @Inject
     private PluginManager pluginManager;
+
+    @Inject
+    private PublicViewCache publicViewCache;
 
     /**
      * Updates datastore plugin descriptions with the specified plugins.
@@ -178,6 +182,9 @@ public class PluginMgmtService {
                     transaction.commit();
 
                     plugin.changeStatus();
+                    if (null != publicViewCache) {
+                        publicViewCache.invalidateAll();
+                    }
 
                     ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
                     ret.put(Keys.MSG, langs.get("setSuccLabel"));
@@ -226,6 +233,9 @@ public class PluginMgmtService {
                     pluginRepository.update(pluginId, pluginJson);
 
                     transaction.commit();
+                    if (null != publicViewCache) {
+                        publicViewCache.invalidateAll();
+                    }
 
                     ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
                     ret.put(Keys.MSG, langs.get("setSuccLabel"));

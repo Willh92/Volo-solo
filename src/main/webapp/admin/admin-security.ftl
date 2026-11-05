@@ -162,6 +162,36 @@
                 <div class="console-form-actions"><button id="totpSaveSettings" type="submit" disabled>保存 2FA 配置</button></div>
             </form>
         </section>
+        <section class="console-passkey console-subcard console-subcard--surface" aria-labelledby="passkeyTitle" style="margin-top: 20px;">
+            <div class="console-section-head">
+                <div class="console-section-head__copy">
+                    <h4 id="passkeyTitle">通行密钥（Passkey / WebAuthn）免密登录</h4>
+                    <p>基于 FIDO2 / WebAuthn 标准绑定本机指纹、Face ID、Windows Hello 或硬件安全密钥（YubiKey）。私钥永不离开您的设备，登录后台免密码与验证码。</p>
+                </div>
+                <span id="passkeyStatusBadge" class="console-totp-badge" data-state="unbound">未绑定</span>
+            </div>
+            <div class="console-inline-bar console-inline-bar--fill">
+                <input id="passkeyDeviceName" type="text" maxlength="64" autocomplete="off" placeholder="设备备注名称（可选，如 MacBook Touch ID / YubiKey 5C）"/>
+                <button id="passkeyRegisterBtn" type="button" onclick="admin.security.registerPasskey(this)">注册新通行密钥</button>
+            </div>
+            <p id="passkeyMessage" class="console-totp-feedback" role="status"></p>
+            <div class="console-simple-table-wrap">
+                <table class="console-simple-table">
+                    <thead>
+                        <tr>
+                            <th>设备名称</th>
+                            <th>签名算法</th>
+                            <th>绑定时间</th>
+                            <th>最近使用</th>
+                            <th class="is-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="passkeyListBody">
+                        <tr><td colspan="5" class="console-simple-table__empty">尚未绑定任何通行密钥。</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 </div>
 </#if>
 <#if securitySection == 'ip'>

@@ -20,10 +20,16 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
+import java.io.FilterOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -60,6 +66,9 @@ public class LocalRollingBackupService {
 
     @Inject
     private WebhookNotifyService webhookNotifyService;
+
+    @Inject
+    private RemoteBackupSyncService remoteBackupSyncService;
 
     /**
      * Reads current local rolling backup configuration.
@@ -126,7 +135,7 @@ public class LocalRollingBackupService {
     }
 
     /**
-     * Executes a full JSON + Markdown ZIP backup into the configured directory and prunes older archives.
+     * Executes a full streaming JSON + Markdown ZIP backup into the configured directory and prunes older archives.
      */
     public synchronized JSONObject runBackup(final boolean manual) throws IOException {
         final JSONObject cfg = getConfig();
@@ -148,27 +157,36 @@ public class LocalRollingBackupService {
             target = dir.resolve(fileName);
         }
 
-        final JSONObject allData = exportService != null ? exportService.getJSONs() : new JSONObject();
-        final JSONObject mds = exportService != null ? exportService.exportHexoMDs() : new JSONObject();
-
         final Path tempTarget = dir.resolve(fileName + ".tmp");
         try {
-            try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(tempTarget)), StandardCharsets.UTF_8)) {
+            try (ZipOutputStream zos = new ZipOutputStream(
+                    new BufferedOutputStream(Files.newOutputStream(tempTarget), 32768), StandardCharsets.UTF_8)) {
                 zos.putNextEntry(new ZipEntry("data.json"));
-                zos.write(allData.toString(2).getBytes(StandardCharsets.UTF_8));
+                if (exportService != null) {
+                    final BufferedWriter jsonWriter = new BufferedWriter(
+                            new OutputStreamWriter(new NonClosingOutputStream(zos), StandardCharsets.UTF_8), 32768);
+                    exportService.writeJSONsToStream(jsonWriter);
+                    jsonWriter.flush();
+                } else {
+                    zos.write("{}".getBytes(StandardCharsets.UTF_8));
+                }
                 zos.closeEntry();
 
-                writeMarkdownSection(zos, "posts", mds.opt("posts"));
-                writeMarkdownSection(zos, "drafts", mds.opt("drafts"));
-                writeMarkdownSection(zos, "passwords", mds.opt("passwords"));
+                if (exportService != null) {
+                    exportService.writeHexoMDsToZip(zos);
+                }
             }
-            Files.move(tempTarget, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tempTarget, target, StandardCopyOption.REPLACE_EXISTING);
         } finally {
             Files.deleteIfExists(tempTarget);
         }
 
         final int pruned = pruneOldBackups(dir, keepCount);
         final long size = Files.size(target);
+
+        if (remoteBackupSyncService != null) {
+            remoteBackupSyncService.syncBackupAsync(target);
+        }
 
         if (webhookNotifyService != null) {
             webhookNotifyService.notifyEvent(
@@ -200,10 +218,11 @@ public class LocalRollingBackupService {
             }
             final List<Path> files = listMatchingBackupFiles(dir);
             for (final Path file : files) {
+                final BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
                 items.put(new JSONObject()
                         .put("name", file.getFileName().toString())
-                        .put("size", Files.size(file))
-                        .put("lastModified", Files.getLastModifiedTime(file).toMillis()));
+                        .put("size", attrs.size())
+                        .put("lastModified", attrs.lastModifiedTime().toMillis()));
             }
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Failed to list local rolling backups", e);
@@ -314,33 +333,6 @@ public class LocalRollingBackupService {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
-    private static void writeMarkdownSection(final ZipOutputStream zos, final String folder, final Object rawList)
-            throws IOException {
-        if (!(rawList instanceof List<?> list) || list.isEmpty()) {
-            return;
-        }
-        int idx = 1;
-        for (final Object item : list) {
-            if (!(item instanceof JSONObject post)) {
-                continue;
-            }
-            String title = post.optString("title", "untitled").replaceAll("[\\\\/:*?\"<>|\\s]+", "-");
-            title = StringUtils.strip(title, "-.");
-            if (title.isEmpty()) {
-                title = "article-" + idx;
-            }
-            if (title.length() > 60) {
-                title = title.substring(0, 60);
-            }
-            final String entryName = folder + "/" + String.format(Locale.ROOT, "%04d-", idx++) + title + ".md";
-            final String md = "---\n" + post.optString("front", "") + "---\n\n" + post.optString("content", "");
-            zos.putNextEntry(new ZipEntry(entryName));
-            zos.write(md.getBytes(StandardCharsets.UTF_8));
-            zos.closeEntry();
-        }
-    }
-
     private void upsertPreferenceOption(final String id, final String value) throws Exception {
         JSONObject opt = optionRepository.get(id);
         if (opt == null) {
@@ -352,6 +344,22 @@ public class LocalRollingBackupService {
         } else {
             opt.put(Option.OPTION_VALUE, value);
             optionRepository.update(id, opt);
+        }
+    }
+
+    private static final class NonClosingOutputStream extends FilterOutputStream {
+        NonClosingOutputStream(final OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(final byte[] b, final int off, final int len) throws IOException {
+            out.write(b, off, len);
+        }
+
+        @Override
+        public void close() throws IOException {
+            out.flush();
         }
     }
 

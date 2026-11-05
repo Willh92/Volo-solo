@@ -34,34 +34,60 @@ var Yilia = {
         
         this._initToc();
         this.resetTags();
-        
-        var topVisible;
-        $(window).scroll(function () {
-            if ($("article").length > 0 && $("article.post").length === 0) {
-                $("article:not(.show)").each(function () {
-                    if ($(this).offset().top <= $(window).scrollTop() + $(window).height() - $(this).height() / 7) {
-                        $(this).addClass("show");
+
+        $(window).off('scroll.boloYilia');
+        var $post = $("article.post");
+        if ($post.length === 1) {
+            $post.addClass('show');
+        }
+        var isListMode = $("article").length > 0 && $post.length === 0;
+        var hasPendingArticles = isListMode && $("article:not(.show)").length > 0;
+        var $goup = $(".icon-goup");
+        var topVisible = null;
+
+        var onScroll = function () {
+            var scrollTop = $(window).scrollTop();
+            var winHeight = $(window).height();
+            if (hasPendingArticles) {
+                var $pending = $("article:not(.show)");
+                if ($pending.length === 0) {
+                    hasPendingArticles = false;
+                } else {
+                    var viewBottom = scrollTop + winHeight;
+                    var remaining = 0;
+                    $pending.each(function () {
+                        var $item = $(this);
+                        if ($item.offset().top <= viewBottom - $item.height() / 7) {
+                            $item.addClass("show");
+                        } else {
+                            remaining++;
+                        }
+                    });
+                    if (remaining === 0) {
+                        hasPendingArticles = false;
                     }
-                });
+                }
             }
 
-            var visible = $(window).scrollTop() > $(window).height();
-            if (visible) {
-                $(".icon-goup").show();
-            } else {
-                $(".icon-goup").hide();
-            }
+            var visible = scrollTop > winHeight;
             if (visible !== topVisible) {
                 topVisible = visible;
+                if (visible) {
+                    $goup.show();
+                } else {
+                    $goup.hide();
+                }
                 window.BoloTheme?.syncControls?.();
             }
+        };
 
-            if ($("article.post").length === 1) {
-                $("article.post").addClass('show');
-            }
-        });
-
-        $(window).scroll();
+        $(window).on('scroll.boloYilia', onScroll);
+        if (window.BoloNavigation) {
+            BoloNavigation.onLeave(function () {
+                $(window).off('scroll.boloYilia');
+            });
+        }
+        onScroll();
     },
     _initToc: function () {
         if ($('.article__toc li').length === 0) {
@@ -73,12 +99,18 @@ var Yilia = {
         var links = Array.from(panel.querySelectorAll('.article__toc a'));
         if (window.BoloTOC) BoloTOC.refresh();
         var frame = 0;
+        var lastProgress = -1;
+        var progressEl = panel.querySelector('.yilia-toc-progress');
+        var progressBarEl = panel.querySelector('.yilia-toc-progress span');
         function update() {
             frame = 0;
             var range = document.documentElement.scrollHeight - window.innerHeight;
             var progress = range > 0 ? Math.min(100, Math.max(0, Math.round(window.scrollY / range * 100))) : 100;
-            panel.querySelector('.yilia-toc-progress').setAttribute('aria-valuenow', progress);
-            panel.querySelector('.yilia-toc-progress span').style.width = progress + '%';
+            if (progress !== lastProgress) {
+                lastProgress = progress;
+                if (progressEl) progressEl.setAttribute('aria-valuenow', progress);
+                if (progressBarEl) progressBarEl.style.width = progress + '%';
+            }
         }
         function schedule() { if (!frame) frame = requestAnimationFrame(update); }
         window.addEventListener('scroll', schedule, {passive: true});

@@ -59,7 +59,7 @@ public class FollowArticleRefresher extends AbstractEventListener<JSONObject> {
         final JSONObject data = event.getData();
         LOGGER.log(Level.DEBUG, "Processing an event [type={0}] in listener [className={1}]", event.getType(), FollowArticleRefresher.class.getName());
         // Latke serializes event listeners with page-render events. Never fetch a feed while holding that lock.
-        final JSONObject snapshot = new JSONObject(data.toString());
+        final JSONObject snapshot = org.b3log.solo.util.Solos.clone(data);
         worker.execute(() -> refresh.accept(snapshot));
     }
 

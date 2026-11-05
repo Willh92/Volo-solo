@@ -173,6 +173,12 @@ public class TotpService {
         this.clock = clock;
     }
 
+    public synchronized void reloadFromStorage() {
+        snapshot = null;
+        pendingSetups.clear();
+        challenges.clear();
+    }
+
     private State state() {
         final State cached = snapshot;
         if (cached != null) {
@@ -562,8 +568,10 @@ public class TotpService {
         }
         final long now = clock.getAsLong();
         pruneChallenges(now);
-        while (challenges.size() >= 4096) {
-            challenges.remove(challenges.keySet().iterator().next());
+        final var iterator = challenges.keySet().iterator();
+        while (challenges.size() >= 4096 && iterator.hasNext()) {
+            iterator.next();
+            iterator.remove();
         }
         final String token = randomToken();
         challenges.put(token, new LoginChallenge(
@@ -936,8 +944,10 @@ public class TotpService {
 
     private void pruneSetups(final long now) {
         pendingSetups.values().removeIf(item -> item.expiresAt() <= now);
-        while (pendingSetups.size() >= 256) {
-            pendingSetups.remove(pendingSetups.keySet().iterator().next());
+        final var iterator = pendingSetups.keySet().iterator();
+        while (pendingSetups.size() >= 256 && iterator.hasNext()) {
+            iterator.next();
+            iterator.remove();
         }
     }
 

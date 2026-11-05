@@ -43,6 +43,18 @@
         }))
     }(), window.Skin = {
         init: function() {
+            var pageAlive = true,
+                progressRaf = 0,
+                latestScrollTop = 0,
+                lastRailVisible = null;
+            $(window).off(".boloButterfly");
+            function destroyButterflyTyped() {
+                if (window._boloButterflyTyped) {
+                    try { window._boloButterflyTyped.destroy(); } catch (err) {}
+                    window._boloButterflyTyped = null;
+                }
+            }
+            destroyButterflyTyped();
             var e, t, n = function() {
                     document.documentElement.setAttribute("data-theme", "dark"), null !== document.querySelector('meta[name="theme-color"]') && document.querySelector('meta[name="theme-color"]').setAttribute("content", "#000")
                 },
@@ -55,30 +67,31 @@
                 }("theme");
             if (window.BoloTheme) document.documentElement.setAttribute("data-theme", BoloTheme.current());
             else { t = (e = (new Date).getHours()) <= 6 || e >= 18; void 0 === o ? t ? n() : r() : "light" === o ? r() : n(); }
-            window.addEventListener("load", (function() {
-                if (!document.querySelector("#subtitle")) return;
-                loadScript("https://sdk.jinrishici.com/v2/browser/jinrishici.js", (function() {
-                    if (!document.querySelector("#subtitle") || typeof jinrishici === "undefined") return;
-                    jinrishici.load((function(e) {
-                        if (!document.querySelector("#subtitle") || !e || !e.data || !e.data.content || typeof Typed === "undefined") return;
-                        var t = 0 == "May the god bless you.,It is better to burn out than to fade away.".length ? new Array : "May the god bless you.,It is better to burn out than to fade away.".split(","),
-                            n = e.data.content;
-                        t.unshift(n), new Typed("#subtitle", {
-                            strings: t,
-                            startDelay: 300,
-                            typeSpeed: 150,
-                            loop: !0,
-                            backSpeed: 50
-                        })
-                    }))
-                }))
-            }));
+            var initSubtitleTyped = function() {
+                var subtitleEl = document.querySelector("#subtitle");
+                if (!pageAlive || !subtitleEl || typeof Typed === "undefined") return;
+                var customDesc = (document.querySelector(".header__desc")?.textContent || "").trim();
+                var strings = ["May the god bless you.", "It is better to burn out than to fade away."];
+                if (customDesc && strings.indexOf(customDesc) === -1) strings.unshift(customDesc);
+                destroyButterflyTyped();
+                window._boloButterflyTyped = new Typed("#subtitle", {
+                    strings: strings,
+                    startDelay: 300,
+                    typeSpeed: 150,
+                    loop: !0,
+                    backSpeed: 50
+                });
+            };
+            if (document.readyState === "complete") initSubtitleTyped();
+            else window.addEventListener("load", initSubtitleTyped, { once: true });
             const i = void 0 !== GLOBAL_CONFIG.Snackbar,
                 a = $("#nav"),
                 s = $("#rightside"),
                 c = $("body");
             function updateRailVisibility(position) {
                 var visible = position > 56;
+                if (visible === lastRailVisible) return;
+                lastRailVisible = visible;
                 s.toggleClass('is-visible', visible).attr('aria-hidden', String(!visible)).prop('inert', !visible);
             }
             updateRailVisibility($(window).scrollTop());
@@ -101,7 +114,7 @@
             h(), $("#nav").css({
                 opacity: "1",
                 animation: "headerNoOpacity 1s"
-            }), $(window).on("resize", (function() {
+            }), $(window).on("resize.boloButterfly", (function() {
                 $("#sidebar").hasClass("tocOpenPc") && a.hasClass("fixed") ? f(1) : h()
             }));
             var m = $(".toggle-menu"),
@@ -146,7 +159,7 @@
                 b("toc")
             })), y.on("click touchstart", (function(e) {
                 m.hasClass("open") && x("menu"), v.hasClass("open") && x("toc")
-            })), $(window).on("resize", (function(e) {
+            })), $(window).on("resize.boloButterfly", (function(e) {
                 m.is(":visible") || m.hasClass("open") && x("menu")
             }));
             var sidebarMedia = window.matchMedia("(max-width: 1024px)");
@@ -162,6 +175,13 @@
             };
             document.addEventListener("keydown", closeOnEscape);
             if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+                pageAlive = false;
+                if (progressRaf) {
+                    cancelAnimationFrame(progressRaf);
+                    progressRaf = 0;
+                }
+                $(window).off(".boloButterfly");
+                destroyButterflyTyped();
                 sidebarMedia.removeListener(updateSidebarMedia);
                 document.removeEventListener("keydown", closeOnEscape);
                 x("menu");
@@ -183,7 +203,7 @@
                 T = !0,
                 C = "function" == typeof chatBtnHide,
                 k = "function" == typeof chatBtnShow;
-            if ($(window).scroll(throttle((function(e) {
+            if ($(window).on("scroll.boloButterfly", throttle((function(e) {
                 var t = $(this).scrollTop(),
                     n = function(e) {
                         var t = e > w;
@@ -200,21 +220,27 @@
             }), 200)), $(".body-index")[0] ? ($("#readmode").hide(), $("#to_comment").hide(), $("#font_plus").hide(), $("#font_minus").hide()) : ($("#readmode").show(), $("#to_comment").show(), $("#font_plus").show(), $("#font_minus").show()), $("#go-up").on("click", (function() {
                 scrollToDest("body")
             })), GLOBAL_CONFIG_SITE.isPost && GLOBAL_CONFIG_SITE.isSidebar) {
-                $(".toc-child").hide(), $(window).scroll(throttle((function(e) {
+                $(".toc-child").hide(), $(window).on("scroll.boloButterfly", throttle((function(e) {
                     var t = $(this).scrollTop();
                     S(t), A(t), j(t)
                 }), 100)), $(".toc-link").on("click", (function(e) {
                     window.innerWidth <= 1024 ? x("toc") : (e.preventDefault(), scrollToDest($(this).attr("href")))
                 }));
                 var S = function(e) {
-                        var t = $("#article-container").height(),
-                            n = $(window).height(),
-                            r = e / (t > n ? t - n : $(document).height() - n),
-                            o = Math.round(100 * r),
-                            i = o > 100 ? 100 : o <= 0 ? 0 : o;
-                        $(".progress-num").text(i), $(".sidebar-toc__progress-bar").animate({
-                            width: i + "%"
-                        }, 100)
+                        latestScrollTop = e;
+                        if (progressRaf) return;
+                        progressRaf = requestAnimationFrame((function() {
+                            progressRaf = 0;
+                            if (!pageAlive) return;
+                            var t = $("#article-container").height(),
+                                n = $(window).height(),
+                                denom = t > n ? t - n : $(document).height() - n,
+                                r = denom > 0 ? latestScrollTop / denom : 0,
+                                o = Math.round(100 * r),
+                                i = o > 100 ? 100 : o <= 0 ? 0 : o;
+                            $(".progress-num, .toc-percentage").text(i);
+                            $(".sidebar-toc__progress-bar").css("width", i + "%");
+                        }));
                     },
                     E = GLOBAL_CONFIG.isanchor,
                     A = function(e) {
@@ -251,7 +277,7 @@
                 c.css("font-size", parseFloat(c.css("font-size")) - 1)
             })), $("#mobile-sidebar-menus .menus-expand").on("click", (function() {
                 $(this).hasClass("menus-closed") ? ($(this).parents(".menus_item").find(".menus_item_child").slideDown(), $(this).removeClass("menus-closed")) : ($(this).parents(".menus_item").find(".menus_item_child").slideUp(), $(this).addClass("menus-closed"))
-            })), $(window).on("touchmove", (function(e) {
+            })), $(window).on("touchmove.boloButterfly", (function(e) {
                 var t = $("#nav .menus_item_child");
                 t.is(":visible") && t.css("display", "none")
             })), $("#rightside_config").on("click", (function() {
@@ -275,7 +301,8 @@
                 $(".post__toc").slideToggle()
             }));
             var e = $("#article-container [id^=b3_solo_h]"),
-                t = $(".article__toc");
+                t = $(".article__toc"),
+                tocRaf = 0;
             t.find("a").click((function(e) {
                 var t = $(this).attr("href");
                 return window.location.hash = t, $(window).scrollTop($(t).offset().top), $(window).width() < 768 && $(".post__toc").slideToggle(), e.preventDefault(), e.stopPropagation(), !1
@@ -284,15 +311,18 @@
                 $("body,html").animate({
                     scrollTop: e
                 }, 1e3)
-            })), $(window).scroll((function(n) {
+            }));
+            var syncArticleToc = function() {
+                tocRaf = 0;
                 if (0 === $(".article__toc li").length) return !1;
                 var r = [];
-                e.each((function(e) {
+                e.each((function() {
                     r.push({
                         id: this.id,
                         offsetTop: $(this).offset().top
                     })
                 }));
+                if (!r.length) return !1;
                 for (var o = $(window).scrollTop() + 10, i = 0, a = r.length; i < a; i++)
                     if (o < r[i].offsetTop) {
                         t.find("li").removeClass("current");
@@ -300,26 +330,38 @@
                         t.find('a[href="#' + r[s].id + '"]').parent().addClass("current");
                         break
                     } o >= r[r.length - 1].offsetTop && (t.find("li").removeClass("current"), t.find("li:last").addClass("current"))
-            })), $(window).scroll()
+            };
+            $(window).off("scroll.boloButterfly", syncArticleToc).on("scroll.boloButterfly", (function() {
+                if (!tocRaf) tocRaf = requestAnimationFrame(syncArticleToc);
+            }));
+            syncArticleToc();
+            if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+                if (tocRaf) {
+                    cancelAnimationFrame(tocRaf);
+                    tocRaf = 0;
+                }
+            });
         }
     }, $(document).ready((function() {
         Skin.init()
     })),
         function() {
-            window.cnblogsConfig = {
-                homeTopImg: ["https://ftp.stackoverflow.wiki/bolo/background/butterfly/1.jpg", "https://ftp.stackoverflow.wiki/bolo/background/butterfly/2.jpg", 
-                "https://ftp.stackoverflow.wiki/bolo/background/butterfly/3.jpg", "https://ftp.stackoverflow.wiki/bolo/background/butterfly/4.jpg", 
-                "https://ftp.stackoverflow.wiki/bolo/background/butterfly/5.jpg", "https://ftp.stackoverflow.wiki/bolo/background/butterfly/6.jpg", 
-                "https://ftp.stackoverflow.wiki/bolo/background/butterfly/7.jpg", "https://ftp.stackoverflow.wiki/bolo/background/butterfly/8.jpg", 
-                "https://ftp.stackoverflow.wiki/bolo/background/butterfly/9.jpg", "https://ftp.stackoverflow.wiki/bolo/background/butterfly/10.jpg",
-                "https://ftp.stackoverflow.wiki/bolo/background/butterfly/11.jpg","https://ftp.stackoverflow.wiki/bolo/background/butterfly/13.jpg"]
+            var localHeroBg = (window.Label && Label.staticServePath ? Label.staticServePath : "") + "/skins/bolo-butterfly/images/header-bg.jpg";
+            window.cnblogsConfig = window.cnblogsConfig || {
+                homeTopImg: localHeroBg ? [localHeroBg] : []
             };
-            let e, t = window.cnblogsConfig.homeTopImg;
-            var n, r;
-            e = t.length > 0 ? t.length > 1 ? t[(n = 0, r = t.length - 1, Math.floor(Math.random() * (r - n) + n))] : t[0] : "", $(".full_page").css({
-                background: "#222 url(" + e + ")  center center no-repeat",
-                "background-size": "cover"
-            })
+            var t = Array.isArray(window.cnblogsConfig.homeTopImg) ? window.cnblogsConfig.homeTopImg : [];
+            var e = t.length > 0 ? (t.length > 1 ? t[Math.floor(Math.random() * (t.length - 1))] : t[0]) : "";
+            if (e) {
+                $(".full_page").css({
+                    background: "#222 url(" + e + ") center center no-repeat",
+                    "background-size": "cover"
+                });
+            } else {
+                $(".full_page").css({
+                    background: "#222"
+                });
+            }
         }(), leftRight()
 
 })();

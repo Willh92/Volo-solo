@@ -55,7 +55,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<#macro head title description=''>
+<#macro head title description='' isErrorPage=false>
 <meta charset="utf-8"/>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
@@ -65,12 +65,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="format-detection" content="telephone=no"/>
 <title>${title?html}</title>
-<script data-bolo-navigation src="${staticServePath}/js/auth-navigation.js?${staticResourceVersion}"></script>
+<script data-bolo-navigation src="${staticServePath}/js/auth-navigation${miniPostfix!''}.js?${staticResourceVersion}"></script>
 <meta name="bolo-skin" content="${(skinDirName!'')?html}"/>
 <meta name="bolo-accent" content="${(appearanceAccent!'forest')?html}"/>
-<script data-bolo-navigation src="${staticServePath}/js/appearance.js?${staticResourceVersion}"></script>
-<script data-bolo-navigation src="${staticServePath}/js/toc-navigation.js?${staticResourceVersion}"></script>
-<link rel="stylesheet" href="${servePath}/js/lib/vditor/dist/index.css?${staticResourceVersion}"/>
+<script data-bolo-navigation src="${staticServePath}/js/appearance${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<script data-bolo-navigation defer src="${staticServePath}/js/toc-navigation${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<link rel="stylesheet" href="${staticServePath}/js/lib/vditor/dist/index.css?${staticResourceVersion}"/>
     <#if description != ''>
 <meta name="description" content="${description?html}"/>
 <meta property="og:description" content="${description?html}"/>
@@ -106,8 +106,12 @@
 <meta property="og:locale" content="${langLabel?html}"/>
 <meta property="og:title" content="${title?html}"/>
 <meta property="og:site_name" content="${blogTitle?html}"/>
+<#if isErrorPage>
+<meta property="og:url" content="${servePath}/"/>
+<#else>
 <meta property="og:url"
       content="${servePath}${request.requestURI?html}<#if request.queryString??>?${request.queryString?html}</#if>"/>
+</#if>
 <meta property="og:image" content="${voloResolvedImage?html}"/>
 <meta name="twitter:card" content="<#if article?? && (voloOgImage!'') != ''>summary_large_image<#else>summary</#if>"/>
 <meta name="twitter:title" content="${title?html}"/>
@@ -121,7 +125,8 @@
 <link rel="search" type="application/opensearchdescription+xml" title="${title?html}" href="/opensearch.xml">
 <link href="${servePath}/rss.xml" title="RSS" type="application/rss+xml" rel="alternate"/>
 <link rel="manifest" href="${servePath}/manifest.json">
-    <#if paginationCurrentPageNum??>
+    <#if !isErrorPage>
+        <#if paginationCurrentPageNum??>
         <#if paginationCurrentPageNum == 1>
             <link rel="canonical" href="${servePath}${request.requestURI?html}">
         <#else>
@@ -129,6 +134,7 @@
         </#if>
     <#else>
         <link rel="canonical" href="${servePath}${request.requestURI?html}">
+    </#if>
     </#if>
     <#nested>
 <link rel="stylesheet" href="${staticServePath}/scss/appearance.css?${staticResourceVersion}"/>

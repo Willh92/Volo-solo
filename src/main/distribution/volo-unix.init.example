@@ -17,7 +17,7 @@ SOCKET_GROUP=www
 APP_HOME="/usr/local/web/bolo"
 APP_MAINCLASS=org.b3log.solo.Starter
 CLASSPATH="$APP_HOME/WEB-INF/classes:$APP_HOME/WEB-INF/lib/*:$APP_HOME"
-JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx384m -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.awt.headless=true -Dio.netty.allocator.maxOrder=9}"
+JAVA_OPTS="${JAVA_OPTS:--Xms128m -Xmx384m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -XX:MaxDirectMemorySize=96m -Djava.awt.headless=true -Dio.netty.allocator.maxOrder=9 -Dio.netty.allocator.numDirectArenas=2 -Dio.netty.allocator.numHeapArenas=2}"
 # Set LISTEN_SOCKET="" for the original TCP/8080 mode.
 # Optional ,MODE suffix; absent/empty mode defaults to 0660.
 LISTEN_SOCKET="/dev/shm/volo/volo.sock"

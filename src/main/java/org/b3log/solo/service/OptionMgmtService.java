@@ -52,17 +52,21 @@ public class OptionMgmtService {
      */
     public String addOrUpdateOption(final JSONObject option) throws ServiceException {
         final Transaction transaction = optionRepository.beginTransaction();
+        String touchedId = null;
 
         try {
             String id = option.optString(Keys.OBJECT_ID);
+            touchedId = id;
 
             if (StringUtils.isBlank(id)) {
                 id = optionRepository.add(option);
+                touchedId = id;
             } else {
                 final JSONObject old = optionRepository.get(id);
 
                 if (null == old) { // The id is specified by caller
                     id = optionRepository.add(option);
+                    touchedId = id;
                 } else {
                     old.put(Option.OPTION_CATEGORY, option.optString(Option.OPTION_CATEGORY));
                     old.put(Option.OPTION_VALUE, option.optString(Option.OPTION_VALUE));
@@ -77,6 +81,9 @@ public class OptionMgmtService {
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
+            }
+            if (StringUtils.isNotBlank(touchedId)) {
+                optionRepository.evictOption(touchedId);
             }
 
             throw new ServiceException(e);
@@ -100,6 +107,7 @@ public class OptionMgmtService {
             if (transaction.isActive()) {
                 transaction.rollback();
             }
+            optionRepository.evictOption(optionId);
 
             throw new ServiceException(e);
         }
@@ -109,6 +117,8 @@ public class OptionMgmtService {
     public synchronized void storeDocument(final String id, final String category, final String value) throws ServiceException {
         if (value.length() > 1_000_000) throw new IllegalArgumentException("配置内容过多。");
         final Transaction transaction = optionRepository.beginTransaction();
+        final java.util.List<String> touchedChunkIds = new java.util.ArrayList<>();
+        int chunkCount = 0;
         try {
             final JSONObject previous = optionRepository.get(id);
             final String generation = java.util.UUID.randomUUID().toString().replace("-", "");
@@ -118,7 +128,10 @@ public class OptionMgmtService {
                 while (offset < value.length()) {
                     int end = Math.min(offset + 9000, value.length());
                     if (end < value.length() && Character.isHighSurrogate(value.charAt(end - 1))) end--;
-                    optionRepository.add(new JSONObject().put(Keys.OBJECT_ID, id + "." + generation + "." + count++)
+                    final String chunkId = id + "." + generation + "." + count++;
+                    touchedChunkIds.add(chunkId);
+                    chunkCount = count;
+                    optionRepository.add(new JSONObject().put(Keys.OBJECT_ID, chunkId)
                             .put(Option.OPTION_CATEGORY, category).put(Option.OPTION_VALUE, value.substring(offset, end)));
                     offset = end;
                 }
@@ -129,11 +142,24 @@ public class OptionMgmtService {
             if (previous == null) optionRepository.add(root); else optionRepository.update(id, root);
             if (previous != null && previous.optString(Option.OPTION_VALUE).startsWith("{\"storage\":\"chunks\"")) {
                 final JSONObject old = new JSONObject(previous.getString(Option.OPTION_VALUE));
-                for (int i = 0; i < old.getInt("count"); i++) optionRepository.remove(id + "." + old.getString("generation") + "." + i);
+                final int oldCount = old.getInt("count");
+                chunkCount = Math.max(chunkCount, oldCount);
+                for (int i = 0; i < oldCount; i++) {
+                    final String oldChunkId = id + "." + old.getString("generation") + "." + i;
+                    touchedChunkIds.add(oldChunkId);
+                    optionRepository.remove(oldChunkId);
+                }
             }
             transaction.commit();
         } catch (Exception failure) {
             if (transaction.isActive()) transaction.rollback();
+            for (final String chunkId : touchedChunkIds) {
+                optionRepository.evictOption(chunkId);
+            }
+            final int fallbackChunks = Math.max(chunkCount, (value.length() / 9000) + 8);
+            for (int i = 0; i < fallbackChunks; i++) {
+                optionRepository.evictOption(id + "#chunk#" + i);
+            }
             throw new ServiceException(failure);
         } finally { optionRepository.evictOption(id); }
     }

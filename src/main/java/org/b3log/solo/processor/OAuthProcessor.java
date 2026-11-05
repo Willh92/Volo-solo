@@ -117,6 +117,7 @@ public class OAuthProcessor {
     private InitService initService;
     @Inject private org.b3log.solo.service.CaptchaService captchaService;
     @Inject private TotpService totpService;
+    @Inject private PasskeyService passkeyService;
 
     /**
      * Language service.
@@ -130,7 +131,7 @@ public class OAuthProcessor {
      * @param context
      */
     @RequestProcessing(value = "/oauth/bolo/login", method = HttpMethod.POST)
-    public synchronized void adminLogin(final RequestContext context) {
+    public void adminLogin(final RequestContext context) {
         final Request request = context.getRequest();
         final String username = request.getParameter("username");
         final String srcPassword = request.getParameter("password");
@@ -168,73 +169,220 @@ public class OAuthProcessor {
         }
         try {
             final String password = MD5Utils.stringToMD5Twice(srcPassword);
-            if ((UpgradeService.boloFastMigration || !initService.isInited())
-                    && !srcPassword.matches("(?s)(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}")) {
-                loginResult(context, false, null, "请使用 8–30 位、包含字母和数字的密码。", 400);
+            if (UpgradeService.boloFastMigration || !initService.isInited()) {
+                synchronized (this) {
+                    if ((UpgradeService.boloFastMigration || !initService.isInited())
+                            && !srcPassword.matches("(?s)(?=.*[0-9])(?=.*[a-zA-Z]).{8,30}")) {
+                        loginResult(context, false, null, "请使用 8–30 位、包含字母和数字的密码。", 400);
+                        return;
+                    }
+                    if (UpgradeService.boloFastMigration) {
+                        // 快速迁移程序
+                        final JSONObject preference = optionQueryService.getPreference();
+                        final String currentVer = preference.getString(Option.ID_C_VERSION);
+                        int version = Integer.parseInt(currentVer.replaceAll("\\.", ""));
+                        if (version < 432) {
+                            fastMigrate(currentVer, username, srcPassword, context);
+                        } else {
+                            fastMigrate(currentVer, username, password, context);
+                        }
+                        Solos.login(userQueryService.getAdmin(), context.getResponse());
+                        LOGIN_THROTTLE.succeeded(attempt);
+                        loginResult(context, true, AdminPaths.panel() + "#main", "迁移完成。", 200);
+                        return;
+                    }
+                    if (!initService.isInited()) {
+                        LOGGER.log(Level.INFO, "Bolo initializing...");
+                        final JSONObject initReq = new JSONObject();
+                        initReq.put(User.USER_NAME, username);
+                        initReq.put(UserExt.USER_B3_KEY, password);
+                        initReq.put(UserExt.USER_AVATAR, Latkes.getContextPath() + "/images/volo-mark.svg");
+                        initReq.put(UserExt.USER_GITHUB_ID, "000000");
+                        initService.init(initReq);
+                        Solos.login(userQueryService.getAdmin(), context.getResponse());
+                        LOGIN_THROTTLE.succeeded(attempt);
+                        loginResult(context, true, AdminPaths.panel() + "#main", "初始化完成。", 200);
+                        return;
+                    }
+                }
+            }
+            final JSONObject user = userQueryService.getUserByName(username);
+            final boolean passwordMatched = user != null && (hashesEqual(password, user.optString(UserExt.USER_B3_KEY))
+                    || org.b3log.solo.util.PasswordHashes.verify(srcPassword, user));
+            if (user == null || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
+                    && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))
+                    || user.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) != UserExt.USER_STATUS_C_VALID
+                    || !username.equals(user.optString(User.USER_NAME))
+                    || !passwordMatched) {
+                loginResult(context, false, null, "用户名或密码错误。", 401);
                 return;
             }
-            if (UpgradeService.boloFastMigration) {
-                // 快速迁移程序
-                final JSONObject preference = optionQueryService.getPreference();
-                final String currentVer = preference.getString(Option.ID_C_VERSION);
-                int version = Integer.parseInt(currentVer.replaceAll("\\.", ""));
-                if (version < 432) {
-                    fastMigrate(currentVer, username, srcPassword, context);
+            if (totpService != null && totpService.requiresVerification(user, request)) {
+                final String challengeToken = totpService.issueLoginChallenge(user, clientAddress);
+                final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
+                        || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json")
+                        || StringUtils.containsIgnoreCase(context.header("Content-Type"), "application/json");
+                if (json) {
+                    context.setStatus(200);
+                    context.renderJSON(new JSONObject()
+                            .put("sc", false)
+                            .put("code", 2)
+                            .put("totpRequired", true)
+                            .put("totpToken", challengeToken)
+                            .put("rememberDays", totpService.rememberDays())
+                            .put("msg", "请输入 2FA 动态口令完成登录验证。"));
                 } else {
-                    fastMigrate(currentVer, username, password, context);
+                    context.sendRedirect(Latkes.getServePath() + AdminPaths.login() + "?status=error");
                 }
-                Solos.login(userQueryService.getAdmin(), context.getResponse());
-                LOGIN_THROTTLE.succeeded(attempt);
-                loginResult(context, true, AdminPaths.panel() + "#main", "迁移完成。", 200);
-            } else if (!initService.isInited()) {
-                LOGGER.log(Level.INFO, "Bolo initializing...");
-                final JSONObject initReq = new JSONObject();
-                initReq.put(User.USER_NAME, username);
-                initReq.put(UserExt.USER_B3_KEY, password);
-                initReq.put(UserExt.USER_AVATAR, Latkes.getContextPath() + "/images/volo-mark.svg");
-                initReq.put(UserExt.USER_GITHUB_ID, "000000");
-                initService.init(initReq);
-                Solos.login(userQueryService.getAdmin(), context.getResponse());
-                LOGIN_THROTTLE.succeeded(attempt);
-                loginResult(context, true, AdminPaths.panel() + "#main", "初始化完成。", 200);
-            } else {
-                final JSONObject user = userQueryService.getUserByName(username);
-                final boolean passwordMatched = user != null && (hashesEqual(password, user.optString(UserExt.USER_B3_KEY))
-                        || org.b3log.solo.util.PasswordHashes.verify(srcPassword, user));
-                if (user == null || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
-                        && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))
-                        || user.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) != UserExt.USER_STATUS_C_VALID
-                        || !username.equals(user.optString(User.USER_NAME))
-                        || !passwordMatched) {
-                    loginResult(context, false, null, "用户名或密码错误。", 401);
-                    return;
-                }
-                if (totpService != null && totpService.requiresVerification(user, request)) {
-                    final String challengeToken = totpService.issueLoginChallenge(user, clientAddress);
-                    final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
-                            || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json");
-                    if (json) {
-                        context.setStatus(200);
-                        context.renderJSON(new JSONObject()
-                                .put("sc", false)
-                                .put("code", 2)
-                                .put("totpRequired", true)
-                                .put("totpToken", challengeToken)
-                                .put("rememberDays", totpService.rememberDays())
-                                .put("msg", "请输入 2FA 动态口令完成登录验证。"));
-                    } else {
-                        context.sendRedirect(Latkes.getServePath() + AdminPaths.login() + "?status=error");
-                    }
-                    return;
-                }
-                Solos.login(user, context.getResponse());
-                LOGIN_THROTTLE.succeeded(attempt);
-                LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Volo auth", username, clientAddress);
-                loginResult(context, true, AdminPaths.panel() + "#main", "登录成功。", 200);
+                return;
             }
+            Solos.login(user, context.getResponse());
+            LOGIN_THROTTLE.succeeded(attempt);
+            LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Volo auth", username, clientAddress);
+            loginResult(context, true, AdminPaths.panel() + "#main", "登录成功。", 200);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Bolo login failed", e);
             loginResult(context, false, null, "暂时无法登录，请稍后重试。", 500);
+        }
+    }
+
+    /**
+     * Issues WebAuthn Passkey login assertion options for administrator/console login.
+     */
+    @RequestProcessing(value = "/oauth/bolo/passkey/options", method = HttpMethod.POST)
+    public void passkeyOptions(final RequestContext context) {
+        final Request request = context.getRequest();
+        context.getResponse().setHeader("Cache-Control", "no-store");
+        if (!sameOriginLoginRequest(context)) {
+            RiskControlService.recordFailure(context, 403);
+            context.setStatus(403);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "请求来源不正确，请从登录页重试。"));
+            return;
+        }
+        final String clientAddress = LoginThrottle.clientAddress(request);
+        final LoginThrottle.Attempt attempt = LOGIN_THROTTLE.acquire(clientAddress, "passkey");
+        if (attempt.retryAfter() > 0) {
+            context.getResponse().setHeader("Retry-After", String.valueOf(attempt.retryAfter()));
+            RiskControlService.recordFailure(context, 429);
+            context.setStatus(429);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "登录尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
+            return;
+        }
+        if (UpgradeService.boloFastMigration || (initService != null && !initService.isInited())) {
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "请先使用初始用户名和密码完成站点初始化。"));
+            return;
+        }
+        if (passkeyService == null) {
+            context.setStatus(503);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "通行密钥服务暂不可用，请使用密码登录。"));
+            return;
+        }
+
+        String username = request.getParameter("username");
+        if (StringUtils.isBlank(username)) {
+            try {
+                final JSONObject body = context.requestJSON();
+                if (body != null) {
+                    username = body.optString("username");
+                }
+            } catch (final Exception ignored) {
+            }
+        }
+        try {
+            final JSONObject options = passkeyService.startAuthentication(username);
+            context.setStatus(200);
+            context.renderJSON(new JSONObject().put("sc", true).put("data", options));
+        } catch (final IllegalStateException | IllegalArgumentException e) {
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1).put("msg", e.getMessage()));
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Starts Volo passkey login failed", e);
+            context.setStatus(500);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "暂时无法发起通行密钥验证，请稍后重试。"));
+        }
+    }
+
+    /**
+     * Verifies WebAuthn Passkey login assertion and establishes an administrator/console session.
+     */
+    @RequestProcessing(value = "/oauth/bolo/passkey/verify", method = HttpMethod.POST)
+    public void passkeyVerify(final RequestContext context) {
+        final Request request = context.getRequest();
+        context.getResponse().setHeader("Cache-Control", "no-store");
+        if (!sameOriginLoginRequest(context)) {
+            RiskControlService.recordFailure(context, 403);
+            context.setStatus(403);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "请求来源不正确，请从登录页重试。"));
+            return;
+        }
+        final String clientAddress = LoginThrottle.clientAddress(request);
+        final LoginThrottle.Attempt attempt = LOGIN_THROTTLE.acquire(clientAddress, "passkey-verify");
+        if (attempt.retryAfter() > 0) {
+            context.getResponse().setHeader("Retry-After", String.valueOf(attempt.retryAfter()));
+            RiskControlService.recordFailure(context, 429);
+            context.setStatus(429);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "登录尝试过于频繁，请稍后再试。").put("retryAfter", attempt.retryAfter()));
+            return;
+        }
+        if (UpgradeService.boloFastMigration || (initService != null && !initService.isInited())) {
+            RiskControlService.recordFailure(context, 400);
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "请先使用初始用户名和密码完成站点初始化。"));
+            return;
+        }
+        if (passkeyService == null) {
+            context.setStatus(503);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "通行密钥服务暂不可用，请使用密码登录。"));
+            return;
+        }
+
+        final JSONObject body;
+        try {
+            body = context.requestJSON();
+        } catch (final Exception invalidJson) {
+            RiskControlService.recordFailure(context, 400);
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "通行密钥验证请求格式不正确。"));
+            return;
+        }
+        if (body == null) {
+            RiskControlService.recordFailure(context, 400);
+            context.setStatus(400);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "通行密钥验证请求不能为空。"));
+            return;
+        }
+
+        try {
+            final JSONObject user = passkeyService.finishAuthentication(body);
+            LOGIN_THROTTLE.succeeded(attempt);
+            LOGIN_THROTTLE.succeeded(new LoginThrottle.Attempt(
+                    LoginThrottle.sourceKey(clientAddress) + "\npasskey", 0));
+            Solos.login(user, context.getResponse());
+            LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with Volo Passkey",
+                    user.optString(User.USER_NAME), clientAddress);
+            loginResult(context, true, AdminPaths.panel() + "#main", "登录成功。", 200);
+        } catch (final IllegalArgumentException | IllegalStateException e) {
+            RiskControlService.recordFailure(context, 401);
+            context.setStatus(401);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1).put("msg", e.getMessage()));
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Volo passkey login failed", e);
+            RiskControlService.recordFailure(context, 401);
+            context.setStatus(401);
+            context.renderJSON(new JSONObject().put("sc", false).put("code", 1)
+                    .put("msg", "通行密钥验证失败，请重试或使用密码登录。"));
         }
     }
 
@@ -342,7 +490,8 @@ public class OAuthProcessor {
             RiskControlService.recordFailure(context, status);
         }
         final boolean json = "XMLHttpRequest".equalsIgnoreCase(context.header("X-Requested-With"))
-                || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json");
+                || StringUtils.containsIgnoreCase(context.header("Accept"), "application/json")
+                || StringUtils.containsIgnoreCase(context.header("Content-Type"), "application/json");
         if (json) {
             context.setStatus(status);
             final JSONObject result = new JSONObject().put("sc", success).put("code", success ? 0 : 1).put("msg", message);

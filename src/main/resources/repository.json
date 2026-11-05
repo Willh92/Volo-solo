@@ -603,7 +603,7 @@
           "name": "articleViewPwd",
           "description": "文章浏览密码，留空为不设置访问密码",
           "type": "String",
-          "legnth": 255
+          "length": 255
         },
         {
           "name": "articleImg1URL",
@@ -663,7 +663,7 @@
           "name": "optionCategory",
           "description": "配置项分类",
           "type": "String",
-          "legnth": 20
+          "length": 20
         }
       ]
     },

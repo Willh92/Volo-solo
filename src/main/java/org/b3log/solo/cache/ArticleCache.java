@@ -24,8 +24,11 @@ import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Article cache.
@@ -43,9 +46,21 @@ public class ArticleCache {
     public static final int MAX_ENTRIES = 256;
 
     /**
+     * Maximum number of negative-cached missing permalinks.
+     */
+    public static final int MAX_MISSING_PERMALINKS = 4096;
+
+    private static final int MISSING_PERMALINK_EVICT_BATCH = 64;
+
+    /**
      * Permalink -> article id index (deduplicating cached JSONObjects).
      */
     private final Map<String, String> permalinkIndex = new HashMap<>();
+
+    /**
+     * Bounded negative cache for missing permalinks.
+     */
+    private final Set<String> missingPermalinks = ConcurrentHashMap.newKeySet();
 
     /**
      * Bounded LRU article id cache.
@@ -61,6 +76,41 @@ public class ArticleCache {
             return true;
         }
     };
+
+    /**
+     * Checks whether the specified permalink is known to be missing.
+     *
+     * @param permalink the specified permalink
+     * @return {@code true} if negative-cached as missing
+     */
+    public boolean isMissingPermalink(final String permalink) {
+        return null != permalink && !permalink.isEmpty() && missingPermalinks.contains(permalink);
+    }
+
+    /**
+     * Records a permalink that missed the database lookup.
+     *
+     * @param permalink the missing permalink
+     */
+    public void markMissingPermalink(final String permalink) {
+        if (null == permalink || permalink.isEmpty() || permalink.length() > 512) {
+            return;
+        }
+        if (missingPermalinks.size() >= MAX_MISSING_PERMALINKS) {
+            synchronized (missingPermalinks) {
+                if (missingPermalinks.size() >= MAX_MISSING_PERMALINKS) {
+                    final Iterator<String> it = missingPermalinks.iterator();
+                    int evicted = 0;
+                    while (it.hasNext() && evicted < MISSING_PERMALINK_EVICT_BATCH) {
+                        it.next();
+                        it.remove();
+                        evicted++;
+                    }
+                }
+            }
+        }
+        missingPermalinks.add(permalink);
+    }
 
     /**
      * Gets an article by the specified article id.
@@ -114,10 +164,12 @@ public class ArticleCache {
             final String oldPermalink = previous.optString(Article.ARTICLE_PERMALINK);
             if (!oldPermalink.equals(permalink)) {
                 permalinkIndex.remove(oldPermalink, id);
+                missingPermalinks.remove(oldPermalink);
             }
         }
         if (!permalink.isEmpty()) {
             permalinkIndex.put(permalink, id);
+            missingPermalinks.remove(permalink);
         }
     }
 
@@ -132,10 +184,14 @@ public class ArticleCache {
         }
         final JSONObject article = idCache.remove(id);
         if (null == article) {
+            missingPermalinks.clear();
             return;
         }
         final String permalink = article.optString(Article.ARTICLE_PERMALINK);
         permalinkIndex.remove(permalink, id);
+        if (!permalink.isEmpty()) {
+            missingPermalinks.remove(permalink);
+        }
     }
 
     /**
@@ -146,10 +202,25 @@ public class ArticleCache {
     }
 
     /**
+     * Increments cached article view count in place when present.
+     */
+    public synchronized void incrementViewCountInPlace(final String id, final long delta) {
+        if (null == id || 0L == delta) {
+            return;
+        }
+        final JSONObject cached = idCache.get(id);
+        if (null != cached) {
+            final int updated = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, cached.optLong(Article.ARTICLE_VIEW_COUNT) + delta));
+            cached.put(Article.ARTICLE_VIEW_COUNT, updated);
+        }
+    }
+
+    /**
      * Clears all cached data.
      */
     public synchronized void clear() {
         idCache.clear();
         permalinkIndex.clear();
+        missingPermalinks.clear();
     }
 }

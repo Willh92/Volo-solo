@@ -64,13 +64,13 @@
                             <a href="${servePath}/authors/${article.authorId}"
                                 aria-label="${article.authorName}"
                                 class="vditor-tooltipped vditor-tooltipped__n item__avatar">
-                                <img src="${article.authorThumbnailURL}" />
+                                <img src="${article.authorThumbnailURL}" loading="lazy" decoding="async" />
                             </a>
                             <#else>
                                 <a href="${servePath}/follow/articles/${article.articleAuthorId}"
                                     aria-label="${article.articleAuthorId}"
                                     class="vditor-tooltipped vditor-tooltipped__n item__avatar">
-                                    <img src="${article.authorThumbnailURL}" />
+                                    <img src="${article.authorThumbnailURL}" loading="lazy" decoding="async" />
                                 </a>
                         </#if>
                         <#if article.articleCommentCount !=0>

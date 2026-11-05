@@ -3,8 +3,11 @@ package org.b3log.solo.service;
 
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.b3log.latke.Keys;
@@ -12,7 +15,9 @@ import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.util.IpAddresses;
 import org.b3log.solo.util.IpGeo;
+import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -20,7 +25,22 @@ import org.json.JSONObject;
 @Service
 public class GeoAccessService {
     private static final String OPTION_ID = "voloGeoAccess";
+    private static final int GEO_LRU_MAX_ENTRIES = 2048;
     private static final Set<String> COUNTRIES = Set.copyOf(Arrays.asList(Locale.getISOCountries()));
+    private static final Map<String, String> REGION_CACHE = Collections.synchronizedMap(
+            new LinkedHashMap<String, String>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, String> eldest) {
+                    return size() > GEO_LRU_MAX_ENTRIES;
+                }
+            });
+    private static final Map<String, IpGeo.Location> LOCATION_CACHE = Collections.synchronizedMap(
+            new LinkedHashMap<String, IpGeo.Location>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, IpGeo.Location> eldest) {
+                    return size() > GEO_LRU_MAX_ENTRIES;
+                }
+            });
     @Inject private OptionQueryService optionQueryService;
     @Inject private OptionMgmtService optionMgmtService;
     private volatile Policy current;
@@ -146,7 +166,7 @@ public class GeoAccessService {
                 throw new IllegalArgumentException("地区访问规则模式不正确。");
             }
             final String fallback = mode.equals("allow") ? "deny" : "allow";
-            final JSONObject rule = new JSONObject(value.toString()).put("action", mode.equals("allow") ? "allow" : "deny").put("onMiss", fallback);
+            final JSONObject rule = Solos.clone(value).put("action", mode.equals("allow") ? "allow" : "deny").put("onMiss", fallback);
             final List<Rule> rules = mode.equals("off") && value.optString("countries").isBlank() && value.optString("regions").isBlank()
                     ? List.of() : List.of(Rule.read(rule));
             return new Policy(!mode.equals("off"), rules.isEmpty() ? fallback : "allow", rules, action(value, "unknown", fallback));
@@ -210,7 +230,42 @@ public class GeoAccessService {
         return policy.active() && policy.blocks(location(address));
     }
 
-    protected IpGeo.Location location(final String address) { return IpGeo.details(address); }
+    public static String cachedRegion(final String ip) {
+        final String canonicalIp = IpAddresses.canonical(ip);
+        if (canonicalIp.isEmpty()) {
+            return "";
+        }
+        final String cached = REGION_CACHE.get(canonicalIp);
+        if (cached != null) {
+            return cached;
+        }
+        final String resolved = IpGeo.region(canonicalIp);
+        REGION_CACHE.put(canonicalIp, resolved);
+        return resolved;
+    }
+
+    public String region(final String address) {
+        return cachedRegion(address);
+    }
+
+    public synchronized void reloadFromStorage() {
+        current = null;
+    }
+
+    protected IpGeo.Location location(final String address) {
+        final String canonicalIp = IpAddresses.canonical(address);
+        if (canonicalIp.isEmpty()) {
+            return new IpGeo.Location("", "");
+        }
+        final IpGeo.Location cached = LOCATION_CACHE.get(canonicalIp);
+        if (cached != null) {
+            return cached;
+        }
+        final IpGeo.Location resolved = IpGeo.details(canonicalIp);
+        LOCATION_CACHE.put(canonicalIp, resolved);
+        REGION_CACHE.put(canonicalIp, resolved.region());
+        return resolved;
+    }
     protected boolean enabled() { return !"false".equalsIgnoreCase(Latkes.getLocalProperty("geoAccessEnabled")); }
 
     public JSONObject settings(final String address) throws Exception {

@@ -81,6 +81,8 @@ admin.preference = {
         $('#interactiveSwitch').val(String(preference.interactive) === 'false' ? 'false' : 'true')
         $('#showLoginEntry').val(String(preference.showLoginEntry) === 'true' ? 'true' : 'false')
         $('#allowRegister').val(String(preference.allowRegister) === 'true' ? 'true' : 'false')
+        $('#indexNowEnabled').val(String(preference.indexNowEnabled) === 'true' ? 'true' : 'false')
+        $('#indexNowKey').val(preference.indexNowKey || '')
         $('#articleOutdatedDays').val(preference.articleOutdatedDays !== undefined && preference.articleOutdatedDays !== '' ? preference.articleOutdatedDays : 365)
         $('#adminActiveSentToMailbox').val(String(preference.adminActiveSentToMailbox) === 'false' ? 'false' : 'true')
 
@@ -130,7 +132,7 @@ admin.preference = {
         admin.githubRepositories.init()
 
         ;['enableAutoFlushGitHub', 'enableAutoFlushGitHubProfile', 'showCodeBlockLn', 'enableArticleUpdateHint',
-          'allowVisitDraftViaPermalink', 'commentable', 'syncGitHub', 'welfareLuteService'].forEach(function (key) {
+          'allowVisitDraftViaPermalink', 'commentable', 'syncGitHub', 'welfareLuteService', 'imageWebpAdaptive'].forEach(function (key) {
           $('#' + key).prop('checked', String(preference[key]) === 'true')
         })
         ;['enableInstantSearch', 'enableReadingStats'].forEach(function (key) {
@@ -228,12 +230,38 @@ admin.preference = {
       $('#tipMsg').text('[前端开放设置 - 陈旧技术文章时效提醒阈值] ' + Label.nonNegativeIntegerOnlyLabel)
       $('#articleOutdatedDays').focus()
       return false
+    } else if (String($('#indexNowKey').val() || '').trim() !== '' && !/^[A-Za-z0-9-]{8,64}$/.test(String($('#indexNowKey').val() || '').trim())) {
+      $('#tipMsg').text('[偏好设定 - IndexNow 验证密钥] 需为 8–64 位字母、数字或连字符')
+      $('#indexNowKey').focus()
+      return false
     }
     return true
   },
   /*
    * @description 更新
    */
+  createRandomHex: function (len) {
+    var size = len || 32
+    var hex = ''
+    if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      var bytes = new Uint8Array(Math.ceil(size / 2))
+      window.crypto.getRandomValues(bytes)
+      for (var i = 0; i < bytes.length; i++) {
+        hex += ('0' + bytes[i].toString(16)).slice(-2)
+      }
+      return hex.slice(0, size)
+    }
+    var chars = '0123456789abcdef'
+    for (var j = 0; j < size; j++) {
+      hex += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return hex
+  },
+  generateIndexNowKey: function () {
+    var key = this.createRandomHex(32)
+    $('#indexNowKey').val(key)
+    admin.showNotice('已生成随机 IndexNow 密钥，请点击“更新”保存生效。')
+  },
   update: function () {
     if (this.saving || this.loaded === false) return
     if (!admin.preference.validate()) {
@@ -268,6 +296,16 @@ admin.preference = {
         'interactive': $('#interactiveSwitch').val() === 'false' ? 'false' : 'true',
         'showLoginEntry': $('#showLoginEntry').val() === 'true' ? 'true' : 'false',
         'allowRegister': $('#allowRegister').val() === 'true' ? 'true' : 'false',
+        'indexNowEnabled': $('#indexNowEnabled').val() === 'true' ? 'true' : 'false',
+        'indexNowKey': (function () {
+          var currentKey = String($('#indexNowKey').val() || '').trim()
+          if (!currentKey && $('#indexNowEnabled').val() === 'true') {
+            currentKey = admin.preference.createRandomHex(32)
+            $('#indexNowKey').val(currentKey)
+          }
+          return currentKey
+        })(),
+        'imageWebpAdaptive': $('#imageWebpAdaptive').prop('checked'),
         'enableInstantSearch': $('#enableInstantSearch').prop('checked'),
         'enableReadingStats': $('#enableReadingStats').prop('checked'),
         'articleOutdatedDays': (function () {
@@ -358,6 +396,8 @@ admin.preference = {
         if (typeof Label === 'object' && Label) {
           Label.PAGE_SIZE = String(requestJSONObject.preference.articleListDisplayCount)
           Label.WINDOW_SIZE = String(requestJSONObject.preference.articleListPaginationWindowSize)
+          Label.imageWebpAdaptive = String(requestJSONObject.preference.imageWebpAdaptive)
+          Label.imageUploadCompress = String(requestJSONObject.preference.imageUploadCompress || '')
         }
         if (typeof document !== 'undefined' && document && document.title && requestJSONObject.preference.blogTitle) {
           var dashIdx = document.title.indexOf(' - ')

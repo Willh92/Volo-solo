@@ -42,11 +42,12 @@ public class OptionCache {
     private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
 
     /**
-     * Category option caches.
+     * Category option caches (immutable copy-on-write JSONObject snapshots).
      */
     private final Map<String, JSONObject> categoryCache = new ConcurrentHashMap<>();
 
-    private static final int MAX_MISSING_IDS = 512;
+    private static final int MAX_MISSING_IDS = 1024;
+    private static final int MISSING_EVICT_BATCH = 64;
     private final java.util.Set<String> missingIds = ConcurrentHashMap.newKeySet();
 
     public boolean isMissing(final String id) {
@@ -58,7 +59,13 @@ public class OptionCache {
             return;
         }
         if (missingIds.size() >= MAX_MISSING_IDS) {
-            missingIds.clear();
+            final var it = missingIds.iterator();
+            int evicted = 0;
+            while (evicted < MISSING_EVICT_BATCH && it.hasNext()) {
+                it.next();
+                it.remove();
+                evicted++;
+            }
         }
         missingIds.add(id);
     }
@@ -69,17 +76,22 @@ public class OptionCache {
      * @param category the given category
      */
     public void removeCategory(final String category) {
-        categoryCache.remove(category);
+        if (null != category && !category.isEmpty()) {
+            categoryCache.remove(category);
+        }
     }
 
     /**
-     * Gets merged options as a JSON object for the specified category
+     * Gets merged options as a JSON object for the specified category.
      *
      * @param category the specified category
      * @return merged options
      */
     public JSONObject getCategory(final String category) {
-        JSONObject ret = categoryCache.get(category);
+        if (null == category) {
+            return null;
+        }
+        final JSONObject ret = categoryCache.get(category);
         if (null == ret) {
             return null;
         }
@@ -94,6 +106,9 @@ public class OptionCache {
      * @param mergedOptions the specified merged options
      */
     public void putCategory(final String category, final JSONObject mergedOptions) {
+        if (null == category || null == mergedOptions) {
+            return;
+        }
         categoryCache.put(category, Solos.clone(mergedOptions));
     }
 
@@ -104,6 +119,9 @@ public class OptionCache {
      * @return option, returns {@code null} if not found
      */
     public JSONObject getOption(final String id) {
+        if (null == id) {
+            return null;
+        }
         final JSONObject option = cache.get(id);
         if (null == option) {
             return null;
@@ -113,25 +131,41 @@ public class OptionCache {
     }
 
     /**
-     * Adds or updates the specified option.
+     * Adds or updates the specified option and updates any cached category snapshot in-place via copy-on-write.
      *
      * @param option the specified option
      */
     public void putOption(final JSONObject option) {
+        if (null == option) {
+            return;
+        }
         final String id = option.optString(Keys.OBJECT_ID);
+        if (id.isEmpty()) {
+            return;
+        }
         missingIds.remove(id);
         cache.put(id, Solos.clone(option));
 
         final String category = option.optString(Option.OPTION_CATEGORY);
-        removeCategory(category);
+        if (!category.isEmpty()) {
+            final Object val = option.opt(Option.OPTION_VALUE);
+            categoryCache.computeIfPresent(category, (cat, existing) -> {
+                final JSONObject updated = Solos.clone(existing);
+                updated.put(id, val);
+                return updated;
+            });
+        }
     }
 
     /**
-     * Removes an option by the specified option id.
+     * Removes an option by the specified option id and updates any cached category snapshot in-place.
      *
      * @param id the specified option id
      */
     public void removeOption(final String id) {
+        if (null == id) {
+            return;
+        }
         missingIds.remove(id);
         final JSONObject option = cache.remove(id);
         if (null == option) {
@@ -139,7 +173,27 @@ public class OptionCache {
         }
 
         final String category = option.optString(Option.OPTION_CATEGORY);
-        removeCategory(category);
+        if (!category.isEmpty()) {
+            categoryCache.computeIfPresent(category, (cat, existing) -> {
+                final JSONObject updated = Solos.clone(existing);
+                updated.remove(id);
+                return updated.isEmpty() ? null : updated;
+            });
+        }
+    }
+
+    /**
+     * Evicts a single option ID and clears cached category snapshots without mutating any category snapshot in-place.
+     *
+     * @param id the specified option id
+     */
+    public void evictOption(final String id) {
+        if (null == id) {
+            return;
+        }
+        missingIds.remove(id);
+        cache.remove(id);
+        categoryCache.clear();
     }
 
     /**

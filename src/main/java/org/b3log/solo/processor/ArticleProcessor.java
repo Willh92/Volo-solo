@@ -35,10 +35,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
+import org.b3log.latke.plugin.PluginManager;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
@@ -58,15 +58,17 @@ import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.cache.FollowArticleCache;
-import org.b3log.solo.event.EventTypes;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
+import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Follow;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Sign;
 import org.b3log.solo.model.Tag;
 import org.b3log.solo.model.UserExt;
+import org.b3log.solo.plugin.ToCPlugin;
 import org.b3log.solo.processor.console.ConsoleRenderer;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.service.ArchiveDateQueryService;
@@ -76,6 +78,7 @@ import org.b3log.solo.service.CategoryQueryService;
 import org.b3log.solo.service.CommentQueryService;
 import org.b3log.solo.service.DataModelService;
 import org.b3log.solo.service.FollowService;
+import org.b3log.solo.service.HiddenContentService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.StatisticMgmtService;
 import org.b3log.solo.service.TagQueryService;
@@ -84,6 +87,7 @@ import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.LoginThrottle;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
@@ -179,6 +183,12 @@ public class ArticleProcessor {
     @Inject
     private EventManager eventManager;
 
+    @Inject
+    private PluginManager pluginManager;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
     /**
      * Category tag repository.
      */
@@ -202,6 +212,12 @@ public class ArticleProcessor {
 
     @Inject
     private org.b3log.solo.service.ShareTokenService shareTokenService;
+
+    @Inject
+    private org.b3log.solo.service.BacklinkService backlinkService;
+
+    @Inject
+    private org.b3log.solo.service.AnalyticsTrendService analyticsTrendService;
 
     /**
      * Markdowns.
@@ -636,6 +652,9 @@ public class ArticleProcessor {
             requestJSONObject.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
             requestJSONObject.put(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT,
                     preference.optBoolean(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT));
+            if (!ArticleQueryService.isFullContentListStyle(preference)) {
+                requestJSONObject.put(Keys.EXCLUDES, new JSONArray().put(Article.ARTICLE_CONTENT));
+            }
             final JSONObject result = articleQueryService.getArticles(requestJSONObject);
             final List<JSONObject> articles = org.b3log.latke.util.CollectionUtils
                     .jsonArrayToList(result.getJSONArray(Article.ARTICLES));
@@ -679,8 +698,7 @@ public class ArticleProcessor {
             }
 
             final JSONObject tag = tagQueryResult.getJSONObject(Tag.TAG);
-            final String tagId = tag.getString(Keys.OBJECT_ID);
-            final JSONObject tagArticleResult = articleQueryService.getArticlesByTag(tagId, currentPageNum, pageSize);
+            final JSONObject tagArticleResult = articleQueryService.getArticlesByTag(tag, currentPageNum, pageSize);
             if (null == tagArticleResult) {
                 throw new Exception("Can not found tag [title=" + tagTitle + "]'s articles");
             }
@@ -737,10 +755,13 @@ public class ArticleProcessor {
             final JSONObject archiveDate = archiveQueryResult.getJSONObject(ArchiveDate.ARCHIVE_DATE);
             final String archiveDateId = archiveDate.getString(Keys.OBJECT_ID);
 
-            final int articleCount = archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
+            final int precomputedCount = archiveDate.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, -1);
+            final int articleCount = precomputedCount >= 0
+                    ? precomputedCount
+                    : archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
             final int pageCount = (int) Math.ceil((double) articleCount / (double) pageSize);
 
-            final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveDateId,
+            final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveQueryResult,
                     currentPageNum, pageSize);
             dataModelService.setArticlesExProperties(context, articles, preference);
 
@@ -912,10 +933,13 @@ public class ArticleProcessor {
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
 
-            final int articleCount = archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
+            final int precomputedCount = archiveDate.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, -1);
+            final int articleCount = precomputedCount >= 0
+                    ? precomputedCount
+                    : archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
             final int pageCount = (int) Math.ceil((double) articleCount / (double) pageSize);
 
-            final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveDateId,
+            final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(result,
                     currentPageNum, pageSize);
             if (articles.isEmpty()) {
                 context.sendError(404);
@@ -986,7 +1010,7 @@ public class ArticleProcessor {
                 final JSONObject article = articles.get(0);
                 dataModel.put(Option.ID_C_BLOG_TITLE, article.getString(Option.ID_C_BLOG_TITLE));
                 dataModel.put(Option.ID_C_BLOG_SUBTITLE, article.getString(Option.ID_C_BLOG_SUBTITLE));
-                JSONObject admin = new JSONObject(dataModel.get(Common.ADMIN_USER).toString());
+                JSONObject admin = Solos.clone((JSONObject) dataModel.get(Common.ADMIN_USER));
                 admin.put("userAvatar", article.getString(Common.AUTHOR_THUMBNAIL_URL));
                 dataModel.put(Common.ADMIN_USER, admin);
             }
@@ -1087,30 +1111,25 @@ public class ArticleProcessor {
             }
             final JSONObject preference = optionQueryService.getPreference();
             final String rawMarkdown = article.optString(Article.ARTICLE_CONTENT);
-            articleQueryService.markdown(article, context);
-            String decoratedContent = article.optString(Article.ARTICLE_CONTENT);
-            final String headerWidgets = org.b3log.solo.util.ReadingStatsUtil.buildArticleHeaderWidgets(article, rawMarkdown, preference);
-            if (StringUtils.isNotBlank(headerWidgets)) {
-                decoratedContent = headerWidgets + decoratedContent;
-            }
-            if (isPreviewTokenAccess) {
-                decoratedContent = "<div class=\"volo-preview-banner\" role=\"status\">"
-                        + "当前正在通过限时免密预览链接访问本文，请勿公开传播该链接。"
-                        + "</div>" + decoratedContent;
-            }
-            if (null != seriesAndBookshelfService) {
-                final String seriesBox = seriesAndBookshelfService.renderSeriesBoxHtml(articleId);
-                if (StringUtils.isNotBlank(seriesBox)) {
-                    decoratedContent = decoratedContent + seriesBox;
-                }
-            }
-            article.put(Article.ARTICLE_CONTENT, decoratedContent);
+            final String rawAbstract = article.optString(Article.ARTICLE_ABSTRACT);
+            final boolean tocActive = ToCPlugin.isPluginActive(pluginManager);
+            final boolean showCodeBlockLn = Markdowns.SHOW_CODE_BLOCK_LN;
+            final long articleUpdated = article.optLong(Article.ARTICLE_UPDATED);
+
+            final boolean cacheablePublicView = null != publicViewCache
+                    && !isPreviewTokenAccess
+                    && StringUtils.isBlank(context.param("preview"))
+                    && !isDraftArticle
+                    && StringUtils.isBlank(article.optString(Article.ARTICLE_VIEW_PWD))
+                    && !HiddenContentService.containsLockSyntax(rawMarkdown)
+                    && !HiddenContentService.containsLockSyntax(rawAbstract);
+
+            final PublicViewCache.RenderedArticleView cachedView = cacheablePublicView
+                    ? publicViewCache.getRenderedArticle(articleId, articleUpdated, tocActive, showCodeBlockLn)
+                    : null;
 
             article.put(Article.ARTICLE_T_CREATE_DATE, new Date(article.optLong(Article.ARTICLE_CREATED)));
-            article.put(Article.ARTICLE_T_UPDATE_DATE, new Date(article.optLong(Article.ARTICLE_UPDATED)));
-            // For <meta name="description" content="${article.articleAbstract}"/>
-            final String metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
-            article.put(Article.ARTICLE_ABSTRACT, metaDescription);
+            article.put(Article.ARTICLE_T_UPDATE_DATE, new Date(articleUpdated));
             if (preference.getBoolean(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT)) {
                 article.put(Common.HAS_UPDATED, articleQueryService.hasUpdated(article));
             } else {
@@ -1125,10 +1144,72 @@ public class ArticleProcessor {
             article.put(Common.AUTHOR_ROLE, author.getString(User.USER_ROLE));
             final String userAvatar = author.optString(UserExt.USER_AVATAR);
             article.put(Common.AUTHOR_THUMBNAIL_URL, userAvatar);
-            dataModelService.fillCategory(article);
+
+            if (null != cachedView) {
+                article.put(Article.ARTICLE_CONTENT, cachedView.bodyHtml());
+                article.put(Article.ARTICLE_ABSTRACT, cachedView.plainAbstract());
+                article.put(Article.ARTICLE_T_TOC, (Object) cachedView.clonedTocItems());
+                article.put(Article.ARTICLE_COVER_URL, StringUtils.trimToEmpty(article.optString(Article.ARTICLE_IMG1_URL)));
+                article.put(Category.CATEGORY, cachedView.clonedCategory());
+                article.put("articleCategory", cachedView.articleCategoryTitle());
+                article.put("categoryURI", cachedView.categoryUri());
+            } else {
+                articleQueryService.markdown(article, context);
+                String decoratedContent = article.optString(Article.ARTICLE_CONTENT);
+                final String headerWidgets = org.b3log.solo.util.ReadingStatsUtil.buildArticleHeaderWidgets(article, rawMarkdown, preference);
+                if (StringUtils.isNotBlank(headerWidgets)) {
+                    decoratedContent = headerWidgets + decoratedContent;
+                }
+                if (isPreviewTokenAccess) {
+                    decoratedContent = "<div class=\"volo-preview-banner\" role=\"status\">"
+                            + "当前正在通过限时免密预览链接访问本文，请勿公开传播该链接。"
+                            + "</div>" + decoratedContent;
+                }
+                if (null != seriesAndBookshelfService) {
+                    final String seriesBox = seriesAndBookshelfService.renderSeriesBoxHtml(articleId);
+                    if (StringUtils.isNotBlank(seriesBox)) {
+                        decoratedContent = decoratedContent + seriesBox;
+                    }
+                }
+                if (null != backlinkService && !Solos.needViewPwd(context, article)) {
+                    final String backlinksBox = backlinkService.renderBacklinksHtml(article);
+                    if (StringUtils.isNotBlank(backlinksBox)) {
+                        decoratedContent = decoratedContent + backlinksBox;
+                    }
+                }
+                article.put(Article.ARTICLE_CONTENT, decoratedContent);
+                // For <meta name="description" content="${article.articleAbstract}"/>
+                final String metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
+                article.put(Article.ARTICLE_ABSTRACT, metaDescription);
+                if (tocActive) {
+                    ToCPlugin.processArticleToc(article);
+                }
+                dataModelService.fillSingleArticleCategory(article);
+            }
+
             final Map<String, Object> dataModel = renderer.getDataModel();
 
-            prepareShowArticle(preference, dataModel, article);
+            final AdjacentArticles adjacent = prepareShowArticle(preference, dataModel, article, cachedView);
+            if (null == cachedView && cacheablePublicView) {
+                publicViewCache.putRenderedArticle(
+                        articleId,
+                        new PublicViewCache.RenderedArticleView(
+                                articleUpdated,
+                                tocActive,
+                                showCodeBlockLn,
+                                article.optString(Article.ARTICLE_CONTENT),
+                                article.optString(Article.ARTICLE_ABSTRACT),
+                                extractTocItems(article.opt(Article.ARTICLE_T_TOC)),
+                                article.optJSONObject(Category.CATEGORY),
+                                article.optString("articleCategory"),
+                                article.optString("categoryURI"),
+                                adjacent.nextArticle(),
+                                adjacent.previousArticle(),
+                                PublicViewCache.currentEpochDay()
+                        )
+                );
+            }
+
             String ogCover = StringUtils.trimToEmpty(article.optString(Article.ARTICLE_IMG1_URL));
             if (ogCover.startsWith("/") && !ogCover.startsWith("//")) {
                 ogCover = Latkes.getServePath() + ogCover;
@@ -1144,40 +1225,45 @@ public class ArticleProcessor {
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING),
                     (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
 
-            if (!StatisticMgmtService.hasBeenServed(context, response)) {
-                articleMgmtService.incViewCount(articleId);
-            }
+            final boolean isHeadRequest = "HEAD".equalsIgnoreCase(context.method())
+                    || "HEAD".equalsIgnoreCase(String.valueOf(context.attr("bolo.originalHttpMethod")))
+                    || (null != context.getRequest() && "HEAD".equalsIgnoreCase(context.getRequest().getMethod()));
+            if (!isDraftArticle && !isPreviewTokenAccess && !isHeadRequest) {
+                if (!Solos.isBot(context.getRequest()) && !StatisticMgmtService.hasBeenServed(context, response)) {
+                    articleMgmtService.incViewCount(articleId);
+                    article.put(Article.ARTICLE_VIEW_COUNT, article.optInt(Article.ARTICLE_VIEW_COUNT) + 1);
+                    if (null != analyticsTrendService) {
+                        analyticsTrendService.recordArticleView(articleId);
+                    }
+                }
 
-            statisticMgmtService.incBlogViewCount(context, response);
-
-            // Fire [Before Render Article] event
-            final JSONObject eventData = new JSONObject();
-
-            try {
-                final JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                final int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                final JSONObject rel = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
-                final String categoryOId = rel.optString("category_oId");
-                final JSONObject cateS = null != categoryRepository
-                        ? categoryRepository.get(categoryOId)
-                        : categoryQueryService.getCategory(categoryOId);
-                article.put("articleCategory", null == cateS ? "" : cateS.optString("categoryTitle"));
-                article.put("categoryURI", null == cateS ? "" : cateS.optString("categoryURI"));
-            } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
-                article.put("articleCategory", "");
+                statisticMgmtService.incBlogViewCount(context, response);
             }
 
             // Bolo 告诉前端用户是否已经登录
             String logged = String.valueOf(Solos.isLoggedIn(context));
             article.put("logged", logged);
-
-            eventData.put(Article.ARTICLE, article);
-            eventManager.fireEventSynchronously(new Event<>(EventTypes.BEFORE_RENDER_ARTICLE, eventData));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             context.sendError(404);
         }
+    }
+
+    private record AdjacentArticles(JSONObject nextArticle, JSONObject previousArticle) {
+    }
+
+    private static List<JSONObject> extractTocItems(final Object rawToc) {
+        if (!(rawToc instanceof List<?> list) || list.isEmpty()) {
+            return Collections.emptyList();
+        }
+        final List<JSONObject> ret = new ArrayList<>(list.size());
+        for (final Object item : list) {
+            if (item instanceof JSONObject obj) {
+                ret.add(obj);
+            }
+        }
+        return ret;
     }
 
     /**
@@ -1317,14 +1403,17 @@ public class ArticleProcessor {
      * @param article    the specified article
      * @throws Exception exception
      */
-    private void prepareShowArticle(final JSONObject preference, final Map<String, Object> dataModel,
-            final JSONObject article)
+    private AdjacentArticles prepareShowArticle(final JSONObject preference,
+            final Map<String, Object> dataModel,
+            final JSONObject article,
+            final PublicViewCache.RenderedArticleView cachedView)
             throws Exception {
         article.put(Common.COMMENTABLE,
                 preference.getBoolean(Option.ID_C_COMMENTABLE) && !"off".equals(Option.effectiveCommentAccessMode(preference)) && article.getBoolean(Article.ARTICLE_COMMENTABLE));
         article.put(Common.PERMALINK, article.getString(Article.ARTICLE_PERMALINK));
         dataModel.put(Article.ARTICLE, article);
         final String articleId = article.getString(Keys.OBJECT_ID);
+        final long articleCreated = article.optLong(Article.ARTICLE_CREATED);
 
         Stopwatchs.start("Get Article Sign");
 
@@ -1342,7 +1431,9 @@ public class ArticleProcessor {
 
         Stopwatchs.start("Get Next Article");
         LOGGER.debug("Getting the next article....");
-        final JSONObject nextArticle = articleQueryService.getNextArticle(articleId);
+        final JSONObject nextArticle = null != cachedView
+                ? cachedView.clonedNextArticle()
+                : articleQueryService.getNextArticle(articleId, articleCreated);
 
         if (null != nextArticle) {
             dataModel.put(Common.NEXT_ARTICLE_PERMALINK, nextArticle.getString(Article.ARTICLE_PERMALINK));
@@ -1354,7 +1445,9 @@ public class ArticleProcessor {
 
         Stopwatchs.start("Get Previous Article");
         LOGGER.debug("Getting the previous article....");
-        final JSONObject previousArticle = articleQueryService.getPreviousArticle(articleId);
+        final JSONObject previousArticle = null != cachedView
+                ? cachedView.clonedPreviousArticle()
+                : articleQueryService.getPreviousArticle(articleId, articleCreated);
         if (null != previousArticle) {
             dataModel.put(Common.PREVIOUS_ARTICLE_PERMALINK, previousArticle.getString(Article.ARTICLE_PERMALINK));
             dataModel.put(Common.PREVIOUS_ARTICLE_TITLE, previousArticle.getString(Article.ARTICLE_TITLE));
@@ -1379,5 +1472,6 @@ public class ArticleProcessor {
                 preference.getInt(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT));
         dataModel.put(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT,
                 preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT));
+        return new AdjacentArticles(nextArticle, previousArticle);
     }
 }

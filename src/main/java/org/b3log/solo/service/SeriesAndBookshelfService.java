@@ -11,14 +11,20 @@ import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.repository.CompositeFilterOperator;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
+import org.b3log.latke.repository.Query;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.util.OptionDocuments;
 import org.b3log.solo.util.OutboundUrls;
+import org.b3log.solo.util.QueryResults;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -31,9 +37,12 @@ import org.owasp.encoder.Encode;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,9 +85,34 @@ public class SeriesAndBookshelfService {
     @Inject
     private ArticleRepository articleRepository;
 
+    @Inject
+    private SyndicationCacheService syndicationCacheService;
+
+    @Inject
+    private PublicViewCache publicViewCache;
+
+    private void invalidateSyndicationCache() {
+        if (null != syndicationCacheService) {
+            syndicationCacheService.invalidate();
+        }
+        if (null != publicViewCache) {
+            publicViewCache.invalidateAll();
+        }
+    }
+
     private volatile JSONArray cachedSeries;
     private volatile JSONArray cachedBooks;
     private final ConcurrentHashMap<String, JSONArray> cachedBookTocs = new ConcurrentHashMap<>();
+
+    /**
+     * Clears cached series, books, and chapter trees so subsequent reads reload fresh documents from storage.
+     */
+    public synchronized void reloadFromStorage() {
+        cachedSeries = null;
+        cachedBooks = null;
+        cachedBookTocs.clear();
+        invalidateSyndicationCache();
+    }
 
     public static boolean containsShortcode(final String markdown) {
         return markdown != null && (markdown.contains(":::bookshelf") || markdown.contains(":::book"));
@@ -157,13 +191,13 @@ public class SeriesAndBookshelfService {
     public JSONArray getAllSeries() {
         final JSONArray local = cachedSeries;
         if (local != null) {
-            return new JSONArray(local.toString());
+            return cloneJsonArray(local);
         }
         try {
             final String raw = OptionDocuments.read(optionQueryService, Option.ID_C_VOLO_SERIES, "[]");
             final JSONArray parsed = new JSONArray(raw);
             cachedSeries = parsed;
-            return new JSONArray(parsed.toString());
+            return cloneJsonArray(parsed);
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Reads voloSeries failed", e);
             return new JSONArray();
@@ -231,7 +265,8 @@ public class SeriesAndBookshelfService {
         if (StringUtils.isBlank(articleId)) {
             return "";
         }
-        final JSONArray all = getAllSeries();
+        final JSONArray local = cachedSeries;
+        final JSONArray all = local != null ? local : getAllSeries();
         for (int i = 0; i < all.length(); i++) {
             final JSONObject s = all.optJSONObject(i);
             final JSONArray ids = s == null ? null : s.optJSONArray("articleIds");
@@ -301,7 +336,8 @@ public class SeriesAndBookshelfService {
         if (StringUtils.isBlank(articleId) || articleRepository == null) {
             return "";
         }
-        final JSONArray all = getAllSeries();
+        final JSONArray local = cachedSeries;
+        final JSONArray all = local != null ? local : getAllSeries();
         for (int i = 0; i < all.length(); i++) {
             final JSONObject s = all.optJSONObject(i);
             if (s == null) {
@@ -321,19 +357,12 @@ public class SeriesAndBookshelfService {
             if (!containsTarget) {
                 continue;
             }
-            final List<JSONObject> publishedItems = new ArrayList<>();
+            final List<JSONObject> publishedItems = loadPublishedSeriesArticlesInOrder(ids);
             int currentIdx = -1;
-            for (int j = 0; j < ids.length(); j++) {
-                final String aid = ids.optString(j);
-                try {
-                    final JSONObject art = articleRepository.get(aid);
-                    if (art != null && art.optInt(Article.ARTICLE_STATUS) == Article.ARTICLE_STATUS_C_PUBLISHED) {
-                        if (aid.equals(articleId)) {
-                            currentIdx = publishedItems.size();
-                        }
-                        publishedItems.add(art);
-                    }
-                } catch (final Exception ignored) {
+            for (int k = 0; k < publishedItems.size(); k++) {
+                if (articleId.equals(publishedItems.get(k).optString(Keys.OBJECT_ID))) {
+                    currentIdx = k;
+                    break;
                 }
             }
             if (currentIdx < 0 || publishedItems.isEmpty()) {
@@ -396,21 +425,26 @@ public class SeriesAndBookshelfService {
 
     private void persistSeries(final JSONArray series) throws ServiceException {
         optionMgmtService.storeDocument(Option.ID_C_VOLO_SERIES, CATEGORY_SERIES, series.toString());
-        cachedSeries = new JSONArray(series.toString());
+        cachedSeries = cloneJsonArray(series);
+        invalidateSyndicationCache();
     }
 
     // ========================== Embedded Bookshelf & Reader (#16) ==========================
 
+    public JSONArray listBooks() {
+        return getAllBooks();
+    }
+
     public JSONArray getAllBooks() {
         final JSONArray local = cachedBooks;
         if (local != null) {
-            return new JSONArray(local.toString());
+            return cloneJsonArray(local);
         }
         try {
             final String raw = OptionDocuments.read(optionQueryService, Option.ID_C_VOLO_BOOKS, "[]");
             final JSONArray parsed = new JSONArray(raw);
             cachedBooks = parsed;
-            return new JSONArray(parsed.toString());
+            return cloneJsonArray(parsed);
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Reads voloBooks failed", e);
             return new JSONArray();
@@ -424,13 +458,13 @@ public class SeriesAndBookshelfService {
         }
         final JSONArray cached = cachedBookTocs.get(cleanId);
         if (cached != null) {
-            return new JSONArray(cached.toString());
+            return cloneJsonArray(cached);
         }
         try {
             final String raw = OptionDocuments.read(optionQueryService, Option.ID_C_VOLO_BOOK_TOC_PREFIX + cleanId, "[]");
             final JSONArray parsed = new JSONArray(raw);
             cachedBookTocs.put(cleanId, parsed);
-            return new JSONArray(parsed.toString());
+            return cloneJsonArray(parsed);
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Reads voloBookToc failed [bookId=" + cleanId + "]", e);
             return new JSONArray();
@@ -531,6 +565,7 @@ public class SeriesAndBookshelfService {
             optionMgmtService.removeOption(Option.ID_C_VOLO_BOOK_TOC_PREFIX + cleanId);
         } catch (final Exception ignored) {
         }
+        invalidateSyndicationCache();
     }
 
     /**
@@ -903,7 +938,8 @@ public class SeriesAndBookshelfService {
     }
 
     public String renderBookshelfHtml(final String filterBookId) {
-        final JSONArray allBooks = getAllBooks();
+        final JSONArray localBooks = cachedBooks;
+        final JSONArray allBooks = localBooks != null ? localBooks : getAllBooks();
         final List<JSONObject> selected = new ArrayList<>();
         for (int i = 0; i < allBooks.length(); i++) {
             final JSONObject b = allBooks.optJSONObject(i);
@@ -1050,7 +1086,8 @@ public class SeriesAndBookshelfService {
         if (StringUtils.isBlank(seriesId) || articleRepository == null) {
             return result;
         }
-        final JSONArray allSeries = getAllSeries();
+        final JSONArray local = cachedSeries;
+        final JSONArray allSeries = local != null ? local : getAllSeries();
         for (int i = 0; i < allSeries.length(); i++) {
             final JSONObject s = allSeries.optJSONObject(i);
             if (s != null && seriesId.equals(s.optString("id"))) {
@@ -1058,17 +1095,12 @@ public class SeriesAndBookshelfService {
                 if (ids == null) {
                     break;
                 }
-                for (int j = 0; j < ids.length(); j++) {
-                    try {
-                        final JSONObject art = articleRepository.get(ids.optString(j));
-                        if (art != null && art.optInt(Article.ARTICLE_STATUS) == Article.ARTICLE_STATUS_C_PUBLISHED) {
-                            result.put(new JSONObject()
-                                    .put("title", art.optString(Article.ARTICLE_TITLE))
-                                    .put("url", Latkes.getServePath() + art.optString(Article.ARTICLE_PERMALINK))
-                                    .put("children", new JSONArray()));
-                        }
-                    } catch (final Exception ignored) {
-                    }
+                final List<JSONObject> publishedItems = loadPublishedSeriesArticlesInOrder(ids);
+                for (final JSONObject art : publishedItems) {
+                    result.put(new JSONObject()
+                            .put("title", art.optString(Article.ARTICLE_TITLE))
+                            .put("url", Latkes.getServePath() + art.optString(Article.ARTICLE_PERMALINK))
+                            .put("children", new JSONArray()));
                 }
                 break;
             }
@@ -1076,14 +1108,82 @@ public class SeriesAndBookshelfService {
         return result;
     }
 
+    private List<JSONObject> loadPublishedSeriesArticlesInOrder(final JSONArray ids) {
+        if (ids == null || ids.isEmpty() || articleRepository == null) {
+            return Collections.emptyList();
+        }
+        final LinkedHashSet<String> orderedIds = new LinkedHashSet<>(ids.length() * 2);
+        for (int j = 0; j < ids.length(); j++) {
+            final String aid = StringUtils.trimToEmpty(ids.optString(j));
+            if (!aid.isEmpty()) {
+                orderedIds.add(aid);
+            }
+        }
+        if (orderedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        final Map<String, JSONObject> byId = new HashMap<>(orderedIds.size() * 2);
+        try {
+            final Query query = new Query()
+                    .setFilter(CompositeFilterOperator.and(
+                            new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, orderedIds),
+                            new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)))
+                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK, Article.ARTICLE_STATUS)
+                    .setPageCount(1);
+            final JSONObject queryResult = articleRepository.get(query);
+            if (queryResult != null) {
+                final JSONArray rows = QueryResults.array(queryResult);
+                for (int k = 0; k < rows.length(); k++) {
+                    final JSONObject art = rows.optJSONObject(k);
+                    if (art != null && art.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) == Article.ARTICLE_STATUS_C_PUBLISHED) {
+                        final String oid = art.optString(Keys.OBJECT_ID);
+                        if (!oid.isEmpty()) {
+                            byId.put(oid, art);
+                        }
+                    }
+                }
+            } else {
+                for (final String aid : orderedIds) {
+                    try {
+                        final JSONObject art = articleRepository.get(aid);
+                        if (art != null && art.optInt(Article.ARTICLE_STATUS) == Article.ARTICLE_STATUS_C_PUBLISHED) {
+                            byId.put(aid, art);
+                        }
+                    } catch (final Exception ignored) {
+                    }
+                }
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.DEBUG, "Batch loads series articles failed", e);
+        }
+        final List<JSONObject> publishedItems = new ArrayList<>(byId.size());
+        for (final String aid : orderedIds) {
+            final JSONObject art = byId.get(aid);
+            if (art != null) {
+                publishedItems.add(art);
+            }
+        }
+        return publishedItems;
+    }
+
     private void persistBooks(final JSONArray books) throws ServiceException {
         optionMgmtService.storeDocument(Option.ID_C_VOLO_BOOKS, CATEGORY_BOOKS, books.toString());
-        cachedBooks = new JSONArray(books.toString());
+        cachedBooks = cloneJsonArray(books);
+        invalidateSyndicationCache();
     }
 
     private void saveBookToc(final String bookId, final JSONArray toc) throws ServiceException {
         optionMgmtService.storeDocument(Option.ID_C_VOLO_BOOK_TOC_PREFIX + bookId, CATEGORY_BOOKS, toc.toString());
-        cachedBookTocs.put(bookId, new JSONArray(toc.toString()));
+        cachedBookTocs.put(bookId, cloneJsonArray(toc));
+        invalidateSyndicationCache();
+    }
+
+    private static JSONArray cloneJsonArray(final JSONArray src) {
+        return src == null || src.isEmpty() ? new JSONArray() : Solos.cloneArray(src);
+    }
+
+    private static JSONObject cloneJsonObjectDeep(final JSONObject src) {
+        return Solos.clone(src);
     }
 
     private static JSONArray sanitizeTocTree(final JSONArray raw, final int[] counter, final int depth) {

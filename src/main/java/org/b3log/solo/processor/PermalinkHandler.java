@@ -37,10 +37,8 @@ import org.b3log.solo.service.PermalinkQueryService;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import org.b3log.latke.http.Response;
-
 /**
- * Article permalink  handler.
+ * Article permalink handler.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding (Solo Author)</a>
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
@@ -58,8 +56,37 @@ public class PermalinkHandler implements Handler {
      */
     private static boolean initReported;
 
+    /**
+     * Decodes percent-encoded UTF-8 octets in a request permalink without converting literal {@code '+'} into spaces.
+     *
+     * @param rawPermalink raw request path after context path
+     * @return decoded permalink, or {@code null} if percent-encoding is malformed or excessively long
+     */
+    public static String normalizeRequestPermalink(final String rawPermalink) {
+        if (null == rawPermalink || rawPermalink.isEmpty() || rawPermalink.indexOf('%') < 0) {
+            return rawPermalink;
+        }
+        if (rawPermalink.length() > 4096) {
+            return null;
+        }
+        try {
+            final String preservedPlus = rawPermalink.indexOf('+') >= 0
+                    ? rawPermalink.replace("+", "%2B")
+                    : rawPermalink;
+            return java.net.URLDecoder.decode(preservedPlus, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (final IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     @Override
     public void handle(final RequestContext context) {
+        final String method = context.method();
+        if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+            context.handle();
+
+            return;
+        }
         final BeanManager beanManager = BeanManager.getInstance();
 
         JSONObject article;
@@ -74,7 +101,8 @@ public class PermalinkHandler implements Handler {
             final String requestURI = context.requestURI();
             final String contextPath = Latkes.getContextPath();
             final String permalink = StringUtils.substringAfter(requestURI, contextPath);
-            if (PermalinkQueryService.invalidPermalinkFormat(permalink)) {
+            final String decoded = normalizeRequestPermalink(permalink);
+            if (null == decoded || PermalinkQueryService.invalidPermalinkFormat(decoded)) {
                 LOGGER.log(Level.DEBUG, "Skip permalink handling request [URI={0}]", permalink);
                 context.handle();
 
@@ -82,9 +110,12 @@ public class PermalinkHandler implements Handler {
             }
 
             final ArticleRepository articleRepository = beanManager.getReference(ArticleRepository.class);
-            article = articleRepository.getByPermalink(permalink);
+            article = articleRepository.getByPermalink(decoded);
+            if (null == article && !decoded.equals(permalink) && !PermalinkQueryService.invalidPermalinkFormat(permalink)) {
+                article = articleRepository.getByPermalink(permalink);
+            }
             if (null == article) {
-                LOGGER.log(Level.DEBUG, "Not found article with permalink [{0}]", permalink);
+                LOGGER.log(Level.DEBUG, "Not found article with permalink [{0}]", decoded);
                 context.handle();
 
                 return;
@@ -116,17 +147,19 @@ public class PermalinkHandler implements Handler {
             }
         }
 
-        final OptionQueryService optionQueryService = beanManager.getReference(OptionQueryService.class);
-        final JSONObject preference = optionQueryService.getPreference();
-        final boolean allowVisitDraftViaPermalink = preference.getBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
         if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
-                && !allowVisitDraftViaPermalink
                 && !validPreviewToken
                 && !Solos.isAdminOrAuthorLoggedIn(context)) {
-            context.sendError(404);
-            context.abort();
+            final OptionQueryService optionQueryService = beanManager.getReference(OptionQueryService.class);
+            final JSONObject preference = optionQueryService.getPreference();
+            final boolean allowVisitDraftViaPermalink = null != preference
+                    && preference.optBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
+            if (!allowVisitDraftViaPermalink) {
+                context.sendError(404);
+                context.abort();
 
-            return;
+                return;
+            }
         }
 
         dispatchToArticleProcessor(context, article);
@@ -141,6 +174,7 @@ public class PermalinkHandler implements Handler {
      * @see Routes#result(RequestContext)
      */
     private void dispatchToArticleProcessor(final RequestContext context, final JSONObject article) {
+        context.attr("bolo.originalHttpMethod", context.method());
         context.attr(Article.ARTICLE, article);
         context.attr(Keys.HttpRequest.REQUEST_URI, Latkes.getContextPath() + "/article");
         context.attr(Keys.HttpRequest.REQUEST_METHOD, HttpMethod.GET.name());
