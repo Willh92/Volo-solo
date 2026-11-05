@@ -154,6 +154,15 @@ public class ArticleQueryService {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    @Inject
+    private HiddenContentService hiddenContentService;
+
+    @Inject
+    private SeriesAndBookshelfService seriesAndBookshelfService;
+
+    @Inject
+    private ShareTokenService shareTokenService;
+
     /**
      * Searches articles with the specified keyword.
      *
@@ -196,6 +205,7 @@ public class ArticleQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, (Object) pageNums);
 
             final List<JSONObject> articles = CollectionUtils.jsonArrayToList(org.b3log.solo.util.QueryResults.array(result));
+            articles.removeIf(article -> !HiddenContentService.matchesPublicSearch(article, keyword));
             ret.put(Article.ARTICLES, (Object) articles);
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Searches articles error", e);
@@ -545,6 +555,9 @@ public class ArticleQueryService {
             article.remove(Article.ARTICLE_UPDATED);
             article.remove(Article.ARTICLE_VIEW_COUNT);
             article.remove(Article.ARTICLE_RANDOM_DOUBLE);
+            if (null != seriesAndBookshelfService) {
+                article.put("seriesId", seriesAndBookshelfService.getSeriesIdByArticleId(articleId));
+            }
 
             LOGGER.log(Level.DEBUG, "Got an article [id={0}]", articleId);
 
@@ -961,26 +974,22 @@ public class ArticleQueryService {
                 return null;
             }
 
+            final boolean validPreview = null != context && null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article);
             if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)) {
                 final JSONObject preference = optionQueryService.getPreference();
                 final boolean allowDraft = null != preference && preference.optBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
                 final boolean authorized = null != context && canAccessArticle(articleId, Solos.getCurrentUser(context.getRequest(), context.getResponse()));
-                if (!allowDraft && !authorized) {
+                if (!allowDraft && !authorized && !validPreview) {
                     return null;
                 }
             }
 
-            if (null != context && Solos.needViewPwd(context, article)) {
+            if (null != context && !validPreview && Solos.needViewPwd(context, article)) {
                 final String content = langPropsService.get("articleContentPwd");
                 article.put(Article.ARTICLE_CONTENT, content);
             } else {
-                // Markdown to HTML for content and abstract
                 Stopwatchs.start("Get Article Content [Markdown]");
-                String content = article.optString(Article.ARTICLE_CONTENT);
-                content = Markdowns.toHTML(content);
-                if (!isAdminAuthor(article)) {
-                    content = Markdowns.clean(content);
-                }
+                final String content = renderRichMarkdown(articleId, article.optString(Article.ARTICLE_CONTENT), isAdminAuthor(article), context, false);
                 article.put(Article.ARTICLE_CONTENT, content);
                 Stopwatchs.end();
             }
@@ -1028,30 +1037,59 @@ public class ArticleQueryService {
         }
     }
 
+    public String renderRichMarkdown(final String articleId, final String rawMarkdown, final boolean adminAuthor,
+                                     final RequestContext context, final boolean editorPreview) {
+        if (StringUtils.isEmpty(rawMarkdown)) {
+            return "";
+        }
+        SeriesAndBookshelfService.ShortcodePreprocess prep = null;
+        String working = rawMarkdown;
+        if (null != seriesAndBookshelfService && SeriesAndBookshelfService.containsShortcode(working)) {
+            prep = seriesAndBookshelfService.preprocessShortcodes(working);
+            working = prep.markdownWithTokens();
+        }
+        String html;
+        if (null != hiddenContentService) {
+            html = hiddenContentService.renderMarkdown(articleId, working, adminAuthor, context, editorPreview);
+        } else {
+            html = Markdowns.toHTML(working);
+            if (!adminAuthor) {
+                html = Markdowns.clean(html);
+            }
+        }
+        if (null != prep && null != seriesAndBookshelfService) {
+            html = seriesAndBookshelfService.applyShortcodeSlots(html, prep);
+        }
+        return html;
+    }
+
     public void markdown(final JSONObject article) {
-        Stopwatchs.start("Markdown Article [id=" + article.optString(Keys.OBJECT_ID) + "]");
+        markdown(article, null);
+    }
+
+    public void markdown(final JSONObject article, final RequestContext context) {
+        final String articleId = article.optString(Keys.OBJECT_ID);
+        Stopwatchs.start("Markdown Article [id=" + articleId + "]");
         final boolean adminAuthor = isAdminAuthor(article);
 
-        String content = article.optString(Article.ARTICLE_CONTENT);
-        content = Markdowns.toHTML(content);
-        if (!adminAuthor) {
-            content = Markdowns.clean(content);
-        }
+        final String rawContent = article.optString(Article.ARTICLE_CONTENT);
+        final String content = renderRichMarkdown(articleId, rawContent, adminAuthor, context, false);
         article.put(Article.ARTICLE_CONTENT, content);
 
         String abstractContent = article.optString(Article.ARTICLE_ABSTRACT);
         if (StringUtils.isNotBlank(abstractContent)) {
             Stopwatchs.start("Abstract");
-            abstractContent = Markdowns.toHTML(abstractContent);
-            if (!adminAuthor) {
-                abstractContent = Markdowns.clean(abstractContent);
-            }
+            abstractContent = renderRichMarkdown(articleId, abstractContent, adminAuthor, context, false);
             article.put(Article.ARTICLE_ABSTRACT, abstractContent);
             Stopwatchs.end();
         }
 
+        // Compute cover strictly from public unlocked HTML so locked images never leak on list cards
+        final String publicHtmlForCover = HiddenContentService.containsLockSyntax(rawContent)
+                ? Markdowns.toHTML(HiddenContentService.stripForExcerptOrImage(article.optString(Article.ARTICLE_ABSTRACT) + "\n" + rawContent))
+                : (abstractContent + "\n" + content);
         article.put(Article.ARTICLE_COVER_URL, StringUtils.isBlank(article.optString(Article.ARTICLE_VIEW_PWD))
-                ? Article.getArticleCoverURL(abstractContent + "\n" + content) : "");
+                ? Article.getArticleCoverURL(publicHtmlForCover) : "");
         Stopwatchs.end();
     }
 

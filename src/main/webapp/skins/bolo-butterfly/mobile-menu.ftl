@@ -64,7 +64,8 @@
                             class="fa-fw fas fa-link"></i><span> 友情链接</span></a></div>
             <div class="menus_item"><a class="site-page" href="${servePath}/follows.html"><i
                             class="fa-fw fas fa-user-friends"></i><span> 我的关注</span></a></div>
-            <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="div" itemClass="menus_item" linkClass="site-page" panelIcon="fa-fw fas fa-user" exitIcon="fa-fw fas fa-sign-out-alt"/>
+            <#if (enableInstantSearch!true)><div class="menus_item"><a class="site-page" href="${servePath}/search" data-volo-search-trigger><i class="fa-fw fas fa-search"></i><span> 搜索</span></a></div></#if>
+            <#include "../../common-template/macro-management.ftl"><@managementLinks itemTag="div" itemClass="menus_item" linkClass="site-page" panelIcon="fa-fw fas fa-user" exitIcon="fa-fw fas fa-sign-out-alt" loginIcon="fa-fw fas fa-user"/>
                 <#list pageNavigations as page>
                     <div class="menus_item">
                     <a class="site-page" href="${page.pagePermalink?html}" target="${page.pageOpenTarget?html}">

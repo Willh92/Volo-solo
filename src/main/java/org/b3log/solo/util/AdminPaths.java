@@ -30,7 +30,7 @@ public final class AdminPaths {
     private static final Set<String> RESERVED = Set.of("js", "scss", "skins", "images", "image", "favicon",
             "console", "oauth", "error", "plugins", "start", "root", "logout", "article", "articles", "page",
             "tags", "category", "categories", "archives", "search", "github-stats", "upload", "uploads",
-            "admin", "apis", "blog", "follow", "authors", "fix", "captcha", "get-article-content", "kill-browser");
+            "admin", "api", "apis", "user", "blog", "follow", "authors", "fix", "captcha", "get-article-content", "kill-browser");
 
     private AdminPaths() { }
     private static volatile String loginOverride;

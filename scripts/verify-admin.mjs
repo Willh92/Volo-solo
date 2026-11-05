@@ -507,3 +507,142 @@ console.log('Admin checks passed: safe renderers, persistent list actions, pagin
   host.children.find(node=>node.title==='下一页').events.click();assert.deepEqual(pages,[4,2,2]);
   sandbox.admin.pagination.render('test',9,1,page=>pages.push(page));assert.equal(host.children.length,1);assert.equal(host.children[0].textContent,'1 / 1');
 }
+
+// Plugin author links allow safe http(s) anchors (any attribute order), inline code/emphasis and <br> without double-escaping entities, while escaping XSS markup or javascript: protocols.
+{
+  let rows;
+  const $=()=>({text(){return this;},dialog(){return this;}});
+  $.ajax=options=>options.success({
+    sc:true,
+    plugins:[{
+      oId:'fishpi',
+      name:'摸鱼派支持插件 <img src=x onerror=alert(1)>',
+      status:'ENABLED',
+      author:'<a target="_blank" href="https://github.com/gakkiyomi">Gakkiyomi &amp; Team</a><br>启用该功能后，<code>Volo</code>将在后台设置中展现选项。<a href="javascript:alert(1)">bad</a><img src=x onerror=alert(2)>',
+      version:'0.0.1',
+      setting:'{}'
+    }],
+    pagination:{paginationPageCount:1}
+  });
+  const sandbox={
+    admin:{register:{}},
+    $,
+    Label:{servePath:'',PAGE_SIZE:20,WINDOW_SIZE:10,enableLabel:'已启用',disableLabel:'禁用',settingLabel:'设置'},
+    TablePaginate:function(){this.buildTable=()=>{};this.initPagination=()=>{};this.updateTablePagination=data=>{rows=data;};},
+    encodeURIComponent
+  };
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/pluginList.js','utf8'),sandbox);
+  sandbox.admin.pluginList.getList(1);
+  assert.equal(rows.length,1);
+  assert(rows[0].author.includes('<a href="https://github.com/gakkiyomi" target="_blank" rel="noopener noreferrer">Gakkiyomi &amp; Team</a><br>启用该功能后，<code>Volo</code>将在后台设置中展现选项。'));
+  assert(!rows[0].author.includes('&amp;amp;'),'HTML entities in plugin metadata must not be double-escaped');
+  assert(!rows[0].author.includes('href="javascript:'),'javascript: links in plugin metadata must remain escaped');
+  assert(!rows[0].author.includes('<img'),'Arbitrary HTML tags in plugin metadata must remain escaped');
+  assert(rows[0].name.includes('&lt;img'));
+}
+
+// All 2-state switches across preference and security templates use canonical "true"/"false" without duplicate allowRegister controls.
+{
+  const prefTpl=fs.readFileSync('src/main/webapp/admin/admin-preference.ftl','utf8');
+  const secTpl=fs.readFileSync('src/main/webapp/admin/admin-security.ftl','utf8');
+  assert(prefTpl.includes('id="allowRegister"'),'allowRegister belongs in Frontend Open Settings');
+  assert(!secTpl.includes('allowRegisterSecurity')&&!secTpl.includes('id="allowRegister"'),'Security panel must not duplicate allowRegister');
+  for(const [tpl,ids] of [[prefTpl,['adminActiveSentToMailbox','smtpAuth','showLoginEntry','interactiveSwitch','allowRegister']],[secTpl,['riskControlEnabled','wafPower','totpEnabled','geoAccessActive','commentFilterBuiltin','commentCaptchaEnabled']]]){
+    for(const id of ids){
+      const match=tpl.match(new RegExp('<select[^>]*\\bid="'+id+'"[^>]*>([\\s\\S]*?)</select>'));
+      assert(match,'Select #'+id+' must exist');
+      const vals=[...match[1].matchAll(/value="([^"]*)"/g)].map(m=>m[1]).sort();
+      assert.deepEqual(vals,['false','true'],'2-state switch #'+id+' must strictly use "true"/"false"');
+    }
+  }
+  const values=new Map([...prefTpl.matchAll(/\bid="([^"]+)"/g)].map(match=>['#'+match[1],{value:'',checked:false}]));
+  for(const id of ['mostUsedTagDisplayCount','recentCommentDisplayCount','mostCommentArticleDisplayCount','mostViewArticleDisplayCount','articleListDisplayCount','articleListPaginationWindowSize','randomArticlesDisplayCount','relevantArticlesDisplayCount'])values.set('#'+id,{value:'8',checked:false});
+  const requests=[];
+  const $=selector=>{
+    if(!values.has(selector))values.set(selector,{value:'',checked:false});
+    const node=values.get(selector);
+    return {
+      val(v){if(v===undefined)return node.value;node.value=v;return this;},
+      text(v){if(v===undefined)return node.text||'';node.text=v;return this;},
+      prop(k,v){if(v===undefined)return node[k];node[k]=v;return this;},
+      attr(){return this;},tabs(){return this;},not(){return this;},remove(){return this;},append(){return this;},focus(){return this;}
+    };
+  };
+  $.ajax=options=>requests.push(options);
+  const sandbox={$,Label:{servePath:''},admin:{register:{},showNotice(){},handleRequestError(){},githubRepositories:{init(){},payload(){}}},window:{location:{hash:'#tools/preference',reload(){}}}};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/preference.js','utf8'),sandbox);
+  sandbox.admin.preference.init();
+  const pref=Object.fromEntries([...values.keys()].map(s=>[s.slice(1),'']));
+  Object.assign(pref,{signs:'[]',editorMode:'sv',localeString:'zh_CN',enableInstantSearch:'true',enableReadingStats:'false',interactive:'true',showLoginEntry:'false',allowRegister:'true',adminActiveSentToMailbox:'false',smtpAuth:'true'});
+  for(const id of ['mostUsedTagDisplayCount','recentCommentDisplayCount','mostCommentArticleDisplayCount','mostViewArticleDisplayCount','articleListDisplayCount','articleListPaginationWindowSize','randomArticlesDisplayCount','relevantArticlesDisplayCount'])pref[id]='8';
+  requests[0].success({sc:true,preference:pref});requests[0].complete();
+  assert.equal(values.get('#enableInstantSearch').checked,true);
+  assert.equal(values.get('#enableReadingStats').checked,false);
+  assert.equal(values.get('#interactiveSwitch').value,'true');
+  assert.equal(values.get('#showLoginEntry').value,'false');
+  assert.equal(values.get('#allowRegister').value,'true');
+  assert.equal(values.get('#adminActiveSentToMailbox').value,'false');
+  assert.equal(values.get('#smtpAuth').value,'true');
+  sandbox.admin.preference.update();
+  const submitted=JSON.parse(requests.at(-1).data).preference;
+  assert.equal(submitted.interactive,'true');
+  assert.equal(submitted.showLoginEntry,'false');
+  assert.equal(submitted.allowRegister,'true');
+  assert.equal(submitted.adminActiveSentToMailbox,'false');
+  assert.equal(submitted.smtpAuth,'true');
+}
+
+// Preference saves do not reload the page unless locale, editorMode, or tuChuangConfig changed; table hover clears cleanly.
+{
+  const template=fs.readFileSync('src/main/webapp/admin/admin-preference.ftl','utf8');
+  const values=new Map([...template.matchAll(/\bid="([^"]+)"/g)].map(m=>['#'+m[1],{value:'',checked:false,placeholder:''}]));
+  values.set("input[name='editorMode']:checked",{value:'sv'});
+  let reloads=0,ghReloads=0;
+  const notices=[];
+  const requests=[];
+  const $=selector=>{
+    if(!values.has(selector))values.set(selector,{value:'',placeholder:''});
+    const node=values.get(selector);
+    return {
+      val(v){if(v===undefined)return node.value;node.value=v;return this;},
+      text(v){if(v===undefined)return node.text||'';node.text=v;return this;},
+      prop(k,v){if(v===undefined)return node[k];node[k]=v;return this;},
+      attr(k,v){if(v===undefined)return node[k];node[k]=v;return this;},
+      tabs(){return this;},not(){return this;},remove(){return this;},append(){return this;},focus(){return this;}
+    };
+  };
+  $.ajax=options=>requests.push(options);
+  const Label={servePath:'',PAGE_SIZE:'20',WINDOW_SIZE:'15'};
+  const document={title:'管理后台 - 旧标题'};
+  const sandbox={$,Label,document,admin:{register:{},showNotice:(msg,tone)=>notices.push({msg,tone}),handleRequestError(){},githubRepositories:{init(){},load(){ghReloads++;},payload:()=>({username:'demo',includeForks:true,hidden:[]})}},window:{location:{hash:'#tools/preference/myGitHub',reload(){reloads++;}}}};
+  vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/preference.js','utf8'),sandbox);
+  sandbox.admin.preference.init();
+  const pref=Object.fromEntries([...values.keys()].map(s=>[s.slice(1),'']));
+  Object.assign(pref,{signs:'[]',editorMode:'sv',localeString:'zh_CN',tuChuangConfig:'local<<>>./image',blogTitle:'旧标题'});
+  for(const id of ['mostUsedTagDisplayCount','recentCommentDisplayCount','mostCommentArticleDisplayCount','mostViewArticleDisplayCount','articleListDisplayCount','articleListPaginationWindowSize','randomArticlesDisplayCount','relevantArticlesDisplayCount'])pref[id]='10';
+  requests[0].success({sc:true,preference:pref});requests[0].complete();
+  values.get('#blogTitle').value='新标题';
+  values.get('#articleListDisplayCount').value='25';
+  values.get('#mailPassword').value='secret-pass';
+  sandbox.admin.preference.update();
+  const saveReq=requests.at(-1);
+  saveReq.success({sc:true,msg:'更新成功'});saveReq.complete();
+  assert.equal(reloads,0,'Saving ordinary preference fields must not reload the whole page');
+  assert.equal(Label.PAGE_SIZE,'25');
+  assert.equal(document.title,'管理后台 - 新标题');
+  assert.equal(values.get('#mailPassword').value,'','Saved secret input must be cleared in-place');
+  assert.equal(values.get('#mailPassword').placeholder,'已设置，留空保留原密码');
+  assert.equal(ghReloads,1,'Saving myGitHub tab refreshes repository state in-place');
+  assert.equal(notices.at(-1).msg,'更新成功');
+
+  values.get('#localeString').value='en_US';
+  sandbox.admin.preference.update();
+  requests.at(-1).success({sc:true,msg:'更新成功'});requests.at(-1).complete();
+  assert.equal(reloads,1,'Changing localeString reloads the console shell');
+
+  const tpSource=fs.readFileSync('src/main/webapp/js/admin/tablePaginate.js','utf8');
+  assert(tpSource.includes("addEventListener('mouseleave'") && tpSource.includes("classList.remove('table-lineHover')"),'TablePaginate must clear sticky .table-lineHover on mouseleave');
+  const consoleScss=fs.readFileSync('src/main/webapp/scss/console-theme.scss','utf8');
+  assert(consoleScss.includes('.table-lineHover td { background: transparent;'),'Sticky .table-lineHover must not force row highlight background');
+  assert(consoleScss.includes('.table-body tbody.console-data-card:hover > tr.console-data-row > td'),'Unified CSS hover must cover TablePaginate rows');
+}

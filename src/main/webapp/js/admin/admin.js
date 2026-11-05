@@ -56,11 +56,11 @@ var Admin = function () {
     // 工具栏下的工具
     this.tools = [
         '#page-list', '#theme-list', '#link-list', '#preference',
-        '#user-list', '#plugin-list', '#others', '#category-list', '#follow-list', '#usite']
+        '#user-list', '#plugin-list', '#others', '#category-list', '#book-list', '#follow-list', '#usite']
     // 多用户时，一般用户不能使用的功能
     this.adTools = [
         'link-list', 'preference', 'theme-list', 'page-list',
-        'access', 'totp', 'ip', 'geo', 'comments', 'user-list', 'plugin-list', 'others', 'category-list', 'follow-list', 'usite']
+        'access', 'totp', 'ip', 'geo', 'comments', 'user-list', 'plugin-list', 'others', 'category-list', 'book-list', 'follow-list', 'usite']
 }
 
 $.extend(Admin.prototype, {

@@ -23,9 +23,20 @@
     <script src="${staticServePath}/js/captcha.js?${staticResourceVersion}"></script>
     <div id="soloEditor" class="comment-composer" role="dialog" aria-label="${(commentLabel!'评论')?html}" aria-hidden="true" inert>
         <div class="comment-composer__inner">
+            <#if isLoggedIn!false>
+            <div id="soloEditorUserBar" class="comment-composer__visitor">
+                <strong>${(userName!'已登录用户')?html}</strong><span><#if isAdminLoggedIn!false>博主<#else>认证读者</#if></span>
+                <#if !(isAdminLoggedIn!false)>
+                <button type="button" onclick="window.VoloReaderAuth ? window.VoloReaderAuth.logout() : null">退出登录</button>
+                </#if>
+            </div>
+            </#if>
             <div id="soloEditorVisitorCard" class="comment-composer__visitor" hidden>
                 <img id="soloEditorVisitorAvatar" alt=""/><strong id="soloEditorVisitorName"></strong><span>访客</span>
                 <button id="soloEditorEditIdentity" type="button">修改资料</button>
+                <#if (allowRegister!false) || (commentAccessMode!'all') == 'registered'>
+                <button type="button" onclick="window.VoloReaderAuth ? window.VoloReaderAuth.open('login') : (window.location.href='${servePath}/user/login')">账号登录</button>
+                </#if>
             </div>
             <div id="soloEditorIdentity" class="comment-composer__identity" hidden>
                 <label for="boloUser">昵称<span id="soloEditorNameSlot"></span></label>
@@ -54,6 +65,8 @@
         "commentContentCannotEmptyLabel": "${commentContentCannotEmptyLabel?js_string}",
         "oId": "${oId?js_string}",
         "commentAdministrator": ${(isAdminLoggedIn!false)?c},
+        "commentAccessMode": "${(commentAccessMode!'all')?js_string}",
+        "allowRegister": ${(allowRegister!false)?c},
         "blogHost": "${blogHost?js_string}",
         "randomArticles1Label": "${randomArticles1Label?js_string}",
     });

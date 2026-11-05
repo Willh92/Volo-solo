@@ -480,8 +480,8 @@
         <label for="adminActiveSentToMailbox">${adminActiveSentToMailboxLabel}</label>
         <br>
         <select id="adminActiveSentToMailbox">
-            <option value="on" selected="">${enableLabel}</option>
-            <option value="off">${disableLabel}</option>
+            <option value="true" selected="">${enableLabel}</option>
+            <option value="false">${disableLabel}</option>
         </select>
         <br><br><br>
         <h3>${mailRemindLabel}</h3>
@@ -490,7 +490,7 @@
             <label>SMTP 服务器<input id="smtpHost" type="text" maxlength="253" placeholder="smtp.example.com" autocomplete="off"/></label>
             <label>端口<input id="smtpPort" type="number" min="1" max="65535" placeholder="465"/></label>
             <label>连接加密<select id="smtpSecurity"><option value="ssl">SSL / TLS</option><option value="starttls">STARTTLS</option><option value="none">不加密（仅用于可信内部邮件服务器）</option></select></label>
-            <label>SMTP 身份验证<select id="smtpAuth"><option value="on">启用</option><option value="off">不需要验证</option></select></label>
+            <label>SMTP 身份验证<select id="smtpAuth"><option value="true">启用</option><option value="false">不需要验证</option></select></label>
             <label>用户名<input id="mailUsername" type="text" maxlength="254" autocomplete="off"/></label>
             <label>密码或授权码<input id="mailPassword" type="password" maxlength="1024" autocomplete="new-password" placeholder="留空保留已有密码"/></label>
             <label>发件人邮箱<input id="smtpFrom" type="email" maxlength="254" placeholder="留空使用用户名"/></label>
@@ -566,17 +566,40 @@
     <div id="tabPreferencePanel_interactive" class="fn__none form">
         <div class="console-preference-field">
             <label for="showLoginEntry">前端显示登录入口</label>
-            <select id="showLoginEntry" aria-describedby="loginEntryDescription"><option value="off">隐藏（默认）</option><option value="on">显示管理员登录入口</option></select>
+            <select id="showLoginEntry" aria-describedby="loginEntryDescription"><option value="false">隐藏（默认）</option><option value="true">显示管理员登录入口</option></select>
             <p id="loginEntryDescription" class="console-form-help">控制未登录访客是否能在皮肤导航中看到管理员登录链接。已登录管理员始终保留后台管理和退出登录，不受此开关影响。</p>
             <p class="console-form-help">${managementLoginPathLabel!'当前登录路径'}：<a href="${(adminLoginPath!'/start')?html}"><code>${(adminLoginPath!'/start')?html}</code></a></p>
         </div>
         <div class="console-preference-field">
             <label for="interactiveSwitch">前端显示评论</label>
             <select id="interactiveSwitch" aria-describedby="interactiveDescription">
-                <option value="on" selected="">${enableLabel}</option>
-                <option value="off">${disableLabel}</option>
+                <option value="true" selected="">${enableLabel}</option>
+                <option value="false">${disableLabel}</option>
             </select>
-            <p id="interactiveDescription" class="console-form-help">控制前端评论区及评论相关入口，与登录入口分别设置。关闭后管理员仍可在后台管理已有评论。</p>
+            <p id="interactiveDescription" class="console-form-help">控制前端评论区及评论相关入口，与登录入口分别设置。细粒度评论权限（游客/仅注册读者/待审队列）可在 <a href="#security/comments">安全 &rarr; 评论防护</a> 中配置。</p>
+        </div>
+        <div class="console-preference-field">
+            <label for="allowRegister">开放前台读者邮箱注册</label>
+            <select id="allowRegister" aria-describedby="allowRegisterDescription">
+                <option value="false">关闭（默认）</option>
+                <option value="true">开放注册（需验证码激活）</option>
+            </select>
+            <p id="allowRegisterDescription" class="console-form-help">开启前需先在「动态提醒」中配置发信邮箱（SMTP）。开启后读者可通过 6 位邮箱验证码在 <code>/user/register</code> 或文章弹窗注册独立读者身份（严格隔离为访客角色，无任何后台管理权限）。</p>
+        </div>
+        <div class="console-preference-options" style="margin: 12px 0;">
+            <label class="checkbox" for="enableInstantSearch">
+                <input id="enableInstantSearch" type="checkbox" class="normalInput"/>
+                <span>启用前台 <code>Ctrl / Cmd + K</code> 快捷键即时搜索弹窗</span>
+            </label>
+            <label class="checkbox" for="enableReadingStats">
+                <input id="enableReadingStats" type="checkbox" class="normalInput"/>
+                <span>文章页顶部显示全文字数统计与预计阅读时长</span>
+            </label>
+        </div>
+        <div class="console-preference-field">
+            <label for="articleOutdatedDays">陈旧技术文章时效提醒阈值（天）</label>
+            <input id="articleOutdatedDays" class="normalInput" type="number" min="0" max="3650" placeholder="默认 365，填 0 关闭时效横幅"/>
+            <p class="console-form-help">当文章距离最后更新超过该天数时，自动在正文顶部展示温和的时效性甄别提醒；设为 <code>0</code> 则全局停用。</p>
         </div>
 
         <div class="console-form-actions"><button class="fn__right" onclick="admin.preference.update()">${updateLabel}</button></div>

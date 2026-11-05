@@ -124,6 +124,11 @@
                                 </div>
                             </li>
                             <li>
+                                <div id="tabs_book-list">
+                                    <a href="#tools/book-list">专题与书架</a>
+                                </div>
+                            </li>
+                            <li>
                                 <div id="tabs_page-list">
                                     <a href="#tools/page-list">${navMgmtLabel}</a>
                                 </div>
@@ -200,6 +205,7 @@
                 <div id="tabsPanel_preference" class="fn__none"></div>
                 <div id="tabsPanel_theme-list" class="fn__none"></div>
                 <div id="tabsPanel_category-list" class="fn__none"></div>
+                <div id="tabsPanel_book-list" class="fn__none"></div>
                 <div id="tabsPanel_page-list" class="fn__none"></div>
                 <div id="tabsPanel_others" class="fn__none"></div>
                 <div id="tabsPanel_user-list" class="fn__none"></div>
@@ -294,6 +300,7 @@
         <script src="${staticServePath}/js/admin/pluginList.js"></script>
         <script src="${staticServePath}/js/admin/userList.js"></script>
         <script src="${staticServePath}/js/admin/categoryList.js"></script>
+        <script src="${staticServePath}/js/admin/bookList.js"></script>
         <script src="${staticServePath}/js/admin/commentList.js"></script>
         <script src="${staticServePath}/js/admin/plugin.js"></script>
         <script src="${staticServePath}/js/admin/main.js"></script>

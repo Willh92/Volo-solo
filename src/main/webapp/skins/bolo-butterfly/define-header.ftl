@@ -77,7 +77,8 @@
                             <span> 我的关注</span>
                         </a>
                     </div>
-                    <#if pageNavigations?has_content || (isAdminLoggedIn!false) || (showLoginEntry!false)>
+                    <#if (enableInstantSearch!true)><div class="menus_item"><a class="site-page" href="${servePath}/search" data-volo-search-trigger title="搜索文章（Ctrl+K）"><i class="fa-fw fas fa-search"></i><span> 搜索</span></a></div></#if>
+                    <#if pageNavigations?has_content || (isAdminLoggedIn!false) || (isLoggedIn!false) || (showLoginEntry!false) || (allowRegister!false) || (commentAccessMode!'all') == 'registered'>
                     <div class="menus_item">
                         <a class="site-page">
                             <span class="footer__heart">❤️更多</span>

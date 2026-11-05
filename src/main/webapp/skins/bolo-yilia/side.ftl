@@ -31,7 +31,7 @@
     </div>
     <header class="content fn__flex-1">
         <a href="${servePath}">
-            <img class="avatar" src="${adminUser.userAvatar}" title="${userName}" />
+            <img class="avatar" src="${adminUser.userAvatar}" title="${(adminUser.userName!'')?html}" alt="${(adminUser.userName!'')?html}" />
         </a>
         <hgroup>
             <h1>
@@ -89,7 +89,7 @@
             </div>
         </#if>
         <a rel="alternate" href="${servePath}/rss.xml" title="${subscribeLabel}" class="icon-rss"></a>
-        <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" title="后台管理" aria-label="后台管理" class="icon-setting" data-management-link="panel"></a><a href="${logoutURL?html}" title="退出登录" aria-label="退出登录" class="icon-logout" data-management-link="logout"></a><#elseif showLoginEntry!false><a href="${adminLoginURL?html}" title="管理员登录" aria-label="管理员登录" class="icon-login" data-management-link="login"></a></#if>
+        <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" title="后台管理" aria-label="后台管理" class="icon-setting" data-management-link="panel"></a><a href="${logoutURL?html}" title="退出登录" aria-label="退出登录" class="icon-logout" data-management-link="logout"></a><#elseif isLoggedIn!false><a href="${logoutURL?html}" data-volo-reader-logout data-no-pjax title="退出读者（${(userName!'已登录')?html}）" aria-label="退出读者（${(userName!'已登录')?html}）" class="icon-logout" data-management-link="reader-logout"></a><#else><#if (allowRegister!false) || (commentAccessMode!'all') == 'registered'><a href="${servePath}/user/login" data-volo-auth-trigger="login" title="读者登录" aria-label="读者登录" class="icon-login" data-management-link="reader-login"></a></#if><#if showLoginEntry!false><a href="${adminLoginURL?html}" title="管理员登录" aria-label="管理员登录" class="icon-login" data-management-link="login"></a></#if></#if>
     </footer>
     <#if article?? && article.articleToC?? && article.articleToC?size &gt; 0>
         <nav class="toc" aria-label="${tocLabel?html}" hidden>

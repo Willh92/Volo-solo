@@ -50,7 +50,7 @@
             </a>
             <br>
             ${statistic.statisticPublishedBlogArticleCount} ${articleLabel} &nbsp;
-            <#if interactive=="on">
+            <#if interactive == "true">
                 ${statistic.statisticPublishedBlogCommentCount} ${commentLabel} &nbsp;</#if>
             ${statistic.statisticBlogViewCount} ${viewLabel} &nbsp;
             ${onlineVisitorCnt} ${onlineVisitorLabel}

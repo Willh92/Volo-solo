@@ -91,7 +91,10 @@ public class StatisticQueryService {
                 final long publishedArticleCount = articleRepository.count(new Query().setFilter(
                         new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)));
                 final long commentCount = commentRepository.count(new Query().setFilter(
-                        new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false)));
+                        org.b3log.latke.repository.CompositeFilterOperator.and(
+                                new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false),
+                                new PropertyFilter(org.b3log.solo.model.Comment.COMMENT_STATUS, FilterOperator.EQUAL,
+                                        org.b3log.solo.model.Comment.COMMENT_STATUS_C_APPROVED))));
                 counts = new org.b3log.solo.cache.StatisticCache.Counts(publishedArticleCount, commentCount);
                 if (null != statisticCache) {
                     statisticCache.putCounts(publishedArticleCount, commentCount);

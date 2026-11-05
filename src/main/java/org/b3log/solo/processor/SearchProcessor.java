@@ -97,6 +97,41 @@ public class SearchProcessor {
     @Inject
     private DataModelService dataModelService;
 
+    @Inject
+    private org.b3log.solo.service.InstantSearchService instantSearchService;
+
+    /**
+     * Instant search API for {@code Ctrl/Cmd + K} modal across all skins.
+     *
+     * @param context the specified context
+     */
+    @RequestProcessing(value = "/api/search/instant", method = HttpMethod.GET)
+    public void instantSearch(final RequestContext context) {
+        final JSONObject preference = optionQueryService.getPreference();
+        final boolean enabled = Option.optBooleanSwitch(preference, Option.ID_C_ENABLE_INSTANT_SEARCH, true);
+        if (!enabled) {
+            context.setHeader("Cache-Control", "no-store");
+            context.renderJSON(new JSONObject()
+                    .put("sc", false)
+                    .put("enabled", false)
+                    .put("msg", "站点未开启快捷键即时搜索。"));
+            return;
+        }
+        context.setHeader("Cache-Control", "public, max-age=30");
+        final String q = context.param("q");
+        final String tag = context.param("tag");
+        final String category = context.param("category");
+        int limit = 15;
+        try {
+            final String rawLimit = context.param("limit");
+            if (StringUtils.isNotBlank(rawLimit)) {
+                limit = Integer.parseInt(rawLimit.trim());
+            }
+        } catch (final NumberFormatException ignored) {
+        }
+        context.renderJSON(instantSearchService.search(q, tag, category, limit));
+    }
+
     /**
      * Shows opensearch.xml.
      *

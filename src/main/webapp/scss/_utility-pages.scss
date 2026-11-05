@@ -40,7 +40,7 @@ body.utility-page {
 .search-heading p { margin: 0; color: var(--bolo-muted); font-size: 13px; }
 .search-form { display: flex; align-items: center; gap: 12px; padding: 10px; margin-bottom: 34px; border: 1px solid var(--bolo-line); border-radius: 13px; background: var(--bolo-surface); }
 .search-form:focus-within { border-color: var(--bolo-accent); box-shadow: none; }
-.search-form input { flex: 1; min-width: 0; height: 42px; margin: 0; padding: 0 12px; border: 0; background: transparent; color: var(--bolo-text); outline: 0; font-size: 15px; }
+.search-form input { flex: 1; min-width: 0; height: 42px; margin: 0; padding: 10px 12px; line-height: 22px; border: 0; background: transparent; color: var(--bolo-text); outline: 0; font-size: 15px; }
 .search-form input::placeholder { color: var(--bolo-muted); opacity: .8; }
 .search-form button { flex-shrink: 0; min-width: 72px; }
 .search-summary { margin: 0 0 14px; color: var(--bolo-muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -92,7 +92,9 @@ body.utility-page {
 .utility-password-card h1 { margin:0 0 14px; font-size:24px; line-height:1.55; font-weight:600; overflow-wrap:anywhere; }
 .utility-password-form { margin-top:28px; }
 .utility-password-form label { display:block; margin-bottom:10px; color:var(--bolo-text); font-size:13px; }
-.utility-password-form input[type=password] { box-sizing:border-box; width:100%; min-width:0; height:46px; padding:10px 12px; border:1px solid var(--bolo-line); border-radius:8px; background:var(--bolo-surface); color:var(--bolo-text); font:inherit; outline:0; box-shadow:none; }
+.utility-password-form input[type=password] { box-sizing:border-box; width:100%; min-width:0; height:46px; padding:12px; line-height:20px; border:1px solid var(--bolo-line); border-radius:8px; background:var(--bolo-surface); color:var(--bolo-text); font:inherit; outline:0; box-shadow:none; }
+.utility-password-form input[type=password]::-webkit-caps-lock-indicator { width:16px; height:16px; max-height:18px; align-self:center; flex-shrink:0; margin-left:6px; }
+.utility-password-form input[type=password]::-webkit-credentials-auto-fill-button { align-self:center; flex-shrink:0; margin-left:6px; }
 .utility-password-form input[type=password]:is(:focus,:focus-visible) { border-color:var(--bolo-accent); outline:0; outline-offset:0; box-shadow:none; }
 .utility-password-error { min-height:20px; margin:8px 0 14px; color:var(--bolo-danger,#b84454); font-size:13px; }
 .utility-password-form .utility-button { width:100%; }

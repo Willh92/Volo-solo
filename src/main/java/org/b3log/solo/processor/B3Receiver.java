@@ -159,7 +159,8 @@ public class B3Receiver {
 
             final String articleAuthorName = client.optString(User.USER_NAME);
             final JSONObject articleAuthor = userRepository.getByUserName(articleAuthorName);
-            if (null == articleAuthor || Role.VISITOR_ROLE.equals(articleAuthor.optString(User.USER_ROLE))) {
+            if (null == articleAuthor || Role.VISITOR_ROLE.equals(articleAuthor.optString(User.USER_ROLE))
+                    || articleAuthor.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) != UserExt.USER_STATUS_C_VALID) {
                 context.setStatus(403);
                 ret.put(Keys.CODE, 1).put(Keys.MSG, "Forbidden");
                 LOGGER.log(Level.WARN, "Not found authorized user [" + articleAuthorName + "]");

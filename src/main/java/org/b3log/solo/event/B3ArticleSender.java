@@ -103,7 +103,8 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
                     put("title", originalArticle.getString(Article.ARTICLE_TITLE)).
                     put("permalink", originalArticle.getString(Article.ARTICLE_PERMALINK)).
                     put("tags", originalArticle.getString(Article.ARTICLE_TAGS_REF)).
-                    put("content", originalArticle.getString(Article.ARTICLE_CONTENT));
+                    put("content", org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
+                            org.b3log.solo.service.HiddenContentService.stripForFeed(originalArticle.getString(Article.ARTICLE_CONTENT))));
             final JSONObject author = articleQueryService.getAuthor(originalArticle);
 
             UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);

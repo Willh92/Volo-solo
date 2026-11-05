@@ -40,7 +40,7 @@
                         <i class="nexmoefont iconfont solo-heat"></i>
                         ${article.articleViewCount} 浏览
                     </span>
-                    <#if interactive=="on">
+                    <#if interactive == "true">
                         <#if article.articleCommentCount !=0>
                             <span>
                                 <i class="nexmoefont iconfont solo-comment"></i>

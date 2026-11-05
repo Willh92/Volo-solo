@@ -63,7 +63,7 @@
                 </span>
             </div>
             <div class="right article-element">
-                <#if interactive=="on">
+                <#if interactive == "true">
                     <a rel="nofollow" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                         ${article.articleCommentCount}&nbsp;&nbsp;${commentLabel}
                     </a>&nbsp;&nbsp;

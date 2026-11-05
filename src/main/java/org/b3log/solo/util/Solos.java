@@ -400,11 +400,20 @@ public final class Solos {
                 final String userId = cookieJSONObject.optString(Keys.OBJECT_ID);
                 if (StringUtils.isNotBlank(userId)) {
                     final JSONObject user = userRepository.get(userId);
-                    if (null != user) {
+                    final boolean activeUser = null != user
+                            && user.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) == UserExt.USER_STATUS_C_VALID;
+                    if (!activeUser && refreshCookie) {
+                        expireAuthCookie(response);
+                    }
+                    if (activeUser) {
                         final String b3Key = user.optString(UserExt.USER_B3_KEY);
                         final String tokenVal = cookieJSONObject.optString(Keys.TOKEN);
                         final String token = StringUtils.substringBeforeLast(tokenVal, ":");
-                        if (StringUtils.equals(b3Key, token)) {
+                        final boolean tokenMatched = StringUtils.isNotEmpty(b3Key) && StringUtils.equals(b3Key, token);
+                        if (!tokenMatched && refreshCookie) {
+                            expireAuthCookie(response);
+                        }
+                        if (tokenMatched) {
                             if (refreshCookie) {
                                 login(user, response);
                                 request.setAttribute(CURRENT_USER_REFRESHED_ATTR, Boolean.TRUE);
@@ -472,6 +481,12 @@ public final class Solos {
                 org.b3log.latke.http.Sessions.CACHE.remove(session.getId());
             }
         }
+        if (null != response) {
+            expireAuthCookie(response);
+        }
+    }
+
+    private static void expireAuthCookie(final Response response) {
         if (null != response) {
             // Netty rejects null values. Remove the echoed incoming cookie before expiring it.
             response.getCookies().removeIf(existing -> COOKIE_NAME.equals(existing.getName()));
@@ -551,6 +566,21 @@ public final class Solos {
 
         if (StringUtils.isBlank(articleViewPwd)) {
             return false;
+        }
+
+        if (null == context) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(context.attr(org.b3log.solo.service.ShareTokenService.PREVIEW_ACCESS_ATTR))) {
+            return false;
+        }
+        try {
+            final org.b3log.solo.service.ShareTokenService shareTokenService =
+                    BeanManager.getInstance().getReference(org.b3log.solo.service.ShareTokenService.class);
+            if (null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article)) {
+                return false;
+            }
+        } catch (final Exception ignored) {
         }
 
         final Request request = context.getRequest();
@@ -642,6 +672,7 @@ public final class Solos {
         }
         final JSONObject copy = clone(user);
         copy.remove(UserExt.USER_B3_KEY);
+        copy.remove(UserExt.USER_PASSWORD_HASH);
         copy.remove(User.USER_PASSWORD);
         return copy;
     }

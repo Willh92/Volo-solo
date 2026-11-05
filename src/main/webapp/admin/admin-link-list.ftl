@@ -18,33 +18,42 @@
 
 -->
 <div>
+    <form class="form console-table-toolbar console-list-filter">
+        <div class="console-table-toolbar__group console-table-toolbar__group--grow">
+            <input id="linkListInput" type="search"/>
+            <button type="submit" class="search-btn">${searchLabel!'搜索'}</button>
+        </div>
+        <div class="console-table-toolbar__group">
+            <button id="checkLinksHealthBtn" type="button" class="console-btn-secondary" title="并发检测全部友链 HTTP 连通性与响应耗时（自动防御内网/本机 SSRF）" onclick="admin.linkList.checkHealth(this);">巡检友链存活</button>
+        </div>
+    </form>
     <div id="linkTable"></div>
     <div id="linkPagination" class="fn__margin12 fn__right"></div>
 </div>
 <div class="fn__clear"></div>
 <div class="form form__no-table">
-${addLinkLabel}
-    <label>${linkTitle1Label}</label>
+    <h3>${addLinkLabel!'添加链接'}</h3>
+    <label for="linkTitle">${linkTitle1Label}</label>
     <input id="linkTitle" type="text" autocomplete="off"/>
-    <label>${url1Label}</label>
+    <label for="linkAddress">${url1Label}</label>
     <input id="linkAddress" type="text" autocomplete="off"/>
-    <label>${linkDescription1Label}</label>
+    <label for="linkDescription">${linkDescription1Label}</label>
     <input id="linkDescription" type="text" autocomplete="off"/>
-    <label>${linkIcon1Label}</label>
-    <input id="linkIcon" type="text" autocomplete="off"/><br><br>
-    <button onclick="admin.linkList.add();" class="fn__right">${saveLabel}</button>
+    <label for="linkIcon">${linkIcon1Label}</label>
+    <input id="linkIcon" type="text" autocomplete="off"/>
+    <div class="console-form-actions"><button type="button" onclick="admin.linkList.add();">${saveLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 <div id="updateLink" class="fn__none form form__no-table" data-title="${updateLinkLabel}">
-    <label>${linkTitle1Label}</label>
+    <label for="linkTitleUpdate">${linkTitle1Label}</label>
     <input id="linkTitleUpdate" type="text" autocomplete="off"/>
-    <label>${url1Label}</label>
+    <label for="linkAddressUpdate">${url1Label}</label>
     <input id="linkAddressUpdate" type="text" autocomplete="off"/>
-    <label>${linkDescription1Label}</label>
+    <label for="linkDescriptionUpdate">${linkDescription1Label}</label>
     <input id="linkDescriptionUpdate" type="text" autocomplete="off"/>
-    <label>${linkIcon1Label}</label>
+    <label for="linkIconUpdate">${linkIcon1Label}</label>
     <input id="linkIconUpdate" type="text" autocomplete="off"/>
-        <div class="console-form-actions"><button onclick="admin.linkList.update();" class="fn__right">${updateLabel}</button></div>
+    <div class="console-form-actions"><button type="button" onclick="admin.linkList.update();">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

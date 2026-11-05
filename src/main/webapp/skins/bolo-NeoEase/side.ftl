@@ -34,7 +34,7 @@
             <#include "../../common-template/disclosure-toc.ftl" />
         </div>
         <#else>
-            <#if interactive=="on">
+            <#if interactive == "true">
                 <#if 0 !=recentComments?size>
                     <div>
                         <h4>

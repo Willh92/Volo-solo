@@ -74,7 +74,7 @@
                                 </a>
                         </#if>
                         <#if article.articleCommentCount !=0>
-                            <#if interactive=="on">
+                            <#if interactive == "true">
                                 <a class="item__meta" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                                     ${article.articleCommentCount} ${commentLabel}
                                 </a>

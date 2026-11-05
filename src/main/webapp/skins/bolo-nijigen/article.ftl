@@ -78,7 +78,7 @@
                                 ${articleTag}</a><#if articleTag_has_next>,</#if>
                             </#list>
                         </span>
-                        <#if interactive == "on">
+                        <#if interactive == "true">
                         <a class="tag" href="${servePath}${article.articlePermalink}#comments">
                             <i class="icon__comments"></i> ${article.articleCommentCount} ${commentLabel}
                         </a>
@@ -142,7 +142,7 @@
             </div>
             </#if>
 
-            <#if interactive == "on">
+            <#if interactive == "true">
             <@comments commentList=articleComments article=article></@comments>
             </#if>
 

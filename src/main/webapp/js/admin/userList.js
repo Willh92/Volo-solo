@@ -44,16 +44,26 @@ admin.userList = {
         style: 'padding-left: 12px;',
         text: Label.userNameLabel,
         index: 'userName',
-        width: 230,
+        width: 180,
+      }, {
+        style: 'padding-left: 12px;',
+        text: '验证邮箱',
+        index: 'userEmail',
+        width: 210,
       }, {
         style: 'padding-left: 12px;',
         text: Label.roleLabel,
         index: 'isAdmin',
-        width: 120,
+        width: 110,
+      }, {
+        style: 'padding-left: 12px;',
+        text: '状态',
+        index: 'statusText',
+        width: 90,
       }, {
         text: '操作',
         index: 'actions',
-        width: 230,
+        width: 250,
       }])
 
     this.tablePagination.initPagination()
@@ -77,9 +87,13 @@ admin.userList = {
     this.pageInfo.currentPage = pageNum
     var that = this
 
+    var roleFilter = $('#userRoleFilter').val() || 'all'
+    var keywordFilter = $.trim($('#userKeywordFilter').val() || '')
     $.ajax({
       url: Label.servePath + '/console/users/' + pageNum + '/' +
-        Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE,
+        Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE +
+        '?role=' + encodeURIComponent(roleFilter) +
+        (keywordFilter ? '&keyword=' + encodeURIComponent(keywordFilter) : ''),
       type: 'GET',
       cache: false,
       success: function (result, textStatus) {
@@ -112,8 +126,17 @@ admin.userList = {
           var safeId = encodeQuote(users[i].oId)
           var safeRole = encodeQuote(users[i].userRole)
           var encodedName = encodeQuote(users[i].userName)
+          var emailVal = users[i].userEmail ? escapeHtml(users[i].userEmail) : '<span style="opacity:.55">—</span>'
+          if (users[i].userEmail && users[i].userEmailVerified) {
+            emailVal += ' <span class="console-badge" style="font-size:11px;padding:1px 6px;border-radius:99px;background:rgba(45,106,91,.12);color:#2d6a5b;">已验证</span>'
+          }
+          var disabled = Number(users[i].userStatus || 0) === 1
           userData[i] = {}
-          userData[i].userName = escapeHtml(users[i].userName)
+          userData[i].userName = escapeHtml(typeof Util !== 'undefined' && Util.htmlDecode ? Util.htmlDecode(users[i].userName) : users[i].userName)
+          userData[i].userEmail = emailVal
+          userData[i].statusText = disabled
+            ? '<span style="color:#b42318;font-weight:600;">已禁用</span>'
+            : '<span style="color:#2d6a5b;">正常</span>'
 
           if ('adminRole' === users[i].userRole) {
             userData[i].isAdmin = '&nbsp;' + Label.administratorLabel
@@ -121,10 +144,14 @@ admin.userList = {
               safeId + '\', \'' + safeRole + '\')">' +
               Label.updateLabel + '</a>'
           } else {
+            var toggleLabel = disabled ? '解禁' : '禁用'
+            var nextStatus = disabled ? 0 : 1
             userData[i].actions = '<a class=\'console-row-action\' href=\'javascript:void(0)\' onclick="admin.userList.get(\'' +
               safeId + '\', \'' + safeRole + '\')">' +
-              Label.updateLabel + '</a>\
-                                <a href=\'javascript:void(0)\' onclick="admin.userList.del(\'' +
+              Label.updateLabel + '</a> ' +
+              '<a href=\'javascript:void(0)\' onclick="admin.userList.toggleStatus(\'' +
+              safeId + '\', ' + nextStatus + ')">' + toggleLabel + '</a> ' +
+              '<a href=\'javascript:void(0)\' onclick="admin.userList.del(\'' +
               safeId + '\', \'' + encodedName +
               '\')">' + Label.removeLabel + '</a> ' +
               '<a href=\'javascript:void(0)\' onclick="admin.userList.changeRole(\'' +
@@ -132,7 +159,7 @@ admin.userList = {
             if ('defaultRole' === users[i].userRole) {
               userData[i].isAdmin = Label.commonUserLabel
             } else {
-              userData[i].isAdmin = Label.visitorUserLabel
+              userData[i].isAdmin = '注册读者'
             }
           }
 
@@ -265,6 +292,21 @@ admin.userList = {
    * 修改角色
    * @param id
    */
+  toggleStatus: function (id, nextStatus) {
+    $('#tipMsg').text('')
+    $.ajax({
+      url: Label.servePath + '/console/user/' + id + '/status',
+      type: 'PUT',
+      cache: false,
+      data: JSON.stringify({ userStatus: nextStatus }),
+      success: function (result) {
+        $('#tipMsg').text(result.msg || '')
+        if (result.sc) {
+          admin.userList.getList(admin.userList.pageInfo.currentPage)
+        }
+      },
+    })
+  },
   changeRole: function (id) {
     $('#tipMsg').text('')
     $.ajax({

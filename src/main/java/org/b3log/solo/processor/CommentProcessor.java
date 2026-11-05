@@ -247,11 +247,19 @@ public class CommentProcessor {
 
         final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
         final boolean adminLoggedIn = Solos.isAdminLoggedIn(context);
-        if (!checkCommentCaptcha(context, requestJSONObject, adminLoggedIn)) return;
-        if (!adminLoggedIn && "off".equals(optionQueryService.getPreference().optString(Option.ID_C_INTERACTIVE, "on"))) {
-            AdminRequests.reject(context, 403, "本站暂未开放评论。");
-            return;
+        final JSONObject preference = optionQueryService.getPreference();
+        final String accessMode = Option.effectiveCommentAccessMode(preference);
+        if (!adminLoggedIn) {
+            if ("off".equals(accessMode)) {
+                AdminRequests.reject(context, 403, "本站当前已关闭评论。");
+                return;
+            }
+            if ("registered".equals(accessMode) && currentUser == null) {
+                AdminRequests.reject(context, 401, "本站仅限注册用户发表评论，请先登录或注册。");
+                return;
+            }
         }
+        if (!checkCommentCaptcha(context, requestJSONObject, adminLoggedIn)) return;
         String site = currentUser == null ? requestJSONObject.optString("boloSite") : currentUser.optString(User.USER_URL);
         // XSS 处理
         site = AntiXSS.getSafeStringXSS(site.trim());
@@ -283,12 +291,15 @@ public class CommentProcessor {
         }
         requestJSONObject.put(Comment.COMMENT_NAME, username);
 
-        final String email = currentUser == null ? requestJSONObject.optString("email").trim() : "";
+        final String email = currentUser == null
+                ? requestJSONObject.optString("email").trim()
+                : currentUser.optString(org.b3log.solo.model.UserExt.USER_EMAIL, "").trim();
         if (email.length() > 254 || (!email.isEmpty() && !email.matches("[^\\s@;:]+@[^\\s@;:]+\\.[^\\s@;:]+"))) {
             AdminRequests.reject(context, 400, "请填写有效的通知邮箱，或留空。");
             return;
         }
         requestJSONObject.put("email", email);
+        requestJSONObject.put(Comment.COMMENT_USER_ID, currentUser == null ? "" : currentUser.optString(Keys.OBJECT_ID, ""));
         requestJSONObject.put(org.b3log.solo.util.CommentOwnership.KEY_HASH,
                 adminLoggedIn ? "" : org.b3log.solo.util.CommentOwnership.hash(requestJSONObject.optString("visitorKey")));
         requestJSONObject.put(org.b3log.solo.util.IpAddresses.COMMENT_IP,
@@ -328,11 +339,20 @@ public class CommentProcessor {
                 // 管理员回复不发送邮件提醒
                 try {
                     String adminActiveSentToMailbox = Options.get(Option.ID_C_ADMIN_ACTIVE_SENT_TO_MAILBOX);
-                    if (adminActiveSentToMailbox.equals("off")) {
+                    if ("false".equalsIgnoreCase(adminActiveSentToMailbox)) {
                         sendEmailToAdmin = false;
                     }
                 } catch (Exception ignored) {
                 }
+            }
+        } else if (currentUser == null) {
+            try {
+                if (userRepository.getByUserName(username) != null) {
+                    jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
+                    jsonObject.put(Keys.MSG, "该昵称已被注册用户使用，请登录后评论或更换其他昵称。");
+                    return;
+                }
+            } catch (final RepositoryException ignored) {
             }
         }
 
@@ -343,35 +363,41 @@ public class CommentProcessor {
 
         JSONObject addResult = null;
         try {
+            final int initialStatus = commentMgmtService.resolveInitialStatus(
+                    preference,
+                    adminLoggedIn,
+                    requestJSONObject.optString(Comment.COMMENT_USER_ID),
+                    requestJSONObject.optString(Comment.COMMENT_CONTENT));
+            requestJSONObject.put(Comment.COMMENT_STATUS, initialStatus);
+            final boolean isPending = initialStatus == Comment.COMMENT_STATUS_C_PENDING;
+
             addResult = commentMgmtService.addArticleComment(requestJSONObject);
             commentPersisted = true;
             // The article row is only needed to send notifications and render this response.
             // Never return its source, password or other internal fields to a public caller.
             addResult.remove(Article.ARTICLE);
 
-            // 用户关系表
             String commentId = addResult.optString("oId");
-            // Notification email is saved with the comment in the same transaction.
-
-            // 提醒被回复的用户
             String originalCommentId = "";
             String blogSite = Latkes.getServePath();
-            String blogTitle = optionQueryService.getPreference().getString(Option.ID_C_BLOG_TITLE);
-            try {
-                originalCommentId = requestJSONObject.getString("commentOriginalCommentId");
-                CommentMailService.remindCommentedGuy(
-                        originalCommentId,
-                        blogSite,
-                        username,
-                        blogTitle);
-            } catch (JSONException jsonException) {
-                LOGGER.log(Level.DEBUG,
-                        "No originalCommentId for [from=" + commentId + ", to=" + originalCommentId + "]");
+            String blogTitle = preference == null ? "Volo" : preference.optString(Option.ID_C_BLOG_TITLE, "Volo");
+
+            if (!isPending) {
+                try {
+                    originalCommentId = requestJSONObject.getString("commentOriginalCommentId");
+                    CommentMailService.remindCommentedGuy(
+                            originalCommentId,
+                            blogSite,
+                            username,
+                            blogTitle);
+                } catch (JSONException jsonException) {
+                    LOGGER.log(Level.DEBUG,
+                            "No originalCommentId for [from=" + commentId + ", to=" + originalCommentId + "]");
+                }
             }
 
             // 提醒博主
             if (sendEmailToAdmin) {
-                // 邮件提醒
                 String replyRemindMailBoxAddress = "";
                 try {
                     replyRemindMailBoxAddress = optionRepository.get(Option.ID_C_REPLY_REMIND)
@@ -379,7 +405,7 @@ public class CommentProcessor {
                 } catch (NullPointerException e) {
                 }
                 String user = requestJSONObject.getString("commentName");
-                String comment = requestJSONObject.getString("commentContent");
+                String comment = (isPending ? "[待审核] " : "") + requestJSONObject.getString("commentContent");
                 try {
                     CommentMailService.remindAdmin(
                             replyRemindMailBoxAddress,
@@ -390,7 +416,6 @@ public class CommentProcessor {
                 } catch (JSONException jsonException) {
                     LOGGER.log(Level.DEBUG, "Send admin mail reminder failed.");
                 }
-                // Server酱提醒
                 ServerJiangService.remindAdmin(
                         blogSite,
                         user,
@@ -398,23 +423,25 @@ public class CommentProcessor {
                         blogTitle);
             }
 
-            final Map<String, Object> dataModel = commentTemplateModel(addResult);
+            if (isPending) {
+                addResult.put("pending", true);
+                addResult.put(Keys.MSG, "评论已提交，待博主审核通过后公开显示。");
+            } else {
+                final Map<String, Object> dataModel = commentTemplateModel(addResult);
+                try {
+                    final String skinDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
+                    final Template template = Skins.getSkinTemplate(context, "common-comment.ftl");
+                    Skins.fillLangs(preference == null ? "zh_CN" : preference.optString(Option.ID_C_LOCALE_STRING), skinDirName, dataModel);
+                    Keys.fillServer(dataModel);
+                    final StringWriter stringWriter = new StringWriter();
+                    template.process(dataModel, stringWriter);
+                    stringWriter.close();
+                    final String cmtTpl = stringWriter.toString();
 
-            // 添加评论优化 https://github.com/b3log/solo/issues/12246
-            try {
-                final String skinDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
-                final Template template = Skins.getSkinTemplate(context, "common-comment.ftl");
-                final JSONObject preference = optionQueryService.getPreference();
-                Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), skinDirName, dataModel);
-                Keys.fillServer(dataModel);
-                final StringWriter stringWriter = new StringWriter();
-                template.process(dataModel, stringWriter);
-                stringWriter.close();
-                final String cmtTpl = stringWriter.toString();
-
-                addResult.put("cmtTpl", cmtTpl);
-            } catch (final Exception e) {
-                LOGGER.log(Level.WARN, "Comment saved, but its skin template could not be rendered.");
+                    addResult.put("cmtTpl", cmtTpl);
+                } catch (final Exception e) {
+                    LOGGER.log(Level.WARN, "Comment saved, but its skin template could not be rendered.");
+                }
             }
 
             addResult.put(org.b3log.solo.model.Common.STATUS_CODE, true);

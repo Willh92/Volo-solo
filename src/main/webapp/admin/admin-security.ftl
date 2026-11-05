@@ -14,15 +14,15 @@
         </section>
         <div class="console-preference-field">
             <label for="riskControlEnabled">自动风控</label>
-            <select id="riskControlEnabled"><option value="on">启用</option><option value="off">暂停自动风控</option></select>
+            <select id="riskControlEnabled"><option value="true">启用</option><option value="false">暂停自动风控</option></select>
             <p class="console-form-help">识别路径遍历、敏感文件和脚本扫描、高频 404、未授权或无效请求及请求洪泛。普通风控自动封禁 24 小时，到期自动解封；明确的 XSS 注入永久封禁。记录来源和触发原因。已登录管理员和内网地址不进入风控计数，可信反代使用解析后的访客 IP。</p>
             <p class="console-form-help">路径遍历立即触发；2 分钟内 3 个不同探测路径或 8 次探测、20 个不同 404 路径或 60 次 404、40 次拒绝响应或 480 次非静态请求触发临时封禁。普通缺失图片、脚本和样式不计入通用 404 规则。登录重试与评论防刷仍独立生效。</p>
         </div>
         <div class="console-preference-field">
             <label for="wafPower">${securityPowerLabel}</label>
             <select id="wafPower" aria-describedby="securityDescription">
-                <option value="on" selected="">${enableLabel}</option>
-                <option value="off">${disableLabel}</option>
+                <option value="true" selected="">${enableLabel}</option>
+                <option value="false">${disableLabel}</option>
             </select>
             <p id="securityDescription" class="console-form-help">${securityDescribeLabel}</p>
             <p class="console-form-help">${clientAddressLabel!'识别的访客 IP'}：<code>${(securityClientAddress!'—')?html}</code><br>${proxyPeerAddressLabel!'连接到 Java 的 IP'}：<code>${(securityPeerAddress!'—')?html}</code><br>${proxyAddressHelpLabel}</p>
@@ -115,8 +115,8 @@
                     <div class="console-preference-field">
                         <label for="totpEnabled">登录 2FA 状态</label>
                         <select id="totpEnabled" onchange="admin.security.syncTotpToggleVerify()">
-                            <option value="off">停用</option>
-                            <option value="on">启用 2FA 验证</option>
+                            <option value="false">停用</option>
+                            <option value="true">启用 2FA 验证</option>
                         </select>
                         <p class="console-form-help">绑定密钥后默认自动启用；启用期间后台登录图形验证码自动关闭，停用或解绑后自动恢复图形验证码保护。</p>
                     </div>
@@ -209,7 +209,7 @@
                 <div class="console-preference-field">
                     <label for="geoAccessActive">地区访问限制</label>
                     <select id="geoAccessActive">
-                        <option value="off">暂停地区限制</option><option value="on">启用规则列表</option>
+                        <option value="false">暂停地区限制</option><option value="true">启用规则列表</option>
                     </select>
                 </div>
                 <div class="console-geo-rule-heading">
@@ -235,10 +235,28 @@
 <#if securitySection == 'comments'>
 <div data-security-page="comments" class="form">
         <div class="console-preference-field">
+            <label for="commentAccessMode">评论发表权限</label>
+            <select id="commentAccessMode">
+                <option value="all">允许游客与注册用户评论（默认）</option>
+                <option value="registered">仅限注册登录用户发表评论</option>
+                <option value="off">关闭全站评论</option>
+            </select>
+            <p class="console-form-help">设为“仅限注册登录用户”时，未登录访客点击评论框将引导登录；如需开放前台读者邮箱注册，请前往 <a href="#tools/preference/interactive">偏好设定 &rarr; 前端开放设置</a> 开启。管理员评论不受影响。</p>
+        </div>
+        <div class="console-preference-field">
+            <label for="commentModerationMode">评论审核策略</label>
+            <select id="commentModerationMode">
+                <option value="off">直接公开（经敏感词过滤后立即展示）</option>
+                <option value="smart">智能审核（游客、首次评论或含多条外链进入待审）</option>
+                <option value="all">全部先审后发（所有非管理员评论均需审核）</option>
+            </select>
+            <p class="console-form-help">待审核评论不会公开展示或计入文章评论数，可在“评论管理”中一键通过或驳回。</p>
+        </div>
+        <div class="console-preference-field">
             <label for="commentFilterBuiltin">评论敏感词库</label>
             <select id="commentFilterBuiltin" aria-describedby="commentFilterDescription">
-                <option value="on">启用内置第三方词库</option>
-                <option value="off">仅使用自定义过滤词</option>
+                <option value="true">启用内置第三方词库</option>
+                <option value="false">仅使用自定义过滤词</option>
             </select>
             <p id="commentFilterDescription" class="console-form-help">使用 sensitive-word 在服务器本地过滤，不会向外部服务发送评论。规则同时用于访客发表和编辑评论；管理员可保留原文进行管理。</p>
         </div>
@@ -252,7 +270,7 @@
             <textarea id="commentFilterAllow" rows="3" maxlength="20000" aria-describedby="commentFilterAllowHelp"></textarea>
             <p id="commentFilterAllowHelp" class="console-form-help">用于允许被误判的词语或短语，填写方式同上；同一条评论中的其他过滤词仍会拦截。</p>
         </div>
-        <div class="console-preference-field"><label for="commentCaptchaEnabled">游客评论验证码</label><select id="commentCaptchaEnabled"><option value="on">启用（默认）</option><option value="off">停用</option></select><p class="console-form-help">游客发表和编辑评论时验证本地图片验证码，已登录管理员免验证。后台登录在未启用 2FA 时开启图片验证码，启用 2FA 后自动关闭。</p></div>
+        <div class="console-preference-field"><label for="commentCaptchaEnabled">游客评论验证码</label><select id="commentCaptchaEnabled"><option value="true">启用（默认）</option><option value="false">停用</option></select><p class="console-form-help">游客发表和编辑评论时验证本地图片验证码，已登录管理员免验证。后台登录在未启用 2FA 时开启图片验证码，启用 2FA 后自动关闭。</p></div>
         <div class="console-form-actions"><button type="button" onclick="admin.security.saveSettings()">${updateLabel}</button></div>
 </div>
 </#if>

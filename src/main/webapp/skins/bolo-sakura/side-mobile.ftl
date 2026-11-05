@@ -68,7 +68,7 @@
         ${statistic.statisticBlogViewCount}
         <span>${articleLabel}</span>
         ${statistic.statisticPublishedBlogArticleCount}
-        <#if interactive == "on">
+        <#if interactive == "true">
         <span>${commentLabel}</span>
         ${statistic.statisticPublishedBlogCommentCount}<br>
         </#if>

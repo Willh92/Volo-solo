@@ -23,14 +23,14 @@ public record SmtpSettings(String host, int port, String security, boolean auth,
         catch (NumberFormatException invalid) { throw new IllegalArgumentException("SMTP 端口应为 1 至 65535。"); }
         if (port < 1 || port > 65535) throw new IllegalArgumentException("SMTP 端口应为 1 至 65535。");
         if (host.length() > 253 || !host.isEmpty() && !host.matches("[A-Za-z0-9_.:\\[\\]-]+")) throw new IllegalArgumentException("SMTP 服务器请填写主机名或 IP，不包含协议、路径或空白。");
-        final String auth = data.optString("smtpAuth", "on");
-        if (!auth.isEmpty() && !Set.of("on", "off").contains(auth)) throw new IllegalArgumentException("SMTP 身份验证配置不正确。");
+        final String auth = data.optString("smtpAuth", "true").strip();
+        if (!auth.isEmpty() && !Set.of("true", "false").contains(auth)) throw new IllegalArgumentException("SMTP 身份验证配置不正确。");
         final String user = data.optString("mailUsername").strip(), password = data.optString("mailPassword");
         if (user.length() > 254 || user.chars().anyMatch(Character::isISOControl) || password.length() > 1024) throw new IllegalArgumentException("SMTP 用户名或密码过长，或含有无效字符。");
         final String from = data.optString("smtpFrom", user).strip();
         final String sender = from.isEmpty() ? user : from;
         if (!host.isEmpty() && !sender.matches("[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+")) throw new IllegalArgumentException("请填写有效的 SMTP 发件人邮箱地址。");
-        return new SmtpSettings(host, port, security, !auth.equals("off"), user, password, sender);
+        return new SmtpSettings(host, port, security, !"false".equals(auth), user, password, sender);
     }
     public boolean configured() { return !host.isBlank() && (!auth || !username.isBlank() && !password.isEmpty()); }
     public Properties properties() {
@@ -47,6 +47,6 @@ public record SmtpSettings(String host, int port, String security, boolean auth,
     }
     public void fill(final JSONObject data) {
         data.put("smtpHost", host).put("smtpPort", Integer.toString(port)).put("smtpSecurity", security)
-                .put("smtpAuth", auth ? "on" : "off").put("smtpFrom", from);
+                .put("smtpAuth", Boolean.toString(auth)).put("smtpFrom", from);
     }
 }

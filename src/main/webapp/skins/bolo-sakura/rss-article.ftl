@@ -40,7 +40,7 @@
                                     src="${article.authorThumbnailURL}"></a></span><span><a
                                 href="${servePath}/authors/${article.articleAuthorId}">${article.authorName}</a></span><span
                             class="bull">·</span>${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}<span
-                            class="bull">·</span>${article.articleViewCount} 次阅读<#if interactive == "on"><span
+                            class="bull">·</span>${article.articleViewCount} 次阅读<#if interactive == "true"><span
                             class="bull">·</span>${article.articleCommentCount} ${commentLabel}</#if></p>
                 <#if article.articleCategory??>
                     <#if article.has("categoryURI") && article.articleCategory != ''>
@@ -58,7 +58,7 @@
                 <main id="main" class="site-main" role="main">
                     <article class="post-4491 post type-post status-publish format-standard has-post-thumbnail hentry category-hacking tag-graphql tag-javascript tag-wordpress">
                         <#include "../../common-template/inline-toc.ftl">
-                        <div class="entry-content">
+                        <div class="entry-content vditor-reset">
                             ${article.articleContent}
                             <#if "" != article.articleSign.signHTML?trim>
                                 <div>
@@ -74,7 +74,7 @@
             </div>
         </div>
 
-        <#if interactive == "on">
+        <#if interactive == "true">
         <section class="comments">
             <ul class="commentwrap">
                 <@comments commentList=articleComments article=article count=article.articleCommentCount></@comments>

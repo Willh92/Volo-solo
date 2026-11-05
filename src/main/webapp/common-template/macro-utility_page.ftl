@@ -42,7 +42,7 @@
         <div class="utility-actions">
             <a class="utility-button" href="${servePath}/">回到首页 <span aria-hidden="true">↗</span></a>
             <#if retry><button type="button" class="utility-button utility-button--secondary" onclick="location.reload()">重新尝试</button>
-            <#elseif code == "404" || code == "410"><a class="utility-button utility-button--secondary" href="${servePath}/search">搜索文章</a></#if>
+            <#elseif code == "404" || code == "410"><a class="utility-button utility-button--secondary" href="${servePath}/search"<#if enableInstantSearch!true> data-volo-search-trigger</#if>>搜索文章</a></#if>
         </div>
         <#if redirectSeconds gt 0><p class="utility-return" data-home-countdown="${redirectSeconds}" data-home-url="${servePath}/">将在 <span data-countdown-value>${redirectSeconds}</span> 秒后返回首页。<button type="button" data-countdown-cancel>留在此页</button></p></#if>
     </div>

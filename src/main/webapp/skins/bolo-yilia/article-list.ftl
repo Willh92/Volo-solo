@@ -64,7 +64,7 @@
                         </a>
                     </#list>
                 </div>
-                <#if interactive=="on">
+                <#if interactive == "true">
                     <#if article.articleCommentCount !=0>
                         <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments"
                             class="vditor-tooltipped__n vditor-tooltipped link fn__flex-center"

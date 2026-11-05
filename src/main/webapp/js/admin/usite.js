@@ -23,7 +23,30 @@
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  */
 
-var usiteJSON = {};
+var DEFAULT_USITE = {
+  usiteUserId: '',
+  usiteResume: '',
+  usiteWeiBo: '',
+  usiteQQMusic: '',
+  usiteStackOverflow: '',
+  usiteDribbble: '',
+  usiteGitHub: '',
+  usiteMedium: '',
+  usiteTwitter: '',
+  usiteQQ: '',
+  usiteLinkedIn: '',
+  usiteSteam: '',
+  oId: '',
+  usiteInstagram: '',
+  usiteCodePen: '',
+  usiteWYMusic: '',
+  usiteWeChat: '',
+  usiteZhiHu: '',
+  usiteBehance: '',
+  usiteTelegram: '',
+  usiteFacebook: ''
+};
+var usiteJSON = Object.assign({}, DEFAULT_USITE);
 
 /* usite 相关操作 */
 admin.usite = {
@@ -42,40 +65,21 @@ admin.usite = {
       timeout: 30000,
       success: function (data) {
         if (data.code !== 200) { admin.showNotice('无法读取联系方式，请重试。', 'error'); return; }
-        if (data.msg === '') {
-          usiteJSON = $.parseJSON('' +
-            '\n' +
-            '{\n' +
-            '    "usiteUserId": "",\n' +
-            '    "usiteResume": "",\n' +
-            '    "usiteWeiBo": "",\n' +
-            '    "usiteQQMusic": "",\n' +
-            '    "usiteStackOverflow": "",\n' +
-            '    "usiteDribbble": "",\n' +
-            '    "usiteGitHub": "",\n' +
-            '    "usiteMedium": "",\n' +
-            '    "usiteTwitter": "",\n' +
-            '    "usiteQQ": "",\n' +
-            '    "usiteLinkedIn": "",\n' +
-            '    "usiteSteam": "",\n' +
-            '    "oId": "",\n' +
-            '    "usiteInstagram": "",\n' +
-            '    "usiteCodePen": "",\n' +
-            '    "usiteWYMusic": "",\n' +
-            '    "usiteWeChat": "",\n' +
-            '    "usiteZhiHu": "",\n' +
-            '    "usiteBehance": "",\n' +
-            '    "usiteTelegram": "",\n' +
-            '    "usiteFacebook": ""\n' +
-            '}\n' +
-            '\n');
+        if (!data.msg) {
+          usiteJSON = Object.assign({}, DEFAULT_USITE);
         } else {
-          usiteJSON = $.parseJSON(data.msg);
+          try {
+            usiteJSON = Object.assign({}, DEFAULT_USITE, $.parseJSON(data.msg));
+          } catch (e) {
+            usiteJSON = Object.assign({}, DEFAULT_USITE);
+          }
         }
 
         admin.usite.loaded = true;
         for (var i in usiteJSON) {
-          $('#' + i).val(usiteJSON[i]);
+          if (i !== 'usiteUserId' && i !== 'oId') {
+            $('#' + i).val(usiteJSON[i]);
+          }
         }
       },
       error: function (xhr, status) { admin.handleRequestError(xhr, status); },
@@ -94,11 +98,15 @@ admin.usite = {
   update: function () {
     if (this.saving || this.loaded === false) return;
     for (var i in usiteJSON) {
+      if (i === 'usiteUserId' || i === 'oId') {
+        usiteJSON[i] = usiteJSON[i] || '';
+        continue;
+      }
       let value = $('#' + i).val();
-      if (value === undefined) {
+      if (value === undefined || value === null) {
         value = '';
       }
-      usiteJSON[i] = value;
+      usiteJSON[i] = String(value).trim();
     }
     let newResult = JSON.stringify(usiteJSON);
 
@@ -116,6 +124,14 @@ admin.usite = {
       dataType: 'json',
       data: newResult,
       success: function (data) {
+        if (data && data.code === 200 && data.data && typeof data.data === 'object') {
+          usiteJSON = Object.assign({}, DEFAULT_USITE, data.data);
+          for (var k in usiteJSON) {
+            if (k !== 'usiteUserId' && k !== 'oId') {
+              $('#' + k).val(usiteJSON[k]);
+            }
+          }
+        }
         admin.showNotice(data.msg || (data.code === 200 ? '联系方式已保存。' : '联系方式保存失败，请检查后重试。'), data.code === 200 ? 'info' : 'error');
       },
       error: function (xhr, reason) { admin.handleRequestError(xhr, reason); },

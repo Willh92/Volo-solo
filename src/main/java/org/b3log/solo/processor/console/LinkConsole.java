@@ -70,6 +70,25 @@ public class LinkConsole {
     @Inject
     private LangPropsService langPropsService;
 
+    @Inject
+    private org.b3log.solo.service.LinkHealthService linkHealthService;
+
+    public void checkLinksHealth(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) {
+            return;
+        }
+        try {
+            final JSONObject summary = linkHealthService.checkAllLinks();
+            summary.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+            summary.put(Keys.MSG, String.format("友链巡检完成：共 %d 条，正常 %d 条，异常 %d 条。",
+                    summary.optInt("total"), summary.optInt("healthy"), summary.optInt("unhealthy")));
+            context.renderJSON(summary);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Check links health failed", e);
+            org.b3log.solo.util.AdminRequests.reject(context, 503, "友链巡检失败，请稍后重试。");
+        }
+    }
+
     /**
      * Removes a link by the specified request.
      * <p>
@@ -296,12 +315,16 @@ public class LinkConsole {
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
 
+            final JSONObject healthMap = null == linkHealthService ? null : linkHealthService.getHealthMap();
             final JSONArray links = result.optJSONArray(Link.LINKS);
             for (int i = 0; i < links.length(); i++) {
                 final JSONObject link = links.optJSONObject(i);
                 String title = link.optString(Link.LINK_TITLE);
                 title = StringEscapeUtils.escapeXml11(title);
                 link.put(Link.LINK_TITLE, title);
+                if (null != linkHealthService) {
+                    linkHealthService.attachHealth(link, healthMap);
+                }
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);

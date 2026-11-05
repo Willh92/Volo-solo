@@ -89,7 +89,7 @@
         </div>
     </#if>
 
-    <#if interactive == "on">
+    <#if interactive == "true">
     <#if 0 != mostCommentArticles?size>
         <div class="module item">
             <header class="module__header">${mostCommentArticlesLabel}</header>
@@ -134,7 +134,7 @@
                 ${statistic.statisticPublishedBlogArticleCount}
                 ${articleLabel}
                 </a>
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <a href="${servePath}/dynamic.html" class="fn__flex-1 ft__center">
                 ${statistic.statisticPublishedBlogCommentCount}
                 ${commentLabel}

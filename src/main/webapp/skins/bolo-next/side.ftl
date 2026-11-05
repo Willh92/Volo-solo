@@ -30,8 +30,8 @@
         </section>
     <#else>
     <section>
-        <img class="site-author-image" src="${adminUser.userAvatar}" title="${userName}"/>
-        <p class="site-author-name">${userName}</p>
+        <img class="site-author-image" src="${adminUser.userAvatar}" title="${(adminUser.userName!'')?html}" alt="${(adminUser.userName!'')?html}"/>
+        <p class="site-author-name">${(adminUser.userName!'')?html}</p>
         <#if "" != noticeBoard>
         <p class="site-description motion-element">${blogSubtitle}</p>
         </#if>

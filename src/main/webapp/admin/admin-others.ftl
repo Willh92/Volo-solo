@@ -44,6 +44,21 @@
                 <a href="#tools/others/tag">${clearDataLabel}</a>
             </div>
         </li>
+        <li>
+            <div id="tabOthers_media">
+                <a href="#tools/others/media" onclick="admin.others.loadMediaLibrary();">本地图床媒体库</a>
+            </div>
+        </li>
+        <li>
+            <div id="tabOthers_backups">
+                <a href="#tools/others/backups" onclick="admin.others.loadLocalBackups();">本地滚动备份</a>
+            </div>
+        </li>
+        <li>
+            <div id="tabOthers_webhooks">
+                <a href="#tools/others/webhooks" onclick="admin.others.loadWebhooks();">Webhook 推送</a>
+            </div>
+        </li>
         <#if b3logEnabled || fishpiEnabled>
             <li>
                 <div id="tabOthers_commentSync">
@@ -64,6 +79,96 @@
     <div id="tabOthersPanel_tag" class="fn__none">
         <button class="fn__margin12" onclick="admin.others.removeUnusedTags();">${removeUnusedTagsLabel}</button>
         <button class="fn__margin12" onclick="admin.others.removeUnusedArchives();">${removeUnusedArchivesLabel}</button>
+    </div>
+    <div id="tabOthersPanel_media" class="fn__none form">
+        <section class="console-utility-section">
+            <h3>本地图床媒体库</h3>
+            <p class="console-form-help" id="mediaLibrarySummary">浏览本地图床目录中的已上传图片，一键复制 Markdown 引用，或全表扫描清理孤儿图片。</p>
+            <div class="console-inline-bar">
+                <input id="mediaSearchInput" type="search" placeholder="按文件名过滤..." aria-label="按文件名过滤" oninput="admin.others.loadMediaLibrary()"/>
+                <button type="button" onclick="admin.others.loadMediaLibrary()">刷新列表</button>
+                <button type="button" onclick="admin.others.scanOrphanMedia(this)">扫描未引用孤儿图片</button>
+                <button id="deleteAllOrphansBtn" type="button" class="fn__none" onclick="admin.others.deleteAllOrphans(this)">一键清理全部孤儿图片</button>
+            </div>
+            <div id="mediaLibraryGrid" class="console-media-grid"></div>
+        </section>
+    </div>
+    <div id="tabOthersPanel_backups" class="fn__none form">
+        <section class="console-utility-section">
+            <h3>定时本地滚动备份</h3>
+            <p class="console-form-help">按日自动归档整站 JSON 数据与全部 Markdown 文稿（含 Front Matter），自动清理超出保留份数的历史归档。</p>
+            <div class="console-form-grid console-form-grid--3">
+                <div class="console-form-cell">
+                    <label for="localBackupKeepCountInput">最多保留历史份数（1~90）</label>
+                    <input id="localBackupKeepCountInput" type="number" min="1" max="90" value="7"/>
+                </div>
+                <div class="console-form-cell">
+                    <label for="localBackupDirInput">归档存储目录</label>
+                    <input id="localBackupDirInput" type="text" value="backups" placeholder="相对或绝对路径，默认 backups"/>
+                </div>
+                <div class="console-form-cell">
+                    <label class="checkbox" for="localBackupAutoInput">
+                        <input id="localBackupAutoInput" type="checkbox"/>
+                        <span>启用每日自动滚动备份</span>
+                    </label>
+                </div>
+            </div>
+            <div class="console-inline-bar">
+                <button type="button" onclick="admin.others.saveLocalBackupConfig(this)">保存备份策略</button>
+                <button type="button" onclick="admin.others.runLocalBackupNow(this)">立即生成一份归档</button>
+                <button type="button" onclick="admin.others.loadLocalBackups()">刷新归档列表</button>
+            </div>
+            <div class="console-simple-table-wrap"><table id="localBackupsTable" class="console-simple-table"></table></div>
+        </section>
+    </div>
+    <div id="tabOthersPanel_webhooks" class="fn__none form">
+        <section class="console-utility-section">
+            <h3>通用 Webhook 消息推送</h3>
+            <p class="console-form-help">支持飞书、企业微信、钉钉（支持加签）、Bark、Telegram 与自定义 JSON（含 HMAC-SHA256 签名头），内置公网地址校验防止 SSRF，已保存密钥全程脱敏。</p>
+            <input id="webhookEditId" type="hidden" value=""/>
+            <div class="console-form-grid">
+                <div class="console-form-cell">
+                    <label for="webhookName">通道名称</label>
+                    <input id="webhookName" type="text" placeholder="例如：运维飞书群"/>
+                </div>
+                <div class="console-form-cell">
+                    <label for="webhookProvider">平台类型</label>
+                    <select id="webhookProvider">
+                        <option value="feishu">飞书机器人 (Feishu)</option>
+                        <option value="wecom">企业微信机器人 (WeCom)</option>
+                        <option value="dingtalk">钉钉机器人 (DingTalk)</option>
+                        <option value="bark">Bark (iOS 推送)</option>
+                        <option value="telegram">Telegram Bot</option>
+                        <option value="custom">自定义 JSON (X-Volo-Signature)</option>
+                    </select>
+                </div>
+                <div class="console-form-cell console-form-cell--full">
+                    <label for="webhookUrl">Webhook URL（仅限公网 HTTP/HTTPS）</label>
+                    <input id="webhookUrl" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."/>
+                </div>
+                <div class="console-form-cell">
+                    <label for="webhookSecret">签名密钥 / Secret</label>
+                    <input id="webhookSecret" type="password" autocomplete="new-password" placeholder="可选加签密钥（编辑时留空则保持原密钥不变）"/>
+                </div>
+                <div class="console-form-cell">
+                    <label for="webhookChatId">Telegram Chat ID</label>
+                    <input id="webhookChatId" type="text" placeholder="仅 Telegram 需要，例如：-100123456789"/>
+                </div>
+            </div>
+            <div class="console-checkbox-group">
+                <label class="checkbox" for="webhookEnabled"><input id="webhookEnabled" type="checkbox" checked="checked"/><span>启用该通道</span></label>
+                <label class="checkbox"><input type="checkbox" name="webhookEvent" value="comment" checked="checked"/><span>新评论通知</span></label>
+                <label class="checkbox"><input type="checkbox" name="webhookEvent" value="moderation" checked="checked"/><span>待审评论提醒</span></label>
+                <label class="checkbox"><input type="checkbox" name="webhookEvent" value="register" checked="checked"/><span>新读者注册</span></label>
+                <label class="checkbox"><input type="checkbox" name="webhookEvent" value="security" checked="checked"/><span>安全封禁告警</span></label>
+                <label class="checkbox"><input type="checkbox" name="webhookEvent" value="backup" checked="checked"/><span>自动备份完成</span></label>
+            </div>
+            <div class="console-inline-bar">
+                <button type="button" onclick="admin.others.saveWebhook(this)">保存 Webhook 通道</button>
+                <button type="button" onclick="admin.others.resetWebhookForm()">清空表单</button>
+            </div>
+            <div class="console-simple-table-wrap"><table id="webhooksTable" class="console-simple-table"></table></div>
+        </section>
     </div>
     <div id="tabOthersPanel_data" class="fn__none">
         <#if supportExport>

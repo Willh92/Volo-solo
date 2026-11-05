@@ -87,7 +87,7 @@
           <div class="articleMeta__info">
             <span class="author">@${article.authorName} &nbsp;${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}
             </span>
-            <#if interactive=="on">
+            <#if interactive == "true">
               <span class="comments">
                 <a href="${servePath}${article.articlePermalink}#comments">
                   ${article.articleCommentCount} ${commentLabel}

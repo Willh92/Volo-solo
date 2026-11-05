@@ -43,7 +43,7 @@
                             <span class="article-meta"><span class="article-meta__separator">|</span>
                             <i class="fas fa-boxes article-meta__icon"></i>
                             <a class="article-meta__categories">${article.articleViewCount} ${viewLabel}</a>
-                            <#if interactive == "on">
+                            <#if interactive == "true">
                             <span class="article-meta__separator">|</span>
                             <i class="fas fa-comment"></i>
                             <a class="article-meta__categories">${article.articleCommentCount} ${commentLabel}</a>
@@ -124,51 +124,53 @@
                 </div>
                 <#if usite??>
                 <div class="card-info-social-icons is-center">
-                    <#if usite.usiteResume !=''>
-                        <a class="social-icon" target="_blank" title="个人简历"
-                           href="${usite.usiteResume}">
+                    <#assign resumeURL=(usite.usiteResume!"")?trim>
+                    <#if resumeURL?starts_with("https://") || resumeURL?starts_with("http://") || (resumeURL?starts_with("/") && !resumeURL?starts_with("//"))>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="个人简历"
+                           href="${resumeURL?html}">
                             <i class="fa fa-id-card"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteQQ !=''>
-                        <a class="social-icon" target="_blank" title="QQ"
-                           href="tencent://message/?uin=${usite.usiteQQ}">
+                    <#if (usite.usiteQQ!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="QQ"
+                           href="tencent://message/?uin=${usite.usiteQQ?html}">
                             <i class="fab fa-qq"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteWeChat !=''>
-                        <a class="social-icon" title="WeChat"
-                           href="javascript:alert('我的微信号：${usite.usiteWeChat}')">
+                    <#if (usite.usiteWeChat!"")?has_content>
+                        <a class="social-icon" title="WeChat" href="#wechat" role="button"
+                           data-wechat="${usite.usiteWeChat?html}"
+                           onclick="alert('我的微信号：' + this.getAttribute('data-wechat')); return false;">
                             <i class="fab fa-weixin"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteWeiBo !=''>
-                        <a class="social-icon" target="_blank" title="Weibo"
-                           href="https://weibo.com/${usite.usiteWeiBo}">
+                    <#if (usite.usiteWeiBo!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="Weibo"
+                           href="https://weibo.com/${usite.usiteWeiBo?html}">
                             <i class="fab fa-weibo"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteGitHub !=''>
-                        <a class="social-icon" target="_blank" title="Github"
-                           href="https://github.com/${usite.usiteGitHub}">
+                    <#if (usite.usiteGitHub!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="Github"
+                           href="https://github.com/${usite.usiteGitHub?html}">
                             <i class="fab fa-github"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteTwitter !=''>
-                        <a class="social-icon" target="_blank" title="Twitter"
-                           href="https://twitter.com/${usite.usiteTwitter}">
+                    <#if (usite.usiteTwitter!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="Twitter"
+                           href="https://twitter.com/${usite.usiteTwitter?html}">
                             <i class="fab fa-twitter"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteFacebook !=''>
-                        <a class="social-icon" target="_blank" title="Facebook"
-                           href="https://www.facebook.com/${usite.usiteFacebook}">
+                    <#if (usite.usiteFacebook!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="Facebook"
+                           href="https://www.facebook.com/${usite.usiteFacebook?html}">
                             <i class="fab fa-facebook"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteTelegram !=''>
-                        <a class="social-icon" target="_blank" title="Telegram"
-                           href="https://telegram.me/${usite.usiteTelegram}">
+                    <#if (usite.usiteTelegram!"")?has_content>
+                        <a class="social-icon" target="_blank" rel="noopener noreferrer nofollow" title="Telegram"
+                           href="https://telegram.me/${usite.usiteTelegram?html}">
                             <i class="fab fa-telegram"></i>
                         </a>
                     </#if>
@@ -289,7 +291,7 @@
                         <div class="webinfo-runtime-name">${articleCount1Label}</div>
                         <div class="webinfo-runtime-count">${statistic.statisticPublishedBlogArticleCount}</div>
                     </div>
-                    <#if interactive == "on">
+                    <#if interactive == "true">
                     <div class="webinfo-item">
                         <div class="webinfo-runtime-name">${commentCount1Label}</div>
                         <div class="webinfo-runtime-count">${statistic.statisticPublishedBlogCommentCount}</div>

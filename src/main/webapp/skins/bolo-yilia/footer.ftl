@@ -28,7 +28,7 @@
             ${viewCount1Label}${statistic.statisticBlogViewCount}
             &nbsp;
             ${articleCount1Label}${statistic.statisticPublishedBlogArticleCount}
-            <#if interactive == "on">
+            <#if interactive == "true">
             &nbsp;
             ${commentCount1Label}${statistic.statisticPublishedBlogCommentCount}
             </#if>

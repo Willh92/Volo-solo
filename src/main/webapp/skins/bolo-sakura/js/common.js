@@ -102,7 +102,7 @@ var Skin = {
             if (event.key === 'Escape' && document.body?.classList.contains('sakura-menu-open')) setMenuOpen(false, true);
         });
         document.querySelectorAll('.entry-content img').forEach(function (img) {
-            if (img.parentElement.tagName !== 'A' && window.jQuery && jQuery.fn.fancybox) {
+            if (img.parentElement.tagName !== 'A' && !img.closest('.volo-bookshelf, .volo-lock-card') && window.jQuery && jQuery.fn.fancybox) {
                 var url;
                 try { url = new URL(img.currentSrc || img.src, location.href); } catch (error) { return; }
                 if (url.protocol !== 'http:' && url.protocol !== 'https:') return;

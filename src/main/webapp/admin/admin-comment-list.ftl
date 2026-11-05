@@ -17,6 +17,22 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
+<form class="form console-table-toolbar console-list-filter">
+    <div class="console-table-toolbar__group">
+        <label for="commentStatusFilter">状态筛选</label>
+        <select id="commentStatusFilter" onchange="admin.commentList.getList(1)">
+            <option value="all">全部评论</option>
+            <option value="pending">待审核</option>
+            <option value="approved">已公开</option>
+            <option value="rejected">已驳回</option>
+        </select>
+        <span id="commentPendingBadge" class="console-form-help" role="status"></span>
+    </div>
+    <div class="console-table-toolbar__group console-table-toolbar__group--grow">
+        <input id="commentListInput" type="search"/>
+        <button type="submit" class="search-btn">${searchLabel!'搜索'}</button>
+    </div>
+</form>
 <div id="commentTable">
 </div>
 <div id="commentPagination" class="fn__right fn__margin12">

@@ -88,7 +88,7 @@
             <span class="item--split createTime">
               ${article.articleCreateDate?string("yyyy-MM-dd")}
             </span>
-            <#if interactive=="on"><a class="item item--split" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
+            <#if interactive == "true"><a class="item item--split" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                 ${article.articleCommentCount} ${commentLabel}
               </a></#if>
             <span class="item">

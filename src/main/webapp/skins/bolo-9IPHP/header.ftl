@@ -48,7 +48,7 @@
                         <#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon?html}"></#if>${page.pageTitle?html}
                     </a>
                 </#list>
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <a href="${servePath}/dynamic.html" rel="section">
                     <i class="icon-refresh"></i> ${dynamicLabel}
                 </a>

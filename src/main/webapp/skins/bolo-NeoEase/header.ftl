@@ -68,7 +68,7 @@
                 <span class="tip">
                     ${statistic.statisticPublishedBlogArticleCount}
                 </span>
-                <#if interactive == "on">
+                <#if interactive == "true">
                 &nbsp;&nbsp;
                 ${commentCount1Label}
                 <span class="tip">

@@ -204,6 +204,15 @@ public class ArticleMgmtService {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    @Inject
+    private ArticleRevisionService articleRevisionService;
+
+    @Inject
+    private SeriesAndBookshelfService seriesAndBookshelfService;
+
+    @Inject
+    private InstantSearchService instantSearchService;
+
     /**
      * Refreshes GitHub repos. 同步拉取 GitHub 仓库 https://github.com/b3log/solo/issues/12514
      */
@@ -326,6 +335,9 @@ public class ArticleMgmtService {
                 transaction.commit();
             }
 
+            if (null != instantSearchService) {
+                instantSearchService.invalidate();
+            }
             final Transaction transaction = pageRepository.beginTransaction();
             JSONObject page = pageRepository.getByPermalink(permalink);
             if (null == page) {
@@ -415,6 +427,9 @@ public class ArticleMgmtService {
             articleRepository.update(articleId, article, ARTICLE_STATUS);
 
             transaction.commit();
+            if (null != instantSearchService) {
+                instantSearchService.invalidate();
+            }
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -521,6 +536,17 @@ public class ArticleMgmtService {
             final String articleAbstractText = Article.getAbstractText(article);
             article.put(ARTICLE_ABSTRACT_TEXT, articleAbstractText);
 
+            final boolean hasSeriesField = article.has("seriesId");
+            final String seriesId = article.optString("seriesId", "");
+            article.remove("seriesId");
+            final String operatorName = article.optString("_operatorName", "");
+            final String revisionNote = article.optString("_revisionNote", "");
+            article.remove("_operatorName");
+            article.remove("_revisionNote");
+
+            normalizeVoloArticleFields(oldArticle, article, now);
+            archiveDate(article);
+
             final boolean postToCommunity = article.optBoolean(Common.POST_TO_COMMUNITY);
             article.remove(Common.POST_TO_COMMUNITY);
 
@@ -553,6 +579,16 @@ public class ArticleMgmtService {
             }
 
             transaction.commit();
+
+            if (null != articleRevisionService) {
+                articleRevisionService.recordSnapshot(oldArticle, article, operatorName, revisionNote);
+            }
+            if (hasSeriesField && null != seriesAndBookshelfService) {
+                seriesAndBookshelfService.assignArticleSeries(articleId, seriesId);
+            }
+            if (null != instantSearchService) {
+                instantSearchService.invalidate();
+            }
         } catch (final ServiceException e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -642,6 +678,21 @@ public class ArticleMgmtService {
             final String articleAbstractText = Article.getAbstractText(article);
             article.put(ARTICLE_ABSTRACT_TEXT, articleAbstractText);
 
+            final boolean hasSeriesField = article.has("seriesId");
+            final String seriesId = article.optString("seriesId", "");
+            article.remove("seriesId");
+            final String operatorName = article.optString("_operatorName", "");
+            final String revisionNote = article.optString("_revisionNote", "");
+            article.remove("_operatorName");
+            article.remove("_revisionNote");
+
+            normalizeVoloArticleFields(null, article, System.currentTimeMillis());
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
+                unArchiveDate(ret);
+            } else {
+                archiveDate(article);
+            }
+
             final boolean postToCommunity = article.optBoolean(Common.POST_TO_COMMUNITY);
             article.remove(Common.POST_TO_COMMUNITY);
 
@@ -658,6 +709,16 @@ public class ArticleMgmtService {
 
             articleRepository.add(article);
             transaction.commit();
+
+            if (null != articleRevisionService) {
+                articleRevisionService.recordSnapshot(null, article, operatorName, revisionNote);
+            }
+            if (hasSeriesField && null != seriesAndBookshelfService) {
+                seriesAndBookshelfService.assignArticleSeries(ret, seriesId);
+            }
+            if (null != instantSearchService) {
+                instantSearchService.invalidate();
+            }
 
             article.put(Common.POST_TO_COMMUNITY, postToCommunity);
             if (Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(ARTICLE_STATUS)) {
@@ -690,6 +751,15 @@ public class ArticleMgmtService {
             articleRepository.remove(articleId);
             commentRepository.removeComments(articleId);
             transaction.commit();
+            if (null != articleRevisionService) {
+                articleRevisionService.removeRevisions(articleId);
+            }
+            if (null != seriesAndBookshelfService) {
+                seriesAndBookshelfService.removeArticleFromAllSeries(articleId);
+            }
+            if (null != instantSearchService) {
+                instantSearchService.invalidate();
+            }
             eventManager.fireEventAsynchronously(new Event<>(EventTypes.DELETE_ARTICLE, articleId));
         } catch (final Exception e) {
             if (transaction.isActive()) {
@@ -1149,6 +1219,105 @@ public class ArticleMgmtService {
      * @return {@code true} if it exists, {@code false} otherwise
      * @throws JSONException json exception
      */
+    private void normalizeVoloArticleFields(final JSONObject oldArticle, final JSONObject article, final long now) throws ServiceException {
+        long scheduleTime = article.has(ARTICLE_SCHEDULE_TIME)
+                ? Math.max(0L, article.optLong(ARTICLE_SCHEDULE_TIME, 0L))
+                : (oldArticle == null ? 0L : Math.max(0L, oldArticle.optLong(ARTICLE_SCHEDULE_TIME, 0L)));
+        if (scheduleTime > now) {
+            article.put(ARTICLE_STATUS, Article.ARTICLE_STATUS_C_DRAFT);
+            article.put(ARTICLE_SCHEDULE_TIME, scheduleTime);
+        } else {
+            article.put(ARTICLE_SCHEDULE_TIME, 0L);
+        }
+
+        String audioUrl = article.has(ARTICLE_AUDIO_URL)
+                ? StringUtils.trimToEmpty(article.optString(ARTICLE_AUDIO_URL))
+                : (oldArticle == null ? "" : StringUtils.trimToEmpty(oldArticle.optString(ARTICLE_AUDIO_URL)));
+        if (!audioUrl.isEmpty() && !org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(audioUrl)) {
+            throw new ServiceException("音频地址必须是合法的 http(s) URL 或站内以 / 开头的安全路径。");
+        }
+        if (audioUrl.length() > 1024) {
+            throw new ServiceException("音频地址长度不能超过 1024 个字符。");
+        }
+        article.put(ARTICLE_AUDIO_URL, audioUrl);
+
+        final int audioDuration = article.has(ARTICLE_AUDIO_DURATION)
+                ? Math.max(0, article.optInt(ARTICLE_AUDIO_DURATION, 0))
+                : (oldArticle == null ? 0 : Math.max(0, oldArticle.optInt(ARTICLE_AUDIO_DURATION, 0)));
+        article.put(ARTICLE_AUDIO_DURATION, audioDuration);
+
+        final long audioSize = article.has(ARTICLE_AUDIO_SIZE)
+                ? Math.max(0L, article.optLong(ARTICLE_AUDIO_SIZE, 0L))
+                : (oldArticle == null ? 0L : Math.max(0L, oldArticle.optLong(ARTICLE_AUDIO_SIZE, 0L)));
+        article.put(ARTICLE_AUDIO_SIZE, audioSize);
+    }
+
+    /**
+     * Publishes draft articles whose {@code articleScheduleTime} has arrived.
+     *
+     * @return number of articles auto-published in this run
+     */
+    public int publishDueScheduledArticles() {
+        final long now = System.currentTimeMillis();
+        List<JSONObject> dueArticles;
+        try {
+            final Query query = new Query()
+                    .setFilter(CompositeFilterOperator.and(
+                            new PropertyFilter(ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_DRAFT),
+                            new PropertyFilter(ARTICLE_SCHEDULE_TIME, FilterOperator.GREATER_THAN, 0L),
+                            new PropertyFilter(ARTICLE_SCHEDULE_TIME, FilterOperator.LESS_THAN_OR_EQUAL, now)))
+                    .setPage(1, 50)
+                    .setPageCount(1);
+            dueArticles = articleRepository.getList(query);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Queries due scheduled articles failed", e);
+            return 0;
+        }
+        if (null == dueArticles || dueArticles.isEmpty()) {
+            return 0;
+        }
+
+        int publishedCount = 0;
+        for (final JSONObject draft : dueArticles) {
+            final String articleId = draft.optString(Keys.OBJECT_ID);
+            final Transaction tx = articleRepository.beginTransaction();
+            try {
+                final JSONObject current = articleRepository.get(articleId);
+                if (null == current || Article.ARTICLE_STATUS_C_DRAFT != current.optInt(ARTICLE_STATUS)) {
+                    tx.commit();
+                    continue;
+                }
+                final long scheduledAt = current.optLong(ARTICLE_SCHEDULE_TIME, 0L);
+                if (scheduledAt <= 0L || scheduledAt > now) {
+                    tx.commit();
+                    continue;
+                }
+                current.put(ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
+                current.put(ARTICLE_SCHEDULE_TIME, 0L);
+                current.put(ARTICLE_UPDATED, now);
+                archiveDate(current);
+                articleRepository.update(articleId, current);
+                tx.commit();
+                publishedCount++;
+
+                final JSONObject eventData = new JSONObject();
+                eventData.put(ARTICLE, current);
+                eventManager.fireEventAsynchronously(new Event<>(EventTypes.ADD_ARTICLE, eventData));
+                LOGGER.log(Level.INFO, "Scheduled article auto-published [id={0}, title={1}]",
+                        articleId, current.optString(ARTICLE_TITLE));
+            } catch (final Exception e) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                LOGGER.log(Level.ERROR, "Auto-publishes scheduled article failed [id=" + articleId + "]", e);
+            }
+        }
+        if (publishedCount > 0 && null != instantSearchService) {
+            instantSearchService.invalidate();
+        }
+        return publishedCount;
+    }
+
     private static boolean tagExists(final String tagTitle, final List<JSONObject> tags) throws JSONException {
         for (final JSONObject tag : tags) {
             if (tag.getString(Tag.TAG_TITLE).equals(tagTitle)) {

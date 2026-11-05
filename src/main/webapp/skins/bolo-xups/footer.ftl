@@ -21,7 +21,7 @@
 <footer class="footer">
     ${statistic.statisticPublishedBlogArticleCount}
     ${articleLabel}
-    <#if interactive == "on"> &nbsp; &nbsp;
+    <#if interactive == "true"> &nbsp; &nbsp;
     ${statistic.statisticPublishedBlogCommentCount}
     ${commentLabel} </#if>
     <br>

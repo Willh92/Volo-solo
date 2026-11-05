@@ -18,7 +18,7 @@
 
 -->
 <#macro comments commentList article count>
-    <#if article.commentable>
+    <#if article.commentable || (commentList?size gt 0)>
         <style type="text/css">
             .v[data-class=v] {
                 font-size: 16px;
@@ -724,7 +724,7 @@
 
         <div class="wrapper view-article">
         <div class="Valine v" data-class="v">
-        <div class="vpanel">
+        <#if article.commentable><div class="vpanel">
             <div class="vwrap">
                 <div class="vheader item3">
                     <input autocomplete="off" placeholder="你的昵称" id="boloUser" class="vnick vinput" type="text">
@@ -759,4 +759,4 @@
 
     </div>
     </div>
-</#macro>
+    </#if></#macro>

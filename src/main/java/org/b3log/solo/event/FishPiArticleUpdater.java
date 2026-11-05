@@ -91,7 +91,8 @@ public class FishPiArticleUpdater extends AbstractEventListener<JSONObject> {
                     put("articleTags", originalArticle.getString(Article.ARTICLE_TAGS_REF)).
                     put("articleType", 0).
                     put("articleEditorType", 0).
-                    put("articleContent", originalArticle.getString(Article.ARTICLE_CONTENT));
+                    put("articleContent", org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
+                            org.b3log.solo.service.HiddenContentService.stripForFeed(originalArticle.getString(Article.ARTICLE_CONTENT))));
 
             if (Option.DefaultPreference.DEFAULT_B3LOG_USERNAME.equals(userName)) {
                 LOGGER.log(Level.INFO, "Article [title={0}] Is using the B3log default account, skipped put to Rhy", title);

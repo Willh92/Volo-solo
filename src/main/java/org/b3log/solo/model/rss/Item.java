@@ -123,6 +123,18 @@ public final class Item {
      */
     private String author;
 
+    private String enclosureUrl;
+
+    private long enclosureLength;
+
+    private String enclosureType;
+
+    public void setEnclosure(final String url, final long length, final String type) {
+        this.enclosureUrl = url;
+        this.enclosureLength = Math.max(0L, length);
+        this.enclosureType = type;
+    }
+
     /**
      * Gets the GUID.
      *
@@ -266,6 +278,17 @@ public final class Item {
 
         for (final Category category : categories) {
             stringBuilder.append(category.toString());
+        }
+
+        if (null != enclosureUrl && !enclosureUrl.isBlank()) {
+            final String mime = (null == enclosureType || enclosureType.isBlank()) ? "audio/mpeg" : enclosureType;
+            stringBuilder.append("<enclosure url=\"")
+                    .append(StringEscapeUtils.escapeXml11(enclosureUrl))
+                    .append("\" length=\"")
+                    .append(enclosureLength)
+                    .append("\" type=\"")
+                    .append(StringEscapeUtils.escapeXml11(mime))
+                    .append("\" />");
         }
 
         stringBuilder.append(START_PUB_DATE_ELEMENT);

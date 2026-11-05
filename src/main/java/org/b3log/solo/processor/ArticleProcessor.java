@@ -194,6 +194,15 @@ public class ArticleProcessor {
     @Inject
     private org.b3log.solo.repository.CategoryRepository categoryRepository;
 
+    @Inject
+    private org.b3log.solo.service.HiddenContentService hiddenContentService;
+
+    @Inject
+    private org.b3log.solo.service.SeriesAndBookshelfService seriesAndBookshelfService;
+
+    @Inject
+    private org.b3log.solo.service.ShareTokenService shareTokenService;
+
     /**
      * Markdowns.
      * <p>
@@ -241,8 +250,7 @@ public class ArticleProcessor {
                     result.put(Keys.MSG, langPropsService.get("getFailLabel"));
                     return;
                 }
-                final String rendered = Markdowns.toHTML(markdownText);
-                html = Solos.isAdminLoggedIn(context) ? rendered : Markdowns.clean(rendered);
+                html = articleQueryService.renderRichMarkdown("preview", markdownText, Solos.isAdminLoggedIn(context), context, true);
             } else {
                 if (markdownText.length() > 2000) {
                     result.put(Keys.CODE, -1);
@@ -393,6 +401,109 @@ public class ArticleProcessor {
      *
      * @param context the specified context
      */
+    /**
+     * Unlocks a password-protected partial hidden block ({@code :::lock type="pwd":::}) inside an article.
+     */
+    @RequestProcessing(value = "/article/unlock-block", method = HttpMethod.POST)
+    public void unlockArticleBlock(final RequestContext context) {
+        context.setHeader("Cache-Control", "no-store");
+        if (org.b3log.solo.util.AdminRequests.isCrossSiteRequest(context)) {
+            context.sendError(403);
+            return;
+        }
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject().put(Common.STATUS_CODE, false);
+        renderer.setJSONObject(ret);
+
+        try {
+            final JSONObject reqJson = context.requestJSON();
+            final String articleId = StringUtils.trimToEmpty(reqJson.optString("articleId"));
+            final int blockIndex = reqJson.optInt("blockIndex", -1);
+            final String password = reqJson.optString("password", "");
+            if (articleId.isEmpty() || articleId.length() > 128 || blockIndex < 0 || blockIndex > 200 || password.isEmpty() || password.length() > 256) {
+                context.setStatus(400);
+                ret.put(Keys.MSG, "请输入有效的访问口令。");
+                return;
+            }
+
+            final JSONObject article = articleQueryService.getArticleById(articleId);
+            if (null == article) {
+                context.setStatus(404);
+                ret.put(Keys.MSG, "文章不存在或已删除。");
+                return;
+            }
+            final String previewToken = StringUtils.trimToEmpty(reqJson.optString("preview"));
+            final boolean validPreview = !previewToken.isEmpty() && shareTokenService.verifyToken(article, previewToken);
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
+                    && !Solos.isAdminOrAuthorLoggedIn(context) && !validPreview) {
+                context.setStatus(404);
+                ret.put(Keys.MSG, "文章尚未发布。");
+                return;
+            }
+            if (!validPreview && Solos.needViewPwd(context, article)) {
+                context.setStatus(403);
+                ret.put(Keys.MSG, "请先输入整篇文章的访问密码。");
+                return;
+            }
+
+            final Request request = context.getRequest();
+            final LoginThrottle.Attempt attempt = articlePasswordThrottle.acquire(
+                    LoginThrottle.clientAddress(request), articleId + ":block:" + blockIndex);
+            if (attempt.retryAfter() > 0) {
+                context.setStatus(429);
+                context.setHeader("Retry-After", Integer.toString(attempt.retryAfter()));
+                ret.put(Keys.MSG, "口令尝试过于频繁，请等待 " + attempt.retryAfter() + " 秒后重试。");
+                return;
+            }
+
+            final boolean adminAuthor = org.b3log.latke.model.Role.ADMIN_ROLE.equals(
+                    articleQueryService.getAuthor(article).optString(User.USER_ROLE));
+            final org.b3log.solo.service.HiddenContentService.UnlockAttemptResult result =
+                    hiddenContentService.verifyAndRenderPwdBlock(
+                            article.optString(Article.ARTICLE_CONTENT), blockIndex, password, adminAuthor);
+            if (!result.found()) {
+                context.setStatus(404);
+                ret.put(Keys.MSG, "未找到对应的受保护内容块。");
+                return;
+            }
+            if (!result.matched()) {
+                ret.put(Keys.MSG, "访问口令不正确，请重试。");
+                return;
+            }
+
+            articlePasswordThrottle.succeeded(attempt);
+            final Session session = request.getSession();
+            if (null != session) {
+                Map<String, String> viewPwds = Solos.viewPasswords(session);
+                if (null == viewPwds) {
+                    viewPwds = new HashMap<>();
+                }
+                viewPwds.put(org.b3log.solo.service.HiddenContentService.sessionBlockKey(articleId, blockIndex),
+                        result.passwordDigest());
+                session.setAttribute(Common.ARTICLES_VIEW_PWD, new JSONObject(viewPwds).toString());
+                final Response response = context.getResponse();
+                if (null != response) {
+                    response.getCookies().removeIf(existing -> Session.LATKE_SESSION_ID.equals(existing.getName()));
+                    final org.b3log.latke.http.Cookie sessionCookie =
+                            new org.b3log.latke.http.Cookie(Session.LATKE_SESSION_ID, session.getId());
+                    sessionCookie.setPath("/");
+                    sessionCookie.setHttpOnly(true);
+                    sessionCookie.setSecure("https".equalsIgnoreCase(Latkes.getServerScheme()));
+                    sessionCookie.setSameSite("Lax");
+                    response.addCookie(sessionCookie);
+                }
+            }
+
+            ret.put(Common.STATUS_CODE, true);
+            ret.put("html", result.html());
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Unlocks article hidden block failed", e);
+            context.setStatus(500);
+            ret.put(Keys.MSG, "解锁失败，请稍后重试。");
+        }
+    }
+
     @RequestProcessing(value = "/articles/random", method = HttpMethod.POST)
     public void getRandomArticles(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
@@ -966,14 +1077,40 @@ public class ArticleProcessor {
 
         try {
             LOGGER.log(Level.TRACE, "Article [title={0}]", article.getString(Article.ARTICLE_TITLE));
-            articleQueryService.markdown(article);
+            final boolean isPreviewTokenAccess = Boolean.TRUE.equals(
+                    context.attr(org.b3log.solo.service.ShareTokenService.PREVIEW_ACCESS_ATTR))
+                    || (null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article));
+            final boolean isDraftArticle = Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS);
+            if (isPreviewTokenAccess || isDraftArticle) {
+                context.setHeader("X-Robots-Tag", "noindex, nofollow");
+                context.setHeader("Cache-Control", "private, no-store");
+            }
+            final JSONObject preference = optionQueryService.getPreference();
+            final String rawMarkdown = article.optString(Article.ARTICLE_CONTENT);
+            articleQueryService.markdown(article, context);
+            String decoratedContent = article.optString(Article.ARTICLE_CONTENT);
+            final String headerWidgets = org.b3log.solo.util.ReadingStatsUtil.buildArticleHeaderWidgets(article, rawMarkdown, preference);
+            if (StringUtils.isNotBlank(headerWidgets)) {
+                decoratedContent = headerWidgets + decoratedContent;
+            }
+            if (isPreviewTokenAccess) {
+                decoratedContent = "<div class=\"volo-preview-banner\" role=\"status\">"
+                        + "当前正在通过限时免密预览链接访问本文，请勿公开传播该链接。"
+                        + "</div>" + decoratedContent;
+            }
+            if (null != seriesAndBookshelfService) {
+                final String seriesBox = seriesAndBookshelfService.renderSeriesBoxHtml(articleId);
+                if (StringUtils.isNotBlank(seriesBox)) {
+                    decoratedContent = decoratedContent + seriesBox;
+                }
+            }
+            article.put(Article.ARTICLE_CONTENT, decoratedContent);
 
             article.put(Article.ARTICLE_T_CREATE_DATE, new Date(article.optLong(Article.ARTICLE_CREATED)));
             article.put(Article.ARTICLE_T_UPDATE_DATE, new Date(article.optLong(Article.ARTICLE_UPDATED)));
             // For <meta name="description" content="${article.articleAbstract}"/>
             final String metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
             article.put(Article.ARTICLE_ABSTRACT, metaDescription);
-            final JSONObject preference = optionQueryService.getPreference();
             if (preference.getBoolean(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT)) {
                 article.put(Common.HAS_UPDATED, articleQueryService.hasUpdated(article));
             } else {
@@ -992,6 +1129,13 @@ public class ArticleProcessor {
             final Map<String, Object> dataModel = renderer.getDataModel();
 
             prepareShowArticle(preference, dataModel, article);
+            String ogCover = StringUtils.trimToEmpty(article.optString(Article.ARTICLE_IMG1_URL));
+            if (ogCover.startsWith("/") && !ogCover.startsWith("//")) {
+                ogCover = Latkes.getServePath() + ogCover;
+            }
+            if (!ogCover.isEmpty()) {
+                dataModel.put("voloOgImage", ogCover);
+            }
 
             final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
@@ -1177,7 +1321,7 @@ public class ArticleProcessor {
             final JSONObject article)
             throws Exception {
         article.put(Common.COMMENTABLE,
-                preference.getBoolean(Option.ID_C_COMMENTABLE) && article.getBoolean(Article.ARTICLE_COMMENTABLE));
+                preference.getBoolean(Option.ID_C_COMMENTABLE) && !"off".equals(Option.effectiveCommentAccessMode(preference)) && article.getBoolean(Article.ARTICLE_COMMENTABLE));
         article.put(Common.PERMALINK, article.getString(Article.ARTICLE_PERMALINK));
         dataModel.put(Article.ARTICLE, article);
         final String articleId = article.getString(Keys.OBJECT_ID);

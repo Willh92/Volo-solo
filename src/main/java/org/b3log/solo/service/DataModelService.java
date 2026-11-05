@@ -1007,10 +1007,20 @@ public class DataModelService {
             }
             dataModel.put(Option.ID_C_META_DESCRIPTION, metaDescription);
             dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
-            dataModel.put(Common.IS_LOGGED_IN,
-                    null != Solos.getCurrentUser(context.getRequest(), context.getResponse()));
+            final JSONObject activeUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            dataModel.put(Common.IS_LOGGED_IN, null != activeUser);
+            if (null != activeUser) {
+                dataModel.put(User.USER_NAME, activeUser.optString(User.USER_NAME));
+                dataModel.put(Common.LOGOUT_URL, Latkes.getServePath() + "/logout");
+                context.setHeader("Cache-Control", "private, no-store");
+            }
             dataModel.put("isAdminLoggedIn", Solos.isAdminLoggedIn(context));
-            dataModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, "on".equals(preference.optString(Option.ID_C_SHOW_LOGIN_ENTRY, "off")));
+            dataModel.put(Option.ID_C_ALLOW_REGISTER, Option.optBooleanSwitch(preference, Option.ID_C_ALLOW_REGISTER, false));
+            dataModel.put(Option.ID_C_COMMENT_ACCESS_MODE, Option.effectiveCommentAccessMode(preference));
+            dataModel.put(Option.ID_C_ENABLE_INSTANT_SEARCH, Option.optBooleanSwitch(preference, Option.ID_C_ENABLE_INSTANT_SEARCH, true));
+            dataModel.put(Option.ID_C_ENABLE_READING_STATS, Option.optBooleanSwitch(preference, Option.ID_C_ENABLE_READING_STATS, true));
+            dataModel.put(Option.ID_C_ARTICLE_OUTDATED_DAYS, preference.optInt(Option.ID_C_ARTICLE_OUTDATED_DAYS, Option.DefaultPreference.DEFAULT_ARTICLE_OUTDATED_DAYS));
+            dataModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, Option.optBooleanSwitch(preference, Option.ID_C_SHOW_LOGIN_ENTRY, false));
             if (Boolean.TRUE.equals(dataModel.get(Option.ID_C_SHOW_LOGIN_ENTRY))) {
                 dataModel.put("adminLoginURL", Latkes.getServePath() + org.b3log.solo.util.AdminPaths.login());
             }
@@ -1043,21 +1053,18 @@ public class DataModelService {
             }
             dataModel.put(Option.ID_C_HACPAI_USER, userName);
             // 交互式开关是否开启
-            try {
-                String interactive = Options.get(Option.ID_C_INTERACTIVE);
-                if (!interactive.isEmpty()) {
-                    dataModel.put(Option.ID_C_INTERACTIVE, interactive);
-                } else {
-                    dataModel.put(Option.ID_C_INTERACTIVE, "on");
-                }
-
-            } catch (Exception e) {
-                dataModel.put(Option.ID_C_INTERACTIVE, "on");
-            }
+            dataModel.put(Option.ID_C_INTERACTIVE, Boolean.toString(Option.optBooleanSwitch(preference, Option.ID_C_INTERACTIVE, true)));
             // 链滴域名设定
             dataModel.put("hacpaiDomain", Global.HACPAI_DOMAIN);
             dataModel.put("fishpiDomain", Global.FISH_PI_DOMAIN);
-            final String skinDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
+            String skinDirName = (String) context.attr(Keys.TEMPLATE_DIR_NAME);
+            if (StringUtils.isBlank(skinDirName) && null != preference) {
+                final boolean mobileReq = null != context.getRequest() && Solos.isMobile(context.getRequest());
+                skinDirName = mobileReq
+                        ? StringUtils.defaultIfBlank(preference.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME),
+                                preference.optString(Option.ID_C_SKIN_DIR_NAME, Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME))
+                        : preference.optString(Option.ID_C_SKIN_DIR_NAME, Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
+            }
             dataModel.put(Option.ID_C_SKIN_DIR_NAME, skinDirName);
             Keys.fillRuntime(dataModel);
             fillMinified(dataModel);
@@ -1399,7 +1406,7 @@ public class DataModelService {
 
             processArticleAbstract(preference, article);
 
-            articleQueryService.markdown(article);
+            articleQueryService.markdown(article, context);
             article.put("needViewPwd", needViewPwd);
             article.remove(Article.ARTICLE_VIEW_PWD);
 
@@ -1595,7 +1602,11 @@ public class DataModelService {
             topBarModel.put("onlineVisitor1Label", langPropsService.get("onlineVisitor1Label"));
             topBarModel.put(Common.ONLINE_VISITOR_CNT, StatisticQueryService.getOnlineVisitorCount());
             if (null == currentUser) {
-                topBarModel.put(Common.LOGIN_URL, userQueryService.getLoginURL(Common.ADMIN_INDEX_URI));
+            final JSONObject pref = optionQueryService.getPreference();
+            topBarModel.put(Option.ID_C_SHOW_LOGIN_ENTRY, Option.optBooleanSwitch(pref, Option.ID_C_SHOW_LOGIN_ENTRY, false));
+            topBarModel.put(Option.ID_C_ALLOW_REGISTER, Option.optBooleanSwitch(pref, Option.ID_C_ALLOW_REGISTER, false));
+            topBarModel.put(Option.ID_C_COMMENT_ACCESS_MODE, Option.effectiveCommentAccessMode(pref));
+            topBarModel.put(Common.LOGIN_URL, Latkes.getServePath() + org.b3log.solo.util.AdminPaths.login());
                 topBarModel.put("startToUseLabel", langPropsService.get("startToUseLabel"));
                 topBarTemplate.process(topBarModel, stringWriter);
 

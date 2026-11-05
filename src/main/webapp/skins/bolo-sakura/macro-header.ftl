@@ -114,8 +114,8 @@
                 </div>
             </div>
             <div class="skin-theme-slot" data-bolo-theme-slot></div>
-            <#if (isAdminLoggedIn!false) || (showLoginEntry!false)><div class="header-user-avatar">
-                <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" aria-label="后台管理"><img class="faa-shake animated-hover" src="${((adminUser.userAvatar)!'')?html}" width="30" height="30" alt=""/></a><#else><a href="${adminLoginURL?html}" aria-label="管理员登录"><i class="fa fa-user-circle-o" aria-hidden="true"></i></a></#if>
+            <#if (isAdminLoggedIn!false) || (isLoggedIn!false) || (showLoginEntry!false) || (allowRegister!false) || (commentAccessMode!'all') == 'registered'><div class="header-user-avatar">
+                <#if isAdminLoggedIn!false><a href="${adminPanelURL?html}" aria-label="后台管理"><img class="faa-shake animated-hover" src="${((adminUser.userAvatar)!'')?html}" width="30" height="30" alt=""/></a><#elseif isLoggedIn!false><a href="${logoutURL?html}" data-volo-reader-logout data-no-pjax title="退出读者（${(userName!'已登录')?html}）" aria-label="退出读者（${(userName!'已登录')?html}）"><i class="fa fa-user-circle" aria-hidden="true"></i></a><#elseif (allowRegister!false) || (commentAccessMode!'all') == 'registered'><a href="${servePath}/user/login" data-volo-auth-trigger="login" title="读者登录" aria-label="读者登录"><i class="fa fa-user-circle-o" aria-hidden="true"></i></a><#else><a href="${adminLoginURL?html}" aria-label="管理员登录"><i class="fa fa-user-circle-o" aria-hidden="true"></i></a></#if>
                 <div class="header-user-menu"><div class="herder-user-name logged-in-as"><#include "../../common-template/macro-management.ftl"><@managementLinks/></div></div>
             </div></#if>
 

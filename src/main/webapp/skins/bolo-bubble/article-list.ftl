@@ -67,7 +67,7 @@
                         ${articleTag}
                     </a> &nbsp;
                 </#list>
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <#if article.articleCommentCount != 0>
                     &nbsp;·&nbsp;
                     <a class="item__tag" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">

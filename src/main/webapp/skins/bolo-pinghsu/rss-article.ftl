@@ -70,7 +70,7 @@
                                         </a>
                                     </#if>
                                     with ${article.articleViewCount} views
-                                    <#if interactive=="on">
+                                    <#if interactive == "true">
                                         <#if article.articleCommentCount !=0>
                                             and <a href="#comments">
                                                 ${article.articleCommentCount} comments</a>
@@ -99,7 +99,7 @@
                             </div>
                             <div class="body--gray post__gray">
                                 <div class="wrapper comment">
-                                    <#if interactive=="on">
+                                    <#if interactive == "true">
                                         <@comments commentList=articleComments article=article></@comments>
                                     </#if>
                                     <div class="post__list fn__flex" data-article-recommendations>

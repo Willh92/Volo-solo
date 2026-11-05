@@ -17,7 +17,7 @@ admin.security = {
         if (!result.sc) { $('#geoAccessMessage').text(result.msg); return }
         that.geoAccessRules = result.rules.map(function (rule) { return Object.assign({}, rule) })
         that.geoAccessLoaded = true
-        $('#geoAccessActive').val(result.active ? 'on' : 'off')
+        $('#geoAccessActive').val(result.active ? 'true' : 'false')
         that.geoDefaultAction = result.defaultAction || 'allow'
         $('#geoAccessLegacyFallback').text(that.geoDefaultAction === 'deny' ? '兼容旧配置：所有规则均未命中或被禁用时，仍拒绝访问。' : '')
         $('#geoAccessUnknown').val(result.unknown)
@@ -123,7 +123,7 @@ admin.security = {
     document.getElementById('geoRuleEditor').querySelector('.console-geo-rule-countries input').focus()
   },
   geoPolicy: function () {
-    return {version: 3, active: $('#geoAccessActive').val() === 'on', defaultAction: this.geoDefaultAction || 'allow', unknown: $('#geoAccessUnknown').val(), rules: this.geoAccessRules}
+    return {version: 3, active: $('#geoAccessActive').val() === 'true', defaultAction: this.geoDefaultAction || 'allow', unknown: $('#geoAccessUnknown').val(), rules: this.geoAccessRules}
   },
   toggleGeoRule: function (index) {
     if (this.geoSaving || !this.geoAccessLoaded || !this.geoAccessRules[index]) return
@@ -296,7 +296,8 @@ admin.security = {
       if (!root.isConnected || revision !== that.settingsRequests[section]) return
       if (!result.sc) { $('#tipMsg').text(result.msg); return }
       Object.keys(result.settings).forEach(function (key) {
-        var input = root.querySelector('#' + (key === 'adminLoginPath' ? 'adminLoginPathSetting' : key))
+        var domId = key === 'adminLoginPath' ? 'adminLoginPathSetting' : key
+        var input = root.querySelector('#' + domId)
         if (input) input.value = result.settings[key]
       })
       that.settingsLoaded[section] = true
@@ -306,8 +307,13 @@ admin.security = {
   saveSettings: function () {
     var section = window.location.hash.split('/')[1], data = {}
     if (!this.settingsLoaded[section]) return
-    var keys = section === 'comments' ? ['commentFilterBuiltin','spam','commentFilterAllow','commentCaptchaEnabled'] : ['riskControlEnabled','wafPower','wafCurrentLimitTimes','wafCurrentLimitSecond','adminLoginPath']
-    keys.forEach(function (key) { data[key] = $('#' + (key === 'adminLoginPath' ? 'adminLoginPathSetting' : key)).val() })
+    var keys = section === 'comments' ? ['commentAccessMode','commentModerationMode','commentFilterBuiltin','spam','commentFilterAllow','commentCaptchaEnabled'] : ['riskControlEnabled','wafPower','wafCurrentLimitTimes','wafCurrentLimitSecond','adminLoginPath']
+    var root = document.querySelector && document.querySelector('[data-security-page="' + section + '"]')
+    keys.forEach(function (key) {
+      var domId = key === 'adminLoginPath' ? 'adminLoginPathSetting' : key
+      var scoped = root && root.querySelector ? root.querySelector('#' + domId) : null
+      data[key] = scoped ? scoped.value : $('#' + domId).val()
+    })
     $.ajax({url:Label.servePath + '/console/security/settings',type:'PUT',contentType:'application/json',data:JSON.stringify(data),
       success:function (result) { $('#tipMsg').text(result.msg); if (result.sc && data.adminLoginPath != null) $('#adminLoginPathCurrent').text(data.adminLoginPath.trim() || '/start') },error:function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '安全配置保存失败。') }})
   }
@@ -374,7 +380,7 @@ Object.assign(admin.security, {
     if (unbindBtn) unbindBtn.hidden = !totp.bound
     var revokeBtn = document.getElementById('totpRevokeDevicesBtn')
     if (revokeBtn) revokeBtn.hidden = !(totp.bound && Number(totp.rememberDays) > 0)
-    $('#totpEnabled').val(totp.enabled ? 'on' : 'off')
+    $('#totpEnabled').val(totp.enabled ? 'true' : 'false')
     $('#totpScope').val(totp.scope || 'admin')
     var issuerInput = document.getElementById('totpIssuer')
     if (issuerInput) {
@@ -390,7 +396,7 @@ Object.assign(admin.security, {
     var wrap = document.getElementById('totpToggleVerifyWrap')
     var input = document.getElementById('totpSettingsVerifyCode')
     if (!wrap || !this.totpState) return
-    var targetOn = $('#totpEnabled').val() === 'on'
+    var targetOn = $('#totpEnabled').val() === 'true'
     var changed = this.totpState.bound && (targetOn !== !!this.totpState.enabled)
     wrap.hidden = !changed
     if (!changed && input) input.value = ''
@@ -499,13 +505,13 @@ Object.assign(admin.security, {
     if (this.totpBusy || !this.totpState) return
     var enabledVal = $('#totpEnabled').val(), msgNode = document.getElementById('totpSettingsMessage')
     if (msgNode) delete msgNode.dataset.tone
-    if (enabledVal === 'on' && !this.totpState.bound) {
+    if (enabledVal === 'true' && !this.totpState.bound) {
       $('#totpSettingsMessage').text('请先点击上方“生成绑定密钥”完成扫码绑定后再启用 2FA。')
       return
     }
     var verifyCode = ($('#totpSettingsVerifyCode').val() || '').trim()
-    if (this.totpState.bound && ((enabledVal === 'on') !== !!this.totpState.enabled) && !verifyCode) {
-      $('#totpSettingsMessage').text(enabledVal === 'on' ? '重新启用 2FA 需输入当前 6 位动态口令。' : '停用 2FA 需输入当前 6 位动态口令或应急恢复码。')
+    if (this.totpState.bound && ((enabledVal === 'true') !== !!this.totpState.enabled) && !verifyCode) {
+      $('#totpSettingsMessage').text(enabledVal === 'true' ? '重新启用 2FA 需输入当前 6 位动态口令。' : '停用 2FA 需输入当前 6 位动态口令或应急恢复码。')
       document.getElementById('totpSettingsVerifyCode').focus()
       return
     }

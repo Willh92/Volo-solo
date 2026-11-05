@@ -153,10 +153,29 @@ public class UserQueryService {
     public JSONObject getUsers(final JSONObject requestJSONObject) throws ServiceException {
         final JSONObject ret = new JSONObject();
 
-        final int currentPageNum = requestJSONObject.optInt(Pagination.PAGINATION_CURRENT_PAGE_NUM);
-        final int pageSize = requestJSONObject.optInt(Pagination.PAGINATION_PAGE_SIZE);
-        final int windowSize = requestJSONObject.optInt(Pagination.PAGINATION_WINDOW_SIZE);
-        final Query query = new Query().setPage(currentPageNum, pageSize);
+        final int currentPageNum = Math.max(1, requestJSONObject.optInt(Pagination.PAGINATION_CURRENT_PAGE_NUM, 1));
+        final int pageSize = Math.max(1, requestJSONObject.optInt(Pagination.PAGINATION_PAGE_SIZE, 15));
+        final int windowSize = Math.max(1, requestJSONObject.optInt(Pagination.PAGINATION_WINDOW_SIZE, 20));
+        final Query query = new Query().setPage(currentPageNum, pageSize)
+                .addSort(Keys.OBJECT_ID, org.b3log.latke.repository.SortDirection.DESCENDING);
+        final String roleFilter = requestJSONObject.optString("role").strip();
+        final String keyword = requestJSONObject.optString("keyword").strip();
+        final java.util.List<org.b3log.latke.repository.Filter> filters = new java.util.ArrayList<>();
+        if (!roleFilter.isEmpty() && !"all".equals(roleFilter)) {
+            filters.add(new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, roleFilter));
+        }
+        if (!keyword.isEmpty()) {
+            filters.add(org.b3log.latke.repository.CompositeFilterOperator.or(
+                    new PropertyFilter(User.USER_NAME, FilterOperator.LIKE, "%" + keyword + "%"),
+                    new PropertyFilter(UserExt.USER_EMAIL, FilterOperator.LIKE, "%" + keyword.toLowerCase(java.util.Locale.ROOT) + "%")
+            ));
+        }
+        if (filters.size() == 1) {
+            query.setFilter(filters.get(0));
+        } else if (filters.size() > 1) {
+            query.setFilter(new org.b3log.latke.repository.CompositeFilter(
+                    org.b3log.latke.repository.CompositeFilterOperator.AND, filters));
+        }
 
         JSONObject result;
         try {

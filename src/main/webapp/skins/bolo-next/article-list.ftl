@@ -52,7 +52,7 @@
                     </time>
                 </span>
                     <span>
-                        <#if interactive == "on">
+                        <#if interactive == "true">
                     &nbsp; | &nbsp;
                     <a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                         ${article.articleCommentCount} ${cmtLabel}</a>

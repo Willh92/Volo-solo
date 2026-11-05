@@ -104,7 +104,16 @@ public class Options {
                 Option.ID_C_SEND_KEY,
                 Option.ID_C_HELP_IMPROVE_PLAN,
                 Option.ID_C_IMAGE_UPLOAD_COMPRESS,
-                Option.ID_C_THUMB_COMPRESS);
+                Option.ID_C_THUMB_COMPRESS,
+                Option.ID_C_ALLOW_REGISTER,
+                Option.ID_C_COMMENT_ACCESS_MODE,
+                Option.ID_C_COMMENT_MODERATION_MODE,
+                Option.ID_C_ARTICLE_OUTDATED_DAYS,
+                Option.ID_C_ENABLE_READING_STATS,
+                Option.ID_C_ENABLE_INSTANT_SEARCH,
+                Option.ID_C_LOCAL_BACKUP_AUTO,
+                Option.ID_C_LOCAL_BACKUP_KEEP_COUNT,
+                Option.ID_C_LOCAL_BACKUP_DIR);
         return optionList;
     }
 
@@ -190,7 +199,7 @@ public class Options {
                 new Object[] { "smtpHost", Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { "smtpPort", Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { "smtpSecurity", Option.CATEGORY_C_PREFERENCE, "ssl" },
-                new Object[] { "smtpAuth", Option.CATEGORY_C_PREFERENCE, "on" },
+                new Object[] { "smtpAuth", Option.CATEGORY_C_PREFERENCE, "true" },
                 new Object[] { "smtpFrom", Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_MAIL_BOX, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_MAIL_USERNAME, Option.CATEGORY_C_PREFERENCE, "" },
@@ -199,14 +208,14 @@ public class Options {
                 new Object[] { Option.ID_C_REPLY_REMIND, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_KANBANNIANG_SELECTOR, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_SPAM, Option.CATEGORY_C_PREFERENCE, "" },
-                new Object[] { Option.ID_C_COMMENT_FILTER_BUILTIN, Option.CATEGORY_C_PREFERENCE, "on" },
+                new Object[] { Option.ID_C_COMMENT_FILTER_BUILTIN, Option.CATEGORY_C_PREFERENCE, "true" },
                 new Object[] { Option.ID_C_COMMENT_FILTER_ALLOW, Option.CATEGORY_C_PREFERENCE, "" },
-                new Object[] { Option.ID_C_INTERACTIVE, Option.CATEGORY_C_PREFERENCE, "on" },
-                new Object[] { Option.ID_C_SHOW_LOGIN_ENTRY, Option.CATEGORY_C_PREFERENCE, "off" },
-                new Object[] { Option.ID_C_WAF_POWER, Option.CATEGORY_C_PREFERENCE, "on" },
+                new Object[] { Option.ID_C_INTERACTIVE, Option.CATEGORY_C_PREFERENCE, "true" },
+                new Object[] { Option.ID_C_SHOW_LOGIN_ENTRY, Option.CATEGORY_C_PREFERENCE, "false" },
+                new Object[] { Option.ID_C_WAF_POWER, Option.CATEGORY_C_PREFERENCE, "true" },
                 new Object[] { Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.CATEGORY_C_PREFERENCE, "180" },
                 new Object[] { Option.ID_C_WAF_CURRENT_LIMIT_TIMES, Option.CATEGORY_C_PREFERENCE, "180" },
-                new Object[] { Option.ID_C_ADMIN_ACTIVE_SENT_TO_MAILBOX, Option.CATEGORY_C_PREFERENCE, "on" },
+                new Object[] { Option.ID_C_ADMIN_ACTIVE_SENT_TO_MAILBOX, Option.CATEGORY_C_PREFERENCE, "true" },
                 new Object[] { Option.ID_C_WELFARE_LUTE_SERVICE, Option.CATEGORY_C_PREFERENCE,
                         Option.DefaultPreference.DEFAULT_WELFARE_LUTE_SERVICE },
                 new Object[] { Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB, Option.CATEGORY_C_PREFERENCE, "false" },
@@ -214,9 +223,18 @@ public class Options {
                         "false" },
                 new Object[] { Option.ID_C_MY_GITHUB_ID, Option.CATEGORY_C_PREFERENCE, "" },
                 new Object[] { Option.ID_C_SEND_KEY, Option.CATEGORY_C_PREFERENCE, "" },
-                new Object[] { Option.ID_C_HELP_IMPROVE_PLAN, Option.CATEGORY_C_PREFERENCE, "" },
+                new Object[] { Option.ID_C_HELP_IMPROVE_PLAN, Option.CATEGORY_C_PREFERENCE, "false" },
                 new Object[] { Option.ID_C_IMAGE_UPLOAD_COMPRESS, Option.CATEGORY_C_PREFERENCE, "1.0" },
-                new Object[] { Option.ID_C_THUMB_COMPRESS, Option.CATEGORY_C_PREFERENCE, "1.0" });
+                new Object[] { Option.ID_C_THUMB_COMPRESS, Option.CATEGORY_C_PREFERENCE, "1.0" },
+                new Object[] { Option.ID_C_ALLOW_REGISTER, Option.CATEGORY_C_PREFERENCE, "false" },
+                new Object[] { Option.ID_C_COMMENT_ACCESS_MODE, Option.CATEGORY_C_PREFERENCE, "all" },
+                new Object[] { Option.ID_C_COMMENT_MODERATION_MODE, Option.CATEGORY_C_PREFERENCE, "off" },
+                new Object[] { Option.ID_C_ARTICLE_OUTDATED_DAYS, Option.CATEGORY_C_PREFERENCE, "365" },
+                new Object[] { Option.ID_C_ENABLE_READING_STATS, Option.CATEGORY_C_PREFERENCE, "true" },
+                new Object[] { Option.ID_C_ENABLE_INSTANT_SEARCH, Option.CATEGORY_C_PREFERENCE, "true" },
+                new Object[] { Option.ID_C_LOCAL_BACKUP_AUTO, Option.CATEGORY_C_PREFERENCE, "false" },
+                new Object[] { Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, Option.CATEGORY_C_PREFERENCE, "7" },
+                new Object[] { Option.ID_C_LOCAL_BACKUP_DIR, Option.CATEGORY_C_PREFERENCE, "" });
         return optList;
     }
 

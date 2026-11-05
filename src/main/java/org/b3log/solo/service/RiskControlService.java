@@ -41,7 +41,7 @@ public class RiskControlService {
     protected boolean enabled() throws Exception {
         if (power != null) return power;
         final var option = optionQueryService.getOptionById("riskControlEnabled");
-        power = option == null || !"off".equals(option.optString(org.b3log.solo.model.Option.OPTION_VALUE));
+        power = option == null || !"false".equalsIgnoreCase(option.optString(org.b3log.solo.model.Option.OPTION_VALUE));
         return power;
     }
     public void failure(final RequestContext context, final int status) throws Exception {

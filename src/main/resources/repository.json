@@ -1,6 +1,6 @@
 {
   "description": "Description of repository structures, for generation of the relational database table and persistence validation.",
-  "version": "2026.11.01",
+  "version": "2026.11.05",
   "authors": [
     "Liang Ding"
   ],
@@ -201,6 +201,19 @@
           "description": "评论回复时原始的评论人名称，即父评论人名称",
           "type": "String",
           "length": 50,
+          "nullable": true
+        },
+        {
+          "name": "commentStatus",
+          "description": "评论审核状态，0：已公开，1：待审核，2：已驳回",
+          "type": "int",
+          "nullable": true
+        },
+        {
+          "name": "commentUserId",
+          "description": "登录评论用户 id，游客为空",
+          "type": "String",
+          "length": 19,
           "nullable": true
         }
       ]
@@ -458,6 +471,38 @@
           "description": "用户 GitHub Open Id",
           "type": "String",
           "length": 32
+        },
+        {
+          "name": "userEmail",
+          "description": "已验证的用户邮箱地址",
+          "type": "String",
+          "length": 254,
+          "nullable": true
+        },
+        {
+          "name": "userEmailVerified",
+          "description": "邮箱是否完成验证",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "userPasswordHash",
+          "description": "PBKDF2 密码哈希",
+          "type": "String",
+          "length": 255,
+          "nullable": true
+        },
+        {
+          "name": "userStatus",
+          "description": "账号状态，0：正常，1：封禁",
+          "type": "int",
+          "nullable": true
+        },
+        {
+          "name": "userCreated",
+          "description": "注册时间戳",
+          "type": "long",
+          "nullable": true
         }
       ]
     },
@@ -570,6 +615,31 @@
           "name": "articleStatus",
           "type": "int",
           "description": "文章状态，0：已发布，1：草稿"
+        },
+        {
+          "name": "articleScheduleTime",
+          "description": "定时发布时间戳，0 为不定时",
+          "type": "long",
+          "nullable": true
+        },
+        {
+          "name": "articleAudioURL",
+          "description": "单集音频地址",
+          "type": "String",
+          "length": 512,
+          "nullable": true
+        },
+        {
+          "name": "articleAudioDuration",
+          "description": "单集音频时长（秒）",
+          "type": "int",
+          "nullable": true
+        },
+        {
+          "name": "articleAudioSize",
+          "description": "单集音频字节大小",
+          "type": "long",
+          "nullable": true
         }
       ]
     },
@@ -594,6 +664,63 @@
           "description": "配置项分类",
           "type": "String",
           "legnth": 20
+        }
+      ]
+    },
+    {
+      "name": "article_revision",
+      "description": "文章历史版本快照表",
+      "keys": [
+        {
+          "name": "oId",
+          "description": "主键",
+          "type": "String",
+          "length": 19
+        },
+        {
+          "name": "articleOId",
+          "description": "关联文章主键",
+          "type": "String",
+          "length": 19
+        },
+        {
+          "name": "revisionTitle",
+          "description": "快照标题",
+          "type": "String",
+          "length": 255
+        },
+        {
+          "name": "revisionAbstract",
+          "description": "快照摘要",
+          "type": "String",
+          "length": 2048,
+          "nullable": true
+        },
+        {
+          "name": "revisionContent",
+          "description": "快照正文",
+          "type": "String",
+          "length": 1048576,
+          "nullable": true
+        },
+        {
+          "name": "revisionCreated",
+          "description": "快照创建时间戳",
+          "type": "long"
+        },
+        {
+          "name": "revisionAuthorName",
+          "description": "保存人名称",
+          "type": "String",
+          "length": 64,
+          "nullable": true
+        },
+        {
+          "name": "revisionNote",
+          "description": "快照备注",
+          "type": "String",
+          "length": 255,
+          "nullable": true
         }
       ]
     }

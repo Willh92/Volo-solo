@@ -42,7 +42,7 @@ public class CommentTemplateTest {
         configuration.setDirectoryForTemplateLoading(Path.of("src/main/webapp").toFile());
         final Map<String, Object> model = new java.util.HashMap<>();
         model.put("servePath", "http://localhost"); model.put("blogTitle", "博客"); model.put("pageNavigations", List.of());
-        model.put("interactive", "on"); model.put("mostUsedTags", List.of()); model.put("studioIndex", true);
+        model.put("interactive", "true"); model.put("mostUsedTags", List.of()); model.put("studioIndex", true);
         model.put("recentComments", List.of(Map.of("commentName", "昵称<img>", "commentContentText", "正文<script>", "commentSharpURL", "/post.html#123")));
         for (final boolean administrator : new boolean[]{false, true}) {
             model.put("isAdminLoggedIn", administrator);

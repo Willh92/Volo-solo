@@ -146,29 +146,101 @@ public class PreferenceMgmtService {
     public synchronized void updatePreference(final JSONObject preference) throws ServiceException {
         preference.put(Option.ID_C_HELP_IMPROVE_PLAN, "false");
         final JSONObject oldPreference = optionQueryService.getPreference();
-        if (preference.has(Option.ID_C_SHOW_LOGIN_ENTRY) && !(preference.opt(Option.ID_C_SHOW_LOGIN_ENTRY) instanceof String)) {
-            throw new ServiceException("前端登录入口开关不正确。");
-        }
-        final String loginEntry = preference.optString(Option.ID_C_SHOW_LOGIN_ENTRY,
-                "on".equals(oldPreference.optString(Option.ID_C_SHOW_LOGIN_ENTRY)) ? "on" : "off");
-        if (!java.util.Set.of("on", "off").contains(loginEntry)) throw new ServiceException("前端登录入口开关不正确。");
+        final String loginEntry = Option.normalizeBooleanSwitch(
+                preference.has(Option.ID_C_SHOW_LOGIN_ENTRY) ? preference.opt(Option.ID_C_SHOW_LOGIN_ENTRY) : null,
+                Option.optBooleanSwitch(oldPreference, Option.ID_C_SHOW_LOGIN_ENTRY, false),
+                "前端登录入口开关不正确。");
         preference.put(Option.ID_C_SHOW_LOGIN_ENTRY, loginEntry);
-        if (preference.has(Option.ID_C_INTERACTIVE) && !(preference.opt(Option.ID_C_INTERACTIVE) instanceof String)) {
-            throw new ServiceException("前端评论开关不正确。");
-        }
-        final String comments = preference.optString(Option.ID_C_INTERACTIVE,
-                "off".equals(oldPreference.optString(Option.ID_C_INTERACTIVE)) ? "off" : "on");
-        if (!java.util.Set.of("on", "off").contains(comments)) throw new ServiceException("前端评论开关不正确。");
+        final String comments = Option.normalizeBooleanSwitch(
+                preference.has(Option.ID_C_INTERACTIVE) ? preference.opt(Option.ID_C_INTERACTIVE) : null,
+                Option.optBooleanSwitch(oldPreference, Option.ID_C_INTERACTIVE, true),
+                "前端评论开关不正确。");
         preference.put(Option.ID_C_INTERACTIVE, comments);
-        for (final String filterKey : new String[]{Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW}) {
-            if (!preference.has(filterKey)) preference.put(filterKey, oldPreference.optString(filterKey,
-                    filterKey.equals(Option.ID_C_COMMENT_FILTER_BUILTIN) ? "on" : ""));
+        if (!preference.has(Option.ID_C_COMMENT_FILTER_BUILTIN)) {
+            preference.put(Option.ID_C_COMMENT_FILTER_BUILTIN,
+                    Boolean.toString(Option.optBooleanSwitch(oldPreference, Option.ID_C_COMMENT_FILTER_BUILTIN, true)));
+        }
+        if (!preference.has(Option.ID_C_COMMENT_FILTER_ALLOW)) {
+            preference.put(Option.ID_C_COMMENT_FILTER_ALLOW, oldPreference.optString(Option.ID_C_COMMENT_FILTER_ALLOW, ""));
         }
         // Settings moved out of the preference form must survive unrelated preference saves.
         for (final String key : new String[]{Option.ID_C_WAF_POWER, Option.ID_C_WAF_CURRENT_LIMIT_SECOND,
-                Option.ID_C_WAF_CURRENT_LIMIT_TIMES, Option.ID_C_SPAM}) {
-            if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
+                Option.ID_C_WAF_CURRENT_LIMIT_TIMES, Option.ID_C_SPAM,
+                Option.ID_C_ALLOW_REGISTER, Option.ID_C_COMMENT_ACCESS_MODE, Option.ID_C_COMMENT_MODERATION_MODE,
+                Option.ID_C_ARTICLE_OUTDATED_DAYS, Option.ID_C_ENABLE_READING_STATS, Option.ID_C_ENABLE_INSTANT_SEARCH,
+                Option.ID_C_LOCAL_BACKUP_AUTO, Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, Option.ID_C_LOCAL_BACKUP_DIR}) {
+            if (!preference.has(key)) {
+                final String val = switch (key) {
+                    case Option.ID_C_WAF_POWER, Option.ID_C_ENABLE_READING_STATS, Option.ID_C_ENABLE_INSTANT_SEARCH ->
+                            Boolean.toString(Option.optBooleanSwitch(oldPreference, key, true));
+                    case Option.ID_C_ALLOW_REGISTER, Option.ID_C_LOCAL_BACKUP_AUTO ->
+                            Boolean.toString(Option.optBooleanSwitch(oldPreference, key, false));
+                    case Option.ID_C_COMMENT_ACCESS_MODE -> oldPreference.optString(key, "all");
+                    case Option.ID_C_ARTICLE_OUTDATED_DAYS -> oldPreference.optString(key, "365");
+                    case Option.ID_C_LOCAL_BACKUP_KEEP_COUNT -> oldPreference.optString(key, "7");
+                    case Option.ID_C_COMMENT_MODERATION_MODE -> oldPreference.optString(key, "off");
+                    default -> oldPreference.optString(key, "");
+                };
+                preference.put(key, val);
+            }
         }
+        if ("true".equals(comments)
+                && !Option.optBooleanSwitch(oldPreference, Option.ID_C_INTERACTIVE, true)
+                && "off".equals(preference.optString(Option.ID_C_COMMENT_ACCESS_MODE))) {
+            preference.put(Option.ID_C_COMMENT_ACCESS_MODE, "all");
+        }
+        preference.put(Option.ID_C_ALLOW_REGISTER, Option.normalizeBooleanSwitch(
+                preference.opt(Option.ID_C_ALLOW_REGISTER),
+                Option.optBooleanSwitch(oldPreference, Option.ID_C_ALLOW_REGISTER, false),
+                "读者注册开关配置不正确。"));
+        for (final String trueToggleKey : new String[]{
+                Option.ID_C_ENABLE_READING_STATS,
+                Option.ID_C_ENABLE_INSTANT_SEARCH,
+                Option.ID_C_ADMIN_ACTIVE_SENT_TO_MAILBOX,
+                Option.ID_C_COMMENTABLE,
+                Option.ID_C_SYNC_GITHUB,
+                Option.ID_C_PULL_GITHUB
+        }) {
+            if (preference.has(trueToggleKey)) {
+                preference.put(trueToggleKey, Option.normalizeBooleanSwitch(
+                        preference.opt(trueToggleKey),
+                        Option.optBooleanSwitch(oldPreference, trueToggleKey, true),
+                        "偏好开关配置不正确。"));
+            }
+        }
+        for (final String falseToggleKey : new String[]{
+                Option.ID_C_LOCAL_BACKUP_AUTO,
+                Option.ID_C_SHOW_CODE_BLOCK_LN,
+                Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT,
+                Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK,
+                Option.ID_C_WELFARE_LUTE_SERVICE,
+                Option.ID_C_ENABLE_AUTO_FLUSH_GITHUB,
+                Option.ID_C_ENABLE_AUTO_FLUSH_BLOG_TO_GITHUB_PROFILE
+        }) {
+            if (preference.has(falseToggleKey)) {
+                preference.put(falseToggleKey, Option.normalizeBooleanSwitch(
+                        preference.opt(falseToggleKey),
+                        Option.optBooleanSwitch(oldPreference, falseToggleKey, false),
+                        "偏好开关配置不正确。"));
+            }
+        }
+        final String rawOutdatedDays = preference.optString(Option.ID_C_ARTICLE_OUTDATED_DAYS, "365").strip();
+        final String outdatedDays = rawOutdatedDays.isEmpty() ? "365" : rawOutdatedDays;
+        if (!outdatedDays.matches("[0-9]{1,4}") || Integer.parseInt(outdatedDays) > 3650) {
+            throw new IllegalArgumentException("陈旧文章提醒天数应为 0 至 3650 的整数。");
+        }
+        preference.put(Option.ID_C_ARTICLE_OUTDATED_DAYS, outdatedDays);
+        final String rawKeepCount = preference.optString(Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, "7").strip();
+        final String keepCount = rawKeepCount.isEmpty() ? "7" : rawKeepCount;
+        if (!keepCount.matches("[1-9][0-9]{0,2}") || Integer.parseInt(keepCount) > 100) {
+            throw new IllegalArgumentException("本地自动备份保留份数应为 1 至 100 的整数。");
+        }
+        preference.put(Option.ID_C_LOCAL_BACKUP_KEEP_COUNT, keepCount);
+        final String backupDir = preference.optString(Option.ID_C_LOCAL_BACKUP_DIR, "").strip();
+        if (backupDir.length() > 255 || backupDir.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("本地备份目录路径格式不正确。");
+        }
+        preference.put(Option.ID_C_LOCAL_BACKUP_DIR, backupDir);
         for (final String secretKey : new String[]{Option.ID_C_MAIL_PASSWORD, Option.ID_C_GITHUB_PAT,
                 Option.ID_C_B3LOG_KEY, Option.ID_C_FISH_KEY, Option.ID_C_SEND_KEY}) {
             final String incomingSecret = preference.optString(secretKey);
@@ -189,6 +261,11 @@ public class PreferenceMgmtService {
             if (!preference.has(key)) preference.put(key, oldPreference.optString(key));
         }
         org.b3log.solo.bolo.prop.SmtpSettings.read(preference).fill(preference);
+        if ("true".equals(preference.optString(Option.ID_C_ALLOW_REGISTER))
+                && !Option.optBooleanSwitch(oldPreference, Option.ID_C_ALLOW_REGISTER, false)
+                && !org.b3log.solo.bolo.prop.SmtpSettings.read(preference).configured()) {
+            throw new IllegalArgumentException("开启公开读者注册前，请先在「偏好设定 → 动态提醒」中配置有效的 SMTP 发信参数。");
+        }
         // Compile before opening a database transaction. Publish only after a successful commit.
         final CommentFilterService.Prepared filter = commentFilterService.prepare(preference);
         final Iterator<String> keys = preference.keys();
@@ -256,15 +333,25 @@ public class PreferenceMgmtService {
 
     public static final java.util.Set<String> SECURITY_KEYS = java.util.Set.of("riskControlEnabled", "commentCaptchaEnabled", "adminLoginPath",
             Option.ID_C_WAF_POWER, Option.ID_C_WAF_CURRENT_LIMIT_SECOND, Option.ID_C_WAF_CURRENT_LIMIT_TIMES,
-            Option.ID_C_SPAM, Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW);
+            Option.ID_C_SPAM, Option.ID_C_COMMENT_FILTER_BUILTIN, Option.ID_C_COMMENT_FILTER_ALLOW,
+            Option.ID_C_COMMENT_ACCESS_MODE, Option.ID_C_COMMENT_MODERATION_MODE);
 
     /** Independent updates cannot overwrite an unrelated, stale preferences form. */
     public synchronized void updateSecurity(final JSONObject values) throws Exception {
         for (final String key : values.keySet()) {
             if (!SECURITY_KEYS.contains(key) || !(values.opt(key) instanceof String)) throw new IllegalArgumentException("安全配置字段不正确。");
         }
-        for (final String key : new String[]{"riskControlEnabled", "commentCaptchaEnabled", Option.ID_C_WAF_POWER, Option.ID_C_COMMENT_FILTER_BUILTIN}) {
-            if (values.has(key) && !java.util.Set.of("on", "off").contains(values.getString(key))) throw new IllegalArgumentException("安全开关配置不正确。");
+        for (final String key : new String[]{"riskControlEnabled", "commentCaptchaEnabled", Option.ID_C_WAF_POWER,
+                Option.ID_C_COMMENT_FILTER_BUILTIN}) {
+            if (values.has(key) && !java.util.Set.of("true", "false").contains(values.getString(key))) throw new IllegalArgumentException("安全开关配置不正确。");
+        }
+        if (values.has(Option.ID_C_COMMENT_ACCESS_MODE)
+                && !java.util.Set.of("all", "registered", "off").contains(values.getString(Option.ID_C_COMMENT_ACCESS_MODE))) {
+            throw new IllegalArgumentException("评论开放权限配置不正确。");
+        }
+        if (values.has(Option.ID_C_COMMENT_MODERATION_MODE)
+                && !java.util.Set.of("off", "smart", "all").contains(values.getString(Option.ID_C_COMMENT_MODERATION_MODE))) {
+            throw new IllegalArgumentException("评论审核模式配置不正确。");
         }
         if (values.has("adminLoginPath")) {
             final String path = org.b3log.solo.util.AdminPaths.validateLogin(values.getString("adminLoginPath"));
@@ -280,17 +367,25 @@ public class PreferenceMgmtService {
             if (values.has(key) && (!values.getString(key).matches("[1-9][0-9]{0,5}"))) throw new IllegalArgumentException("访问次数和时间范围应为 1 至 999999 的整数。");
         }
         final JSONObject merged = new JSONObject(optionQueryService.getPreference().toString());
+        if (!values.has(Option.ID_C_COMMENT_FILTER_BUILTIN)) {
+            merged.put(Option.ID_C_COMMENT_FILTER_BUILTIN,
+                    Boolean.toString(Option.optBooleanSwitch(merged, Option.ID_C_COMMENT_FILTER_BUILTIN, true)));
+        }
         for (final String key : values.keySet()) merged.put(key, values.get(key));
         CommentFilterService.validate(merged);
         final var filter = commentFilterService.prepare(merged);
         final var transaction = optionRepository.beginTransaction();
         try {
             for (final String key : values.keySet()) emptyPreferenceOptSave(key, values.getString(key));
+            if (values.has(Option.ID_C_COMMENT_ACCESS_MODE)) {
+                emptyPreferenceOptSave(Option.ID_C_INTERACTIVE,
+                        "off".equals(values.getString(Option.ID_C_COMMENT_ACCESS_MODE)) ? "false" : "true");
+            }
             transaction.commit();
         } catch (Exception failure) { if (transaction.isActive()) transaction.rollback(); throw failure; }
         commentFilterService.activate(filter);
-        if (values.has("riskControlEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(RiskControlService.class).configure("on".equals(values.getString("riskControlEnabled")));
-        if (values.has("commentCaptchaEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(CaptchaService.class).configureComments("on".equals(values.getString("commentCaptchaEnabled")));
+        if (values.has("riskControlEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(RiskControlService.class).configure("true".equals(values.getString("riskControlEnabled")));
+        if (values.has("commentCaptchaEnabled")) org.b3log.latke.ioc.BeanManager.getInstance().getReference(CaptchaService.class).configureComments("true".equals(values.getString("commentCaptchaEnabled")));
         if (values.has("adminLoginPath")) org.b3log.solo.util.AdminPaths.configureLogin(values.getString("adminLoginPath"));
         WAF.set();
     }

@@ -54,7 +54,7 @@
                     <i class="nexmoefont iconfont solo-heat"></i>${article.articleViewCount} 浏览
                 </span><#if article.articleCategory != ""><span>
                     <i class="nexomefont iconfont solo-category"></i>${article.articleCategory}</span></#if>
-                    <#if interactive == "on">
+                    <#if interactive == "true">
                     <#if article.articleCommentCount != 0><span>
                         <i class="nexmoefont iconfont solo-comment"></i>${article.articleCommentCount}
                         </span></#if></#if>
@@ -85,7 +85,7 @@
                     </div>
                 </#if>
             </div>
-            <#if interactive == "on">
+            <#if interactive == "true">
             <@comments commentList=articleComments article=article></@comments>
             </#if>
             <#if pjax><!---- pjax {#pjax} end ----></#if>

@@ -69,7 +69,13 @@ admin.commentList = {
 
     $.ajax({
       url: Label.servePath + '/console/comments/' + pageNum + '/' +
-      Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE + this.tablePagination.keywordQuery(),
+      Label.PAGE_SIZE + '/' + Label.WINDOW_SIZE + (function () {
+        var kw = that.tablePagination.keywordQuery()
+        var filterNode = typeof document !== 'undefined' && document.getElementById ? document.getElementById('commentStatusFilter') : null
+        var st = filterNode && filterNode.value ? filterNode.value : 'all'
+        if (!st || st === 'all') return kw
+        return (kw ? kw + '&' : '?') + 'status=' + encodeURIComponent(st)
+      })(),
       type: 'GET',
       cache: false,
       success: function (result, textStatus) {
@@ -80,24 +86,44 @@ admin.commentList = {
         }
 
         that.pageInfo.currentPage = pageNum
+        var badgeNode = typeof document !== 'undefined' && document.getElementById ? document.getElementById('commentPendingBadge') : null
+        if (badgeNode) {
+          var pCnt = Number(result.pendingCount || 0)
+          badgeNode.textContent = pCnt > 0 ? ('当前有 ' + pCnt + ' 条待审核评论') : '暂无待审核评论'
+        }
         var comments = result.comments,
           commentsData = []
         var escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]))
         for (var i = 0; i < comments.length; i++) {
           var type = 'Article'
+          var cStatus = Number(comments[i].commentStatus || 0)
+          var statusTag = cStatus === 1
+            ? '<span class="console-totp-badge" data-state="paused" style="margin-right:6px;">待审核</span>'
+            : (cStatus === 2 ? '<span class="console-totp-badge" data-state="unbound" style="margin-right:6px;">已驳回</span>' : '')
           commentsData[i] = {}
-          commentsData[i].content = '<div class="vditor-reset">' +
+          commentsData[i].content = (statusTag ? '<div style="margin-bottom:4px;">' + statusTag + '</div>' : '') +
+            '<div class="vditor-reset">' +
             comments[i].commentContent +
             '</div><span class=\'table-tag\'> on &nbsp;&nbsp;</span><a href=\'' +
             escape(Label.servePath + comments[i].commentSharpURL) +
             '\' target=\'_blank\' rel=\'noopener\'>' + escape(comments[i].commentTitle) +
             '</a>'
 
+          var modActions = ''
+          if (result.canModerate !== false && !comments[i].commentDeleted) {
+            if (cStatus !== 0) {
+              modActions += '<a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.moderate(this.dataset.commentId, 0); return false;">通过</a> '
+            }
+            if (cStatus !== 2) {
+              modActions += '<a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.moderate(this.dataset.commentId, 2); return false;">驳回</a> '
+            }
+          }
+
           commentsData[i].actions = '<a class=\'console-row-action\' href="#" data-comment-id="' + escape(comments[i].oId) +
             '" onclick="admin.commentList.del(this.dataset.commentId, \'Article\'); return false;">' + Label.removeLabel +
             '</a>'
 
-          if (!comments[i].commentDeleted) commentsData[i].actions = '<a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.edit(this.dataset.commentId); return false;">编辑</a> ' + commentsData[i].actions
+          if (!comments[i].commentDeleted) commentsData[i].actions = modActions + '<a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.edit(this.dataset.commentId); return false;">编辑</a> ' + commentsData[i].actions
           commentsData[i].actions += ' <a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.del(this.dataset.commentId, \'Article\', true); return false;">删除讨论</a>'
 
           var avatar = comments[i].commentThumbnailURL || ''
@@ -165,6 +191,25 @@ admin.commentList = {
         actions.append(cancel, save); form.append(title, area, error, actions); dialog.append(form)
         dialog.addEventListener('close', function () { dialog.remove() }); document.body.append(dialog); dialog.showModal(); area.focus()
       }, error: function (xhr) { $('#tipMsg').text(xhr.responseJSON?.msg || '无法读取评论。') }
+    })
+  },
+  moderate: function (id, status) {
+    $('#loadMsg').text(Label.loadingLabel)
+    $.ajax({
+      url: Label.servePath + '/console/comment/' + encodeURIComponent(id) + '/moderate',
+      type: 'PUT',
+      contentType: 'application/json',
+      data: JSON.stringify({ status: status }),
+      complete: function () { $('#loadMsg').text('') },
+      success: function (result) {
+        $('#tipMsg').text(result.msg || (result.sc ? '已更新审核状态。' : '操作失败。'))
+        if (result.sc) {
+          admin.commentList.getList(admin.commentList.pageInfo.currentPage)
+        }
+      },
+      error: function (xhr) {
+        $('#tipMsg').text(xhr.responseJSON?.msg || '审核操作失败，请重试。')
+      },
     })
   },
   ban: function (id) {

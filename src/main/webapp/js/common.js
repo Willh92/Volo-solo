@@ -234,7 +234,7 @@ var Util = {
       $body.off('click.boloPreviewImg', '.vditor-reset img')
     }
     $body.on('click.boloPreviewImg', '.vditor-reset img', function () {
-      if ($(this).hasClass('prevent') || this.closest('a[href]')) {
+      if ($(this).hasClass('prevent') || this.closest('a[href], .volo-bookshelf, .volo-lock-card')) {
         return
       }
       window.open(this.src)

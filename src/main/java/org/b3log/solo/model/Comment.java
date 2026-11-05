@@ -95,6 +95,20 @@ public final class Comment {
     public static final String COMMENT_ON_ID = "commentOnId";
 
     /**
+     * Key of comment moderation status (0 = approved, 1 = pending, 2 = rejected).
+     */
+    public static final String COMMENT_STATUS = "commentStatus";
+
+    /**
+     * Key of authenticated commenter user oId (empty for guest comments).
+     */
+    public static final String COMMENT_USER_ID = "commentUserId";
+
+    public static final int COMMENT_STATUS_C_APPROVED = 0;
+    public static final int COMMENT_STATUS_C_PENDING = 1;
+    public static final int COMMENT_STATUS_C_REJECTED = 2;
+
+    /**
      * Private constructor.
      */
     private Comment() {

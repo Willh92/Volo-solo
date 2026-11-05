@@ -20,6 +20,7 @@ public class IpBanConsole {
     @Inject private IpBanService ipBanService;
     @Inject private CommentRepository commentRepository;
     @Inject private org.b3log.solo.service.GeoAccessService geoAccessService;
+    @Inject private org.b3log.solo.service.WebhookNotifyService webhookNotifyService;
     @Inject private org.b3log.solo.service.OptionQueryService optionQueryService;
     @Inject private org.b3log.solo.service.PreferenceMgmtService preferenceMgmtService;
 
@@ -29,8 +30,18 @@ public class IpBanConsole {
         if (!Solos.isAdminLoggedIn(context)) { AdminRequests.reject(context, 403, "仅管理员可以查看安全设置。"); return; }
         try {
             final JSONObject settings = new JSONObject(), preferences = optionQueryService.getPreference();
-            for (final String key : org.b3log.solo.service.PreferenceMgmtService.SECURITY_KEYS) settings.put(key, preferences.optString(key,
-                    key.equals("commentCaptchaEnabled") || key.equals("riskControlEnabled") || key.equals("commentFilterBuiltin") || key.equals("wafPower") ? "on" : key.startsWith("wafCurrent") ? "180" : ""));
+            for (final String key : org.b3log.solo.service.PreferenceMgmtService.SECURITY_KEYS) {
+                final String def = switch (key) {
+                    case "commentCaptchaEnabled", "riskControlEnabled", "commentFilterBuiltin", "wafPower" -> "true";
+                    case "wafCurrentLimitSecond", "wafCurrentLimitTimes" -> "180";
+                    case org.b3log.solo.model.Option.ID_C_COMMENT_MODERATION_MODE -> "off";
+                    case org.b3log.solo.model.Option.ID_C_COMMENT_ACCESS_MODE -> "all";
+                    default -> "";
+                };
+                settings.put(key, preferences.optString(key, def));
+            }
+            settings.put(org.b3log.solo.model.Option.ID_C_COMMENT_ACCESS_MODE,
+                    org.b3log.solo.model.Option.effectiveCommentAccessMode(preferences));
             context.renderJSON(new JSONObject().put("sc", true).put("settings", settings));
         } catch (Exception failure) { AdminRequests.reject(context, 503, "安全设置暂时无法读取。"); }
     }
@@ -92,6 +103,10 @@ public class IpBanConsole {
                 range = comment.optString(IpAddresses.COMMENT_IP);
             }
             ipBanService.add(range, request.optString("reason"), LoginThrottle.clientAddress(context.getRequest()), duration(request));
+            if (webhookNotifyService != null) {
+                webhookNotifyService.notifyEvent("security.ip_ban", "新增 IP 封禁规则：" + range,
+                        new JSONObject().put("range", range).put("reason", request.optString("reason")));
+            }
             context.renderJSON(new JSONObject().put("sc", true).put("msg", "已封禁，规则立即生效。"));
         } catch (IllegalArgumentException invalid) { AdminRequests.reject(context, 400, invalid.getMessage()); }
         catch (Exception failure) { AdminRequests.reject(context, 503, "封禁规则保存失败，请重试。"); }

@@ -1,0 +1,785 @@
+/*
+ * Volo - A modern, secure, and lightweight blogging system.
+ * Copyright (c) 2026-present, https://github.com/Willh92/Volo-solo
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/* 0. Cross-skin link & heading hygiene inside Volo interactive blocks */
+.volo-bookshelf.volo-bookshelf a,
+.volo-book-reader.volo-book-reader a,
+.volo-series-box.volo-series-box a,
+.volo-lock-card.volo-lock-card a,
+.volo-search-dialog.volo-search-dialog a {
+  border-bottom: 0 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+.volo-bookshelf.volo-bookshelf a::after,
+.volo-book-reader.volo-book-reader a::after,
+.volo-series-box.volo-series-box a::after,
+.volo-lock-card.volo-lock-card a::after,
+.volo-search-dialog.volo-search-dialog a::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 1. Reading stats, outdated banner, preview banner & series box */
+.volo-preview-banner {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--bolo-accent) 45%, var(--bolo-line));
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.volo-reading-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  width: fit-content;
+  max-width: 100%;
+  background: var(--bolo-raised);
+  border: 1px solid var(--bolo-line);
+  color: var(--bolo-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.volo-reading-meta strong { color: var(--bolo-text); font-weight: 600; }
+
+.volo-outdated-notice {
+  margin: 0 0 18px;
+  padding: 11px 15px;
+  border-left: 3px solid #d97706;
+  border-radius: 6px;
+  background: color-mix(in srgb, #f59e0b 11%, var(--bolo-surface));
+  color: var(--bolo-text);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.volo-audio-player {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 10px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+}
+.volo-audio-player__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.volo-audio-player__label { font-weight: 600; }
+.volo-audio-player__duration { color: var(--bolo-muted); font-variant-numeric: tabular-nums; }
+.volo-audio-player__speed {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bolo-line);
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.volo-audio-player__el { width: 100%; height: 38px; display: block; }
+.volo-audio-timestamp { cursor: pointer; text-decoration: underline dotted var(--bolo-accent); }
+
+.volo-series-box.volo-series-box {
+  margin: 24px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 12px;
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+}
+.volo-series-box__head,
+.volo-series-box__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.volo-series-box__badge {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--bolo-button, var(--bolo-accent));
+  color: #f7faf7;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.volo-series-box__progress { margin-left: auto; color: var(--bolo-muted); font-size: 12px; }
+.volo-series-box.volo-series-box .volo-series-box__desc {
+  margin: 4px 0 10px !important;
+  text-indent: 0 !important;
+  color: var(--bolo-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.volo-series-box__toc > summary,
+.volo-series-box__details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+  color: var(--bolo-text);
+}
+.volo-series-box.volo-series-box .volo-series-box__list {
+  margin: 10px 0 0 !important;
+  padding-left: 22px !important;
+  font-size: 13.5px;
+  line-height: 1.75;
+}
+.volo-series-box.volo-series-box .volo-series-box__list li {
+  margin: 2px 0 !important;
+  list-style: decimal !important;
+}
+.volo-series-box.volo-series-box .volo-series-box__list li::before {
+  content: none !important;
+  display: none !important;
+}
+.volo-series-box.volo-series-box .volo-series-box__list li.is-active {
+  font-weight: 600;
+  color: var(--bolo-accent);
+}
+.volo-series-box.volo-series-box .volo-series-box__list a,
+.volo-series-box.volo-series-box .volo-series-box__nav a {
+  color: var(--bolo-text) !important;
+  text-decoration: none !important;
+}
+.volo-series-box.volo-series-box .volo-series-box__list a:hover,
+.volo-series-box.volo-series-box .volo-series-box__nav a:hover {
+  color: var(--bolo-accent) !important;
+}
+.volo-series-box__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--bolo-line);
+  font-size: 13px;
+}
+
+/* 2. Partial hidden content cards (.volo-lock-card & .volo-unlocked-block) */
+.volo-lock-card.volo-lock-card {
+  margin: 20px 0;
+  padding: 18px 20px;
+  border: 1px dashed color-mix(in srgb, var(--bolo-accent) 55%, var(--bolo-line));
+  border-radius: 12px;
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+}
+.volo-lock-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 15px; }
+.volo-lock-card.volo-lock-card .volo-lock-card__hint {
+  margin: 0 0 12px !important;
+  text-indent: 0 !important;
+  color: var(--bolo-muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.volo-lock-card__form, .volo-lock-card__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.volo-lock-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 180px;
+  max-width: 280px;
+  height: 38px;
+  padding: 8px 12px;
+  line-height: 20px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+  font-size: 13.5px;
+}
+.volo-lock-btn {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--bolo-button, var(--bolo-accent));
+  color: #f7faf7 !important;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.volo-lock-btn--ghost {
+  background: var(--bolo-surface);
+  color: var(--bolo-text) !important;
+  border-color: var(--bolo-line);
+}
+.volo-lock-card.volo-lock-card .volo-lock-card__msg {
+  margin: 8px 0 0 !important;
+  text-indent: 0 !important;
+  color: var(--bolo-danger);
+  font-size: 12.5px;
+}
+
+.volo-unlocked-block {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--bolo-accent) 42%, var(--bolo-line));
+  border-radius: 12px;
+  background: var(--bolo-surface);
+}
+.volo-unlocked-block__badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--bolo-raised);
+  color: var(--bolo-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 3. Instant Search & Reader Auth Modals + Standalone Reader Auth Card + Header / Quick Pills */
+.volo-header-reader-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 999px;
+  background: var(--bolo-raised);
+  color: var(--bolo-text) !important;
+  font-size: 12.5px;
+  line-height: 1;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+.volo-header-reader-pill:hover {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent) !important;
+}
+
+.volo-quick-dock {
+  position: fixed;
+  left: max(14px, env(safe-area-inset-left, 0px));
+  bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  z-index: 890;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 92px);
+}
+.volo-quick-dock[hidden],
+html.volo-reader-lock-scroll .volo-quick-dock { display: none !important; }
+.volo-quick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bolo-surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--bolo-text);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.volo-quick-pill:hover {
+  border-color: var(--bolo-accent);
+  color: var(--bolo-accent);
+}
+@media print {
+  .volo-quick-dock { display: none !important; }
+}
+
+.volo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  place-items: start center;
+  padding: min(10vh, 72px) 16px 24px;
+  background: rgba(15, 23, 20, 0.52);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+.volo-modal-backdrop[hidden] { display: none !important; }
+
+.volo-search-dialog {
+  width: min(640px, 100%);
+  border: 1px solid var(--bolo-line);
+  border-radius: 14px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+.volo-search-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bolo-line);
+}
+.volo-search-icon { color: var(--bolo-muted); flex-shrink: 0; }
+.volo-search-input {
+  box-sizing: border-box;
+  flex: 1;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  color: var(--bolo-text);
+  font-size: 15px;
+  height: 32px;
+  padding: 5px 0;
+  line-height: 22px;
+}
+.volo-search-esc {
+  padding: 3px 8px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 6px;
+  background: var(--bolo-raised);
+  color: var(--bolo-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.volo-search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--bolo-line);
+  background: var(--bolo-raised);
+}
+.volo-filter-pill {
+  padding: 3px 9px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 999px;
+  background: var(--bolo-surface);
+  color: var(--bolo-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.volo-filter-pill.is-active {
+  background: var(--bolo-button, var(--bolo-accent));
+  border-color: transparent;
+  color: #f7faf7;
+}
+.volo-search-results { max-height: min(58vh, 420px); overflow-y: auto; padding: 6px; }
+.volo-search-empty { padding: 28px 16px; text-align: center; color: var(--bolo-muted); font-size: 13.5px; }
+.volo-search-item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: var(--bolo-text) !important;
+  text-decoration: none !important;
+}
+.volo-search-item:hover, .volo-search-item.is-active { background: var(--bolo-raised); }
+.volo-search-item__title { font-size: 14.5px; font-weight: 600; line-height: 1.45; }
+.volo-search-item__snippet { margin-top: 4px; color: var(--bolo-muted); font-size: 12.5px; line-height: 1.55; }
+.volo-search-item mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bolo-accent) 24%, transparent);
+  color: var(--bolo-text);
+  font-weight: 600;
+}
+.volo-search-item__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.volo-search-chip { font-size: 11.5px; color: var(--bolo-muted); }
+.volo-search-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--bolo-line);
+  background: var(--bolo-raised);
+  color: var(--bolo-muted);
+  font-size: 11.5px;
+}
+.volo-search-foot kbd {
+  padding: 1px 5px;
+  margin-right: 3px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 4px;
+  background: var(--bolo-surface);
+  font-size: 11px;
+}
+
+.volo-reader-dialog, .volo-reader-page-card {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  padding: 22px 24px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 14px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+  box-sizing: border-box;
+}
+.volo-reader-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.volo-reader-kicker { display: none; }
+.volo-reader-tabs { display: flex; gap: 6px; }
+.volo-reader-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-raised);
+  color: var(--bolo-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.volo-reader-tab.is-active {
+  background: var(--bolo-button, var(--bolo-accent));
+  border-color: transparent;
+  color: #f7faf7;
+}
+.volo-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--bolo-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.volo-reader-pane h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--bolo-text);
+}
+.volo-reader-desc { margin: 0 0 14px; color: var(--bolo-muted); font-size: 13px; line-height: 1.6; }
+.volo-reader-closed-tip {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--bolo-raised);
+  color: var(--bolo-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.volo-reader-form { display: flex; flex-direction: column; gap: 12px; }
+.volo-reader-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; }
+.volo-reader-form input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 9px 12px;
+  line-height: 20px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-bg);
+  color: var(--bolo-text);
+  font-size: 14px;
+}
+:is(.volo-lock-input, .volo-reader-form input)::-webkit-caps-lock-indicator {
+  width: 16px;
+  height: 16px;
+  max-height: 18px;
+  align-self: center;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+:is(.volo-lock-input, .volo-reader-form input)::-webkit-credentials-auto-fill-button {
+  align-self: center;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+.volo-reader-captcha-field, .volo-reader-code-field { margin: 0; }
+.volo-reader-captcha-row, .volo-reader-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px;
+  gap: 10px;
+  align-items: end;
+}
+@media (max-width: 420px) {
+  .volo-reader-captcha-row, .volo-reader-code-row {
+    grid-template-columns: 1fr;
+  }
+}
+.volo-reader-captcha-img-btn {
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: #edf3ef;
+  overflow: hidden;
+  cursor: pointer;
+}
+.volo-reader-captcha-img-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.volo-reader-send-code {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-raised);
+  color: var(--bolo-text);
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.volo-reader-submit {
+  height: 42px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--bolo-button, var(--bolo-accent));
+  color: #f7faf7;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.volo-reader-alert { padding: 8px 12px; border-radius: 8px; background: var(--bolo-raised); color: var(--bolo-danger); font-size: 12.5px; }
+.volo-reader-alert.is-success { color: var(--bolo-accent); }
+
+/* 4. Embedded Bookshelf & Split-Screen / Fullscreen Reader */
+html.volo-reader-lock-scroll { overflow: hidden !important; }
+
+.volo-bookshelf.volo-bookshelf { margin: 20px 0; color: var(--bolo-text); }
+.volo-bookshelf__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.volo-bookshelf__heading { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.volo-bookshelf__badge {
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: var(--bolo-button, var(--bolo-accent));
+  color: #f7faf7;
+  font-size: 12px;
+  font-weight: 600;
+}
+.volo-bookshelf__filter {
+  box-sizing: border-box;
+  width: min(280px, 100%);
+  height: 36px;
+  padding: 7px 12px;
+  line-height: 20px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 8px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+  font-size: 13px;
+}
+.volo-bookshelf__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 16px;
+}
+.volo-book-card.volo-book-card {
+  padding: 16px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 12px;
+  background: var(--bolo-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.volo-book-card__head { display: flex; gap: 14px; align-items: flex-start; }
+.volo-bookshelf.volo-bookshelf .volo-book-card__cover {
+  width: 64px !important;
+  height: 86px !important;
+  margin: 0 !important;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--bolo-line);
+  flex-shrink: 0;
+  cursor: default !important;
+}
+.volo-book-card__meta { min-width: 0; flex: 1; }
+.volo-bookshelf.volo-bookshelf h3.volo-book-card__title {
+  margin: 0 0 6px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  font-size: 16.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  color: var(--bolo-text) !important;
+}
+.volo-bookshelf.volo-bookshelf h3.volo-book-card__title::before,
+.volo-bookshelf.volo-bookshelf h3.volo-book-card__title::after {
+  content: none !important;
+  display: none !important;
+}
+.volo-bookshelf.volo-bookshelf p.volo-book-card__desc {
+  margin: 0 0 8px !important;
+  text-indent: 0 !important;
+  color: var(--bolo-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.volo-book-card__stats { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--bolo-muted); }
+.volo-book-card__resume {
+  padding: 2px 9px;
+  border: 1px solid var(--bolo-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bolo-accent);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.volo-book-card__catalog { border-top: 1px dashed var(--bolo-line); padding-top: 10px; }
+.volo-book-card__catalog > summary { cursor: pointer; font-size: 13px; font-weight: 500; user-select: none; color: var(--bolo-text); }
+.volo-book-toc.volo-book-toc {
+  list-style: none !important;
+  margin: 8px 0 0 !important;
+  padding-left: 12px !important;
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.volo-book-toc.volo-book-toc .volo-book-toc { max-height: none; overflow: visible; padding-left: 16px !important; margin-top: 2px !important; }
+.volo-book-toc.volo-book-toc .volo-book-toc__item {
+  margin: 3px 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+.volo-book-toc.volo-book-toc .volo-book-toc__item::before,
+.volo-book-toc.volo-book-toc .volo-book-toc__item::after {
+  content: none !important;
+  display: none !important;
+}
+.volo-book-toc.volo-book-toc a.volo-book-toc__link {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--bolo-text) !important;
+  text-decoration: none !important;
+}
+.volo-book-toc.volo-book-toc a.volo-book-toc__link:hover,
+.volo-book-toc.volo-book-toc a.volo-book-toc__link.is-active {
+  background: var(--bolo-raised);
+  color: var(--bolo-accent) !important;
+  font-weight: 600;
+}
+.volo-book-toc__group { display: block; padding: 4px 8px; color: var(--bolo-muted); font-weight: 600; }
+
+.volo-book-reader.volo-book-reader {
+  margin-top: 20px;
+  border: 1px solid var(--bolo-line);
+  border-radius: 12px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: min(78vh, 760px);
+}
+.volo-book-reader[hidden] { display: none !important; }
+.volo-book-reader.volo-book-reader.is-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9600 !important;
+  margin: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+}
+.volo-book-reader__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bolo-line);
+  background: var(--bolo-raised);
+}
+.volo-book-reader__crumb, .volo-book-reader__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.volo-book-reader__title { font-size: 13.5px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.volo-book-reader.volo-book-reader .volo-book-reader__btn {
+  padding: 4px 10px;
+  border: 1px solid var(--bolo-line) !important;
+  border-radius: 6px;
+  background: var(--bolo-surface);
+  color: var(--bolo-text) !important;
+  font-size: 12px;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+.volo-book-reader__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.volo-book-reader__body { display: flex; flex: 1; min-height: 0; }
+.volo-book-reader__sidebar {
+  width: 250px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--bolo-line);
+  overflow-y: auto;
+  padding: 10px;
+  background: var(--bolo-bg);
+}
+.volo-book-reader__sidebar .volo-book-toc.volo-book-toc { max-height: none; padding-left: 4px !important; }
+.volo-book-reader.is-sidebar-collapsed .volo-book-reader__sidebar { display: none; }
+.volo-book-reader__stage { flex: 1; min-height: 0; min-width: 0; background: #fff; }
+.volo-book-reader.volo-book-reader iframe.volo-book-reader__iframe {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  display: block;
+}
+@media (max-width: 768px) {
+  .volo-book-reader__sidebar { width: 196px; }
+  .volo-book-reader__title { max-width: 180px; }
+}
+@media (max-width: 640px) {
+  .volo-modal-backdrop {
+    padding: max(12px, env(safe-area-inset-top, 12px)) 10px max(16px, env(safe-area-inset-bottom, 16px));
+  }
+  .volo-search-results { max-height: min(62dvh, 380px); }
+  .volo-search-foot > span:first-child { display: none; }
+  .volo-search-foot { justify-content: flex-end; }
+  .volo-reader-dialog, .volo-reader-page-card { padding: 18px 16px; }
+  .volo-search-input,
+  .volo-reader-form input,
+  .volo-lock-input,
+  .volo-bookshelf__filter {
+    font-size: 16px;
+  }
+  .volo-bookshelf__filter { width: 100%; }
+  .volo-book-reader.volo-book-reader { height: min(82dvh, 680px); }
+  .volo-book-reader.volo-book-reader.is-fullscreen {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+  .volo-book-reader.volo-book-reader.is-fullscreen .volo-book-reader__bar {
+    padding-top: max(8px, env(safe-area-inset-top, 0px));
+  }
+  .volo-book-reader__bar { padding: 8px 10px; gap: 6px; }
+  .volo-book-reader__title { max-width: calc(100vw - 90px); }
+  .volo-book-reader__body { position: relative; }
+  .volo-book-reader__sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 6;
+    width: min(260px, 82%);
+    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.22);
+  }
+}
+@media (max-width: 480px) {
+  .volo-lock-card.volo-lock-card { padding: 15px 14px; }
+  .volo-lock-input { min-width: 0; max-width: none; width: 100%; flex-basis: 100%; }
+  .volo-lock-card__form .volo-lock-btn,
+  .volo-lock-card__actions .volo-lock-btn { flex: 1; text-align: center; justify-content: center; }
+  .volo-series-box__progress { margin-left: 0; }
+}

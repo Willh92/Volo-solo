@@ -65,7 +65,7 @@
                                             <i class="nexomefont iconfont solo-category"></i>
                                             ${article.articleCategory}
                                         </span></#if>
-                                    <#if interactive=="on">
+                                    <#if interactive == "true">
                                         <#if article.articleCommentCount !=0><span>
                                                 <i class="nexmoefont iconfont solo-comment"></i>
                                                 ${article.articleCommentCount}
@@ -101,7 +101,7 @@
                                     </div>
                                 </#if>
                             </div>
-                            <#if interactive=="on">
+                            <#if interactive == "true">
                                 <@comments commentList=articleComments article=article></@comments>
                             </#if>
                             <#if pjax>

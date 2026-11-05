@@ -186,7 +186,10 @@ public class UpgradeService {
         }
     }
 
-    protected void upgradeDateSchema() throws Exception { org.b3log.solo.upgrade.V434_20261101.perform(); }
+    protected void upgradeDateSchema() throws Exception {
+        org.b3log.solo.upgrade.V434_20261101.perform();
+        org.b3log.solo.upgrade.V20261101_20261105.perform();
+    }
 
     private static boolean isFamilySkin(final String name) {
         return name.contains("bolo") || name.startsWith("volo-");

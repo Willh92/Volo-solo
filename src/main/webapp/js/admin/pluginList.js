@@ -96,13 +96,49 @@ admin.pluginList = {
                     return encodeURIComponent(String(v == null ? '' : v)).replace(/'/g, '%27');
                 };
                 admin.pluginList.pageInfo.currentPage = pageNum;
+                var decodeHtmlEntities = function (text) {
+                    return String(text == null ? '' : text).replace(/&(amp|lt|gt|quot|apos|nbsp|middot|#\d+|#x[0-9a-fA-F]+);/g, function (full, ent) {
+                        var map = {amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', middot: '·'};
+                        if (Object.prototype.hasOwnProperty.call(map, ent)) return map[ent];
+                        var code = ent.charAt(1).toLowerCase() === 'x' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+                        return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : full;
+                    });
+                };
+                var escapePlainSegment = function (text) {
+                    return escapeHtml(decodeHtmlEntities(text));
+                };
+                var formatPluginAuthor = function (raw) {
+                    var src = String(raw == null ? '' : raw);
+                    var pattern = /<br\s*\/?>|<(code|strong|b|em)\b[^>]*>([\s\S]*?)<\/\1>|<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+                    var out = '', last = 0, match;
+                    while ((match = pattern.exec(src)) !== null) {
+                        out += escapePlainSegment(src.slice(last, match.index));
+                        if (match[1]) {
+                            var tag = match[1].toLowerCase();
+                            out += '<' + tag + '>' + escapePlainSegment(match[2]) + '</' + tag + '>';
+                        } else if (match[3] !== undefined) {
+                            var hrefMatch = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i.exec(match[3]);
+                            var rawHref = hrefMatch ? decodeHtmlEntities(hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || '').trim() : '';
+                            if (/^https?:\/\/[^\s"'<>]+$/i.test(rawHref)) {
+                                out += '<a href="' + escapeHtml(rawHref) + '" target="_blank" rel="noopener noreferrer">' + escapePlainSegment(match[4]) + '</a>';
+                            } else {
+                                out += escapePlainSegment(match[0]);
+                            }
+                        } else {
+                            out += '<br>';
+                        }
+                        last = pattern.lastIndex;
+                    }
+                    out += escapePlainSegment(src.slice(last));
+                    return out;
+                };
                 var datas = result.plugins, rows = [];
                 for (var i = 0; i < datas.length; i++) {
                     var safeId = encodeQuote(datas[i].oId);
                     var safeStatus = encodeQuote(datas[i].status);
                     var row = {
                         name: escapeHtml(datas[i].name),
-                        author: escapeHtml(datas[i].author),
+                        author: formatPluginAuthor(datas[i].author),
                         version: escapeHtml(datas[i].version)
                     };
                     row.expendRow = "<a href='javascript:void(0)' onclick=\"admin.pluginList.changeStatus('" +

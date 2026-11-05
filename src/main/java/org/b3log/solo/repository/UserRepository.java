@@ -50,6 +50,28 @@ public class UserRepository extends AbstractRepository {
     }
 
     @Override
+    public String add(final JSONObject user) throws RepositoryException {
+        if (user != null) {
+            if (!user.has(org.b3log.solo.model.UserExt.USER_STATUS)) {
+                user.put(org.b3log.solo.model.UserExt.USER_STATUS, org.b3log.solo.model.UserExt.USER_STATUS_C_VALID);
+            }
+            if (!user.has(org.b3log.solo.model.UserExt.USER_EMAIL_VERIFIED)) {
+                user.put(org.b3log.solo.model.UserExt.USER_EMAIL_VERIFIED, false);
+            }
+            if (!user.has(org.b3log.solo.model.UserExt.USER_EMAIL)) {
+                user.put(org.b3log.solo.model.UserExt.USER_EMAIL, "");
+            }
+            if (!user.has(org.b3log.solo.model.UserExt.USER_PASSWORD_HASH)) {
+                user.put(org.b3log.solo.model.UserExt.USER_PASSWORD_HASH, "");
+            }
+            if (!user.has(org.b3log.solo.model.UserExt.USER_CREATED)) {
+                user.put(org.b3log.solo.model.UserExt.USER_CREATED, System.currentTimeMillis());
+            }
+        }
+        return super.add(user);
+    }
+
+    @Override
     public void remove(final String id) throws RepositoryException {
         super.remove(id);
 
@@ -94,6 +116,18 @@ public class UserRepository extends AbstractRepository {
      */
     public JSONObject getByUserName(final String userName) throws RepositoryException {
         return getFirst(new Query().setFilter(new PropertyFilter(User.USER_NAME, FilterOperator.EQUAL, userName)));
+    }
+
+    /**
+     * Gets a user by normalized email address.
+     */
+    public JSONObject getByEmail(final String email) throws RepositoryException {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        final String normalized = email.strip().toLowerCase(java.util.Locale.ROOT);
+        return getFirst(new Query().setFilter(new PropertyFilter(
+                org.b3log.solo.model.UserExt.USER_EMAIL, FilterOperator.EQUAL, normalized)));
     }
 
     /**

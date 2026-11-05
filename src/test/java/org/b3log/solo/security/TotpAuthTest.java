@@ -156,7 +156,7 @@ public class TotpAuthTest {
         Assert.assertEquals(initial.getString("defaultIssuer"), "Volo Notes");
 
         Assert.expectThrows(IllegalArgumentException.class,
-                () -> store.service.updateSettings(new JSONObject().put("enabled", "on")));
+                () -> store.service.updateSettings(new JSONObject().put("enabled", "true")));
 
         final JSONObject setup = store.service.prepareSetup("admin-1", "admin");
         final String secret = setup.getString("secret");
@@ -222,11 +222,11 @@ public class TotpAuthTest {
 
         // Disabling and unbinding require verification when enabled.
         Assert.expectThrows(IllegalArgumentException.class,
-                () -> store.service.updateSettings(new JSONObject().put("enabled", "off")));
+                () -> store.service.updateSettings(new JSONObject().put("enabled", "false")));
         store.now.addAndGet(30_000L);
         final String disableCode = TotpService.generateCode(rebind.getString("secret"), store.now.get());
         final JSONObject paused = store.service.updateSettings(new JSONObject()
-                .put("enabled", "off")
+                .put("enabled", "false")
                 .put("scope", "all")
                 .put("issuer", "My Blog")
                 .put("windowSteps", 2)
@@ -241,11 +241,11 @@ public class TotpAuthTest {
 
         // Re-enabling also requires fresh TOTP verification to prevent accidental lockout.
         Assert.expectThrows(IllegalArgumentException.class,
-                () -> store.service.updateSettings(new JSONObject().put("enabled", "on")));
+                () -> store.service.updateSettings(new JSONObject().put("enabled", "true")));
         store.now.addAndGet(30_000L);
         final String reenableCode = TotpService.generateCode(rebind.getString("secret"), store.now.get());
         Assert.assertTrue(store.service.updateSettings(new JSONObject()
-                .put("enabled", "on").put("verifyCode", reenableCode)).getBoolean("enabled"));
+                .put("enabled", "true").put("verifyCode", reenableCode)).getBoolean("enabled"));
 
         store.now.addAndGet(30_000L);
         final String unbindCode = TotpService.generateCode(rebind.getString("secret"), store.now.get());
@@ -274,7 +274,7 @@ public class TotpAuthTest {
         store.service.confirmSetup("u-admin", setup.getString("setupId"),
                 TotpService.generateCode(secret, store.now.get()), "");
         store.service.updateSettings(new JSONObject()
-                .put("enabled", "on")
+                .put("enabled", "true")
                 .put("scope", "admin")
                 .put("rememberDays", 7));
         store.now.addAndGet(30_000L);
@@ -322,12 +322,12 @@ public class TotpAuthTest {
         Assert.assertFalse(wrongOtp.getBoolean("sc"));
         Assert.assertTrue(wrongOtp.getBoolean("totpRequired"));
 
-        // 6. Correct TOTP code with rememberDevice=on logs in and sets both session + trusted-device cookies.
+        // 6. Correct TOTP code with rememberDevice=true logs in and sets both session + trusted-device cookies.
         final List<Cookie> step2Cookies = new ArrayList<>();
         final JSONObject step2 = postTotpStep(processor, "198.51.100.33", Map.of(
                 "totpToken", token,
                 "totpCode", TotpService.generateCode(secret, store.now.get()),
-                "rememberDevice", "on"
+                "rememberDevice", "true"
         ), step2Cookies, 200);
         Assert.assertTrue(step2.getBoolean("sc"));
         Assert.assertEquals(step2.getString("redirect"), "/admin-index.do#main");
@@ -350,7 +350,7 @@ public class TotpAuthTest {
         // 8. Disabling TOTP immediately restores mandatory login image captcha.
         store.now.addAndGet(30_000L);
         store.service.updateSettings(new JSONObject()
-                .put("enabled", "off")
+                .put("enabled", "false")
                 .put("verifyCode", TotpService.generateCode(secret, store.now.get())));
         Assert.assertTrue(fetchLoginCaptcha(captchaProcessor).getBoolean("required"));
         final JSONObject missingCaptchaAfterDisable = postLoginWithoutCaptcha(processor, "198.51.100.35",
@@ -446,7 +446,7 @@ public class TotpAuthTest {
         final String secret = setup2.getString("secret");
         store.service.confirmSetup("u-admin", setup2.getString("setupId"),
                 TotpService.generateCode(secret, store.now.get()), "");
-        store.service.updateSettings(new JSONObject().put("enabled", "on").put("rememberDays", 14));
+        store.service.updateSettings(new JSONObject().put("enabled", "true").put("rememberDays", 14));
 
         final JSONObject userBefore = new JSONObject()
                 .put(Keys.OBJECT_ID, "u-admin")

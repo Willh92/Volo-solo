@@ -40,7 +40,7 @@
             </a>
             <div class="post-meta">
                 <span><i class="fa fa-eye"></i>${article.articleViewCount} 浏览</span>
-                <#if interactive == "on">
+                <#if interactive == "true">
                     <span class="comments-number"><i class="fa fa-comment-o"></i><a href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">${article.articleCommentCount} 条评论</a></span>
                 </#if>
                 <#if article.articleCategory?? && article.articleCategory != "">

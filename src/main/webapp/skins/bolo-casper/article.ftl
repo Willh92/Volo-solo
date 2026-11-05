@@ -90,7 +90,7 @@
             <#include "../../common-template/disclosure-toc.ftl"/>
         </div>
     </#if>
-    <#if interactive == "on">
+    <#if interactive == "true">
     <@comments commentList=articleComments article=article></@comments>
     </#if>
     <div class="article__bottom" data-article-recommendations>

@@ -99,7 +99,7 @@
                                             </#if>
                                         </div>
                                     </div>
-                                    <#if interactive == "on">
+                                    <#if interactive == "true">
                                     <div class="card">
                                         <div class="card-content">
                                             <h3 class="title is-5 has-text-weight-normal">评论</h3>

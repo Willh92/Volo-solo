@@ -137,6 +137,7 @@ function miniAdmin () {
     './src/main/webapp/js/admin/pluginList.js',
     './src/main/webapp/js/admin/userList.js',
     './src/main/webapp/js/admin/categoryList.js',
+    './src/main/webapp/js/admin/bookList.js',
     './src/main/webapp/js/admin/commentList.js',
     './src/main/webapp/js/admin/plugin.js',
     './src/main/webapp/js/admin/main.js',

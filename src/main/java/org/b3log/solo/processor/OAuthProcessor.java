@@ -199,10 +199,13 @@ public class OAuthProcessor {
                 loginResult(context, true, AdminPaths.panel() + "#main", "初始化完成。", 200);
             } else {
                 final JSONObject user = userQueryService.getUserByName(username);
+                final boolean passwordMatched = user != null && (hashesEqual(password, user.optString(UserExt.USER_B3_KEY))
+                        || org.b3log.solo.util.PasswordHashes.verify(srcPassword, user));
                 if (user == null || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
                         && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))
+                        || user.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) != UserExt.USER_STATUS_C_VALID
                         || !username.equals(user.optString(User.USER_NAME))
-                        || !hashesEqual(password, user.optString(UserExt.USER_B3_KEY))) {
+                        || !passwordMatched) {
                     loginResult(context, false, null, "用户名或密码错误。", 401);
                     return;
                 }
@@ -311,6 +314,7 @@ public class OAuthProcessor {
             final JSONObject user = userQueryService.getUserByName(outcome.username());
             if (user == null || !outcome.userId().equals(user.optString(Keys.OBJECT_ID))
                     || !hashesEqual(outcome.passwordHash(), user.optString(UserExt.USER_B3_KEY))
+                    || user.optInt(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID) != UserExt.USER_STATUS_C_VALID
                     || (!Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))
                     && !Role.DEFAULT_ROLE.equals(user.optString(User.USER_ROLE)))) {
                 RiskControlService.recordFailure(context, 401);
@@ -320,7 +324,7 @@ public class OAuthProcessor {
                 return;
             }
             Solos.login(user, context.getResponse());
-            if ("on".equals(request.getParameter("rememberDevice"))) {
+            if ("true".equals(request.getParameter("rememberDevice"))) {
                 totpService.writeTrustedDeviceCookie(user, context.getResponse());
             }
             LOGIN_THROTTLE.succeeded(attempt);

@@ -25,7 +25,7 @@
                 <div class="level-item has-text-centered" style="flex-shrink: 1">
                     <div class="level">
                         <figure class="image is-64x64 has-mb-6 level-left" style="margin: 0 auto">
-                            <img class="is-rounded" src="${adminUser.userAvatar!}" alt="${userName!}" style="padding: 2px;
+                            <img class="is-rounded" src="${adminUser.userAvatar!}" alt="${(adminUser.userName!'')?html}" style="padding: 2px;
 box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);">
                         </figure>
                         <div class="level-right">
@@ -75,51 +75,53 @@ box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);">
             </nav>
             <div class="level is-mobile">
                 <#if usite??>
-                    <#if usite.usiteResume !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="个人简历"
-                           href="${usite.usiteResume}">
+                    <#assign resumeURL=(usite.usiteResume!"")?trim>
+                    <#if resumeURL?starts_with("https://") || resumeURL?starts_with("http://") || (resumeURL?starts_with("/") && !resumeURL?starts_with("//"))>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="个人简历"
+                           href="${resumeURL?html}">
                             <i class="fa fa-id-card"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteQQ !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="QQ"
-                           href="tencent://message/?uin=${usite.usiteQQ}">
+                    <#if (usite.usiteQQ!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="QQ"
+                           href="tencent://message/?uin=${usite.usiteQQ?html}">
                             <i class="fab fa-qq"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteWeChat !=''>
-                        <a class="level-item button is-marginless" title="WeChat"
-                           href="javascript:alert('我的微信号：${usite.usiteWeChat}')">
+                    <#if (usite.usiteWeChat!"")?has_content>
+                        <a class="level-item button is-marginless" title="WeChat" href="#wechat" role="button"
+                           data-wechat="${usite.usiteWeChat?html}"
+                           onclick="alert('我的微信号：' + this.getAttribute('data-wechat')); return false;">
                             <i class="fab fa-weixin"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteWeiBo !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="Weibo"
-                           href="https://weibo.com/${usite.usiteWeiBo}">
+                    <#if (usite.usiteWeiBo!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="Weibo"
+                           href="https://weibo.com/${usite.usiteWeiBo?html}">
                             <i class="fab fa-weibo"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteGitHub !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="Github"
-                           href="https://github.com/${usite.usiteGitHub}">
+                    <#if (usite.usiteGitHub!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="Github"
+                           href="https://github.com/${usite.usiteGitHub?html}">
                             <i class="fab fa-github"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteTwitter !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="Twitter"
-                           href="https://twitter.com/${usite.usiteTwitter}">
+                    <#if (usite.usiteTwitter!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="Twitter"
+                           href="https://twitter.com/${usite.usiteTwitter?html}">
                             <i class="fab fa-twitter"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteFacebook !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="Facebook"
-                           href="https://www.facebook.com/${usite.usiteFacebook}">
+                    <#if (usite.usiteFacebook!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="Facebook"
+                           href="https://www.facebook.com/${usite.usiteFacebook?html}">
                             <i class="fab fa-facebook"></i>
                         </a>
                     </#if>
-                    <#if usite.usiteTelegram !=''>
-                        <a class="level-item button is-marginless" target="_blank" title="Telegram"
-                           href="https://telegram.me/${usite.usiteTelegram}">
+                    <#if (usite.usiteTelegram!"")?has_content>
+                        <a class="level-item button is-marginless" target="_blank" rel="noopener noreferrer nofollow" title="Telegram"
+                           href="https://telegram.me/${usite.usiteTelegram?html}">
                             <i class="fab fa-telegram"></i>
                         </a>
                     </#if>

@@ -264,3 +264,5 @@ html[data-bolo-page='public'] .volo-github-repos-table .volo-github-repo-desc.is
   html[data-bolo-page='public'] .volo-github-repos-wrap > table.volo-github-repos-table :is(th,td):nth-child(4) { width:60px; }
   html[data-bolo-page='public'] .volo-github-repos-wrap > table.volo-github-repos-table :is(th,td):nth-child(5) { width:96px; }
 }
+
+@import 'volo-enhancements';

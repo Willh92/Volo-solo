@@ -90,7 +90,7 @@
                         <div class="item" id="relevantArticles"></div>
                     </div>
 
-                    <#if interactive == "on">
+                    <#if interactive == "true">
                         <section class="comments">
                             <ul class="commentwrap">
                                 <@comments commentList=articleComments article=article count=article.articleCommentCount></@comments>

@@ -108,6 +108,15 @@ public class ArticleConsole {
     @Inject
     private CategoryQueryService categoryQueryService;
 
+    @Inject
+    private ArticleRevisionService articleRevisionService;
+
+    @Inject
+    private ShareTokenService shareTokenService;
+
+    @Inject
+    private SeriesAndBookshelfService seriesAndBookshelfService;
+
     /**
      * Pushes an article to community.
      *
@@ -192,6 +201,9 @@ public class ArticleConsole {
                 return;
             }
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+            if (null != seriesAndBookshelfService) {
+                result.put("seriesList", seriesAndBookshelfService.getAllSeries());
+            }
 
             try {
                 final JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
@@ -432,6 +444,7 @@ public class ArticleConsole {
 
                 return;
             }
+            article.put("_operatorName", currentUser.optString(User.USER_NAME));
             articleMgmtService.updateArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article updated [id={0}]", requestJSONObject.getJSONObject(Article.ARTICLE).optString(Keys.OBJECT_ID));
 
@@ -458,6 +471,7 @@ public class ArticleConsole {
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
             article.put(Article.ARTICLE_AUTHOR_ID, currentUser.getString(Keys.OBJECT_ID));
+            article.put("_operatorName", currentUser.optString(User.USER_NAME));
 
             final String articleId = articleMgmtService.addArticle(requestJSONObject);
             LOGGER.log(Level.INFO, "Article created [id={0}]", articleId);
@@ -470,6 +484,144 @@ public class ArticleConsole {
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, e.getMessage());
+        }
+    }
+
+    /**
+     * Generates or revokes an expiring preview share link for a draft or password-protected article.
+     */
+    public void createShareToken(final RequestContext context) {
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject().put(Common.STATUS_CODE, false);
+        renderer.setJSONObject(ret);
+        try {
+            final String articleId = context.pathVar("id");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                return;
+            }
+            final JSONObject req = context.requestJSON();
+            final String action = req.optString("action", "create");
+            if ("revoke".equalsIgnoreCase(action)) {
+                if (!Solos.isAdminLoggedIn(context)) {
+                    ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                    return;
+                }
+                shareTokenService.rotateSecret();
+                ret.put(Common.STATUS_CODE, true);
+                ret.put(Keys.MSG, "已重置签名密钥，所有历史预览链接已立即失效。");
+                return;
+            }
+            final JSONObject article = articleQueryService.getArticleById(articleId);
+            if (null == article) {
+                ret.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                return;
+            }
+            final long ttl = shareTokenService.resolveTtlSeconds(req.optString("duration", "24h"));
+            final String token = shareTokenService.generateToken(article, ttl);
+            final String shareUrl = shareTokenService.buildShareUrl(article, token);
+            ret.put(Common.STATUS_CODE, true);
+            ret.put("token", token);
+            ret.put("shareUrl", shareUrl);
+            ret.put("expiresInSeconds", ttl);
+            ret.put(Keys.MSG, "已生成限时免密预览链接");
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Creates article share token failed", e);
+            ret.put(Keys.MSG, "生成预览链接失败");
+        }
+    }
+
+    /**
+     * Lists historical revisions of an article.
+     */
+    public void listArticleRevisions(final RequestContext context) {
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject().put(Common.STATUS_CODE, false);
+        renderer.setJSONObject(ret);
+        try {
+            final String articleId = context.pathVar("id");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                return;
+            }
+            ret.put(Common.STATUS_CODE, true);
+            ret.put("revisions", new JSONArray(articleRevisionService.listRevisions(articleId)));
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Lists article revisions failed", e);
+            ret.put(Keys.MSG, langPropsService.get("getFailLabel"));
+        }
+    }
+
+    /**
+     * Gets a single historical revision detail for diff preview.
+     */
+    public void getArticleRevision(final RequestContext context) {
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject().put(Common.STATUS_CODE, false);
+        renderer.setJSONObject(ret);
+        try {
+            final String articleId = context.pathVar("id");
+            final String revId = context.pathVar("revId");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                return;
+            }
+            final JSONObject rev = articleRevisionService.getRevision(articleId, revId);
+            if (null == rev) {
+                ret.put(Keys.MSG, "未找到该历史版本");
+                return;
+            }
+            ret.put(Common.STATUS_CODE, true);
+            ret.put("revision", rev);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Gets article revision failed", e);
+            ret.put(Keys.MSG, langPropsService.get("getFailLabel"));
+        }
+    }
+
+    /**
+     * Restores an article's title, abstract, and content from a historical revision.
+     */
+    public void restoreArticleRevision(final RequestContext context) {
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject().put(Common.STATUS_CODE, false);
+        renderer.setJSONObject(ret);
+        try {
+            final String articleId = context.pathVar("id");
+            final String revId = context.pathVar("revId");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+                return;
+            }
+            final JSONObject rev = articleRevisionService.getRevision(articleId, revId);
+            final JSONObject existing = articleQueryService.getArticleById(articleId);
+            if (null == rev || null == existing) {
+                ret.put(Keys.MSG, "未找到对应的文章或历史版本");
+                return;
+            }
+            final JSONObject updatePayload = Solos.clone(existing);
+            updatePayload.put(Article.ARTICLE_TITLE, rev.optString(org.b3log.solo.model.ArticleRevision.REVISION_TITLE));
+            updatePayload.put(Article.ARTICLE_ABSTRACT, rev.optString(org.b3log.solo.model.ArticleRevision.REVISION_ABSTRACT));
+            updatePayload.put(Article.ARTICLE_CONTENT, rev.optString(org.b3log.solo.model.ArticleRevision.REVISION_CONTENT));
+            updatePayload.put(Common.POST_TO_COMMUNITY, false);
+            updatePayload.put("_operatorName", currentUser.optString(User.USER_NAME));
+            updatePayload.put("_revisionNote", "回滚至历史版本 (" + revId + ")");
+
+            articleMgmtService.updateArticle(new JSONObject().put(Article.ARTICLE, updatePayload));
+            ret.put(Common.STATUS_CODE, true);
+            ret.put(Keys.MSG, "已回滚至所选历史版本");
+            ret.put("revision", rev);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Restores article revision failed", e);
+            ret.put(Keys.MSG, "回滚历史版本失败：" + e.getMessage());
         }
     }
 }

@@ -70,7 +70,7 @@
                                     </#list>
                                 </div>
                                 <span>&nbsp;&nbsp;&nbsp;</span>
-                                <#if interactive=="on">
+                                <#if interactive == "true">
                                     <#if article.articleCommentCount !=0>
                                         <a href="${servePath}${article.articlePermalink}#comments"
                                             class="vditor-tooltipped__n vditor-tooltipped link fn__flex-center"
@@ -150,7 +150,7 @@
                             </#if>
                             </section>
                         </article>
-                        <#if interactive=="on">
+                        <#if interactive == "true">
                             <@comments commentList=articleComments article=article></@comments>
                         </#if>
                         <#include "footer.ftl">

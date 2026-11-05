@@ -60,7 +60,7 @@
                                     </time>
                                 </span>
                         &nbsp; | &nbsp;
-                        <#if interactive == "on">
+                        <#if interactive == "true">
                         <span class="vditor-tooltipped vditor-tooltipped__n" aria-label="${commentCountLabel}">
                                     <i class="icon-comments"></i>
                                     <a href="${servePath}${article.articlePermalink}#comments">
@@ -121,7 +121,7 @@
                         </#if>
                     </div>
                 </footer>
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <@comments commentList=articleComments article=article></@comments>
                 </#if>
                 <br>

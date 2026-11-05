@@ -413,6 +413,21 @@ public class PreferenceConsole {
             return true;
         }
 
+        if (preference.has(Option.ID_C_ARTICLE_OUTDATED_DAYS)) {
+            final String days = preference.optString(Option.ID_C_ARTICLE_OUTDATED_DAYS).strip();
+            if (!days.isEmpty() && (!days.matches("[0-9]{1,4}") || Integer.parseInt(days) > 3650)) {
+                responseObject.put(Keys.MSG, "陈旧技术文章提醒天数应为 0 至 3650 的整数。");
+                return true;
+            }
+        }
+        if (preference.has(Option.ID_C_LOCAL_BACKUP_KEEP_COUNT)) {
+            final String keep = preference.optString(Option.ID_C_LOCAL_BACKUP_KEEP_COUNT).strip();
+            if (!keep.isEmpty() && (!keep.matches("[1-9][0-9]{0,2}") || Integer.parseInt(keep) > 100)) {
+                responseObject.put(Keys.MSG, "本地滚动备份保留份数应为 1 至 100 的整数。");
+                return true;
+            }
+        }
+
         return false;
     }
 

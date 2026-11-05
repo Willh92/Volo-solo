@@ -61,7 +61,7 @@
                             </span>
                         </div>
                         <div class="right article-element">
-                            <#if interactive == "on">
+                            <#if interactive == "true">
                             <a rel="nofollow" href="${servePath}${article.articlePermalink}#comments">
                                 ${article.articleCommentCount}&nbsp;&nbsp;${commentLabel}
                             </a>&nbsp;&nbsp;
@@ -109,7 +109,7 @@
                             <div class="clear" style="height: 15px;"></div>
                         </div>
                     </div>
-                    <#if interactive == "on">
+                    <#if interactive == "true">
                     <@comments commentList=articleComments article=article></@comments>
                     </#if>
                 </div>

@@ -70,7 +70,7 @@
                     <a href="${servePath}/archives.html">
                         ${statistic.statisticPublishedBlogArticleCount}
                         <span class="ft-gray">${articleLabel}</span></a><br/>
-                    <#if interactive == "on">
+                    <#if interactive == "true">
                     <a href="${servePath}/dynamic.html">
                         ${statistic.statisticPublishedBlogCommentCount}
                         <span class="ft-gray">${commentLabel}</span></a><br/>
@@ -81,7 +81,7 @@
             </main>
         </div>
 
-        <#if interactive == "on">
+        <#if interactive == "true">
         <#if 0 != mostCommentArticles?size>
         <div class="module">
             <header><h2>${mostCommentArticlesLabel}</h2></header>

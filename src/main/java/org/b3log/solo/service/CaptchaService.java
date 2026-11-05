@@ -42,7 +42,7 @@ public class CaptchaService {
     public boolean commentsRequired() {
         if (comments != null) return comments;
         final var option = optionQueryService.getOptionById("commentCaptchaEnabled");
-        return comments = option == null || !"off".equals(option.optString(org.b3log.solo.model.Option.OPTION_VALUE));
+        return comments = option == null || !"false".equalsIgnoreCase(option.optString(org.b3log.solo.model.Option.OPTION_VALUE));
     }
     public void configureComments(final boolean enabled) { comments = enabled; }
     private static String answer() {
@@ -55,7 +55,7 @@ public class CaptchaService {
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     public Challenge issue(final String purpose, final String address) throws Exception {
-        if (!Set.of("login", "comment").contains(purpose)) throw new IllegalArgumentException("验证码用途不正确。");
+        if (!Set.of("login", "comment", "register").contains(purpose)) throw new IllegalArgumentException("验证码用途不正确。");
         final String ip = IpAddresses.canonical(address);
         if (ip.isEmpty()) throw new IllegalArgumentException("无法识别验证码请求来源。");
         final String id;

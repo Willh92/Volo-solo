@@ -56,7 +56,7 @@
             <a class="ft__link" href="${servePath}/archives.html">
             ${statistic.statisticPublishedBlogArticleCount}
             ${articleLabel}
-            </a><#if interactive == "on"> &nbsp; &nbsp;
+            </a><#if interactive == "true"> &nbsp; &nbsp;
             ${statistic.statisticPublishedBlogCommentCount}
             ${commentLabel} </#if><br>
             ${statistic.statisticBlogViewCount} <span class="ft-gray">${viewLabel}</span> &nbsp; &nbsp;

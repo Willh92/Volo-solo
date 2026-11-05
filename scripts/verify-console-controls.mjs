@@ -129,7 +129,7 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   assert.equal(requests[2].type,'POST');assert.deepEqual(JSON.parse(requests[2].data),{range:'203.0.113.2',reason:'reviewed',durationSeconds:0});
 }
 {
-  const f=fixture(),values=new Map([['#totpEnabled','off'],['#totpScope','admin'],['#totpWindowSteps','1'],['#totpRememberDays','0'],['#totpSetupCode',''],['#totpCurrentCode',''],['#totpSettingsVerifyCode',''],['#totpActionCode','']]),requests=[];
+  const f=fixture(),values=new Map([['#totpEnabled','false'],['#totpScope','admin'],['#totpWindowSteps','1'],['#totpRememberDays','0'],['#totpSetupCode',''],['#totpCurrentCode',''],['#totpSettingsVerifyCode',''],['#totpActionCode','']]),requests=[];
   const ids=['totpStatusBadge','totpSummary','totpStartSetup','totpRegenRecoveryBtn','totpUnbindBtn','totpRevokeDevicesBtn','totpIssuer','totpToggleVerifyWrap','totpSettingsVerifyCode','totpQrCode','totpRecoveryPanel','totpRecoveryList','totpSetupPanel','totpSecretText','totpSetupMeta','totpCurrentCodeWrap','totpCurrentCode','totpSetupCode','totpSetupMessage','totpSettingsMessage','totpActionPanel','totpActionTitle','totpActionDesc','totpActionSubmit','totpActionCode','totpActionMessage','totpSaveSettings','totpConfirmBtn'];
   for(const id of ids){const el=f.document.createElement(id.endsWith('Code')||id==='totpIssuer'?'input':'div');el.id=id;f.document.body.append(el);}
   let qrPayload=null;
@@ -152,7 +152,7 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   const sec=sandbox.admin.security;
   sec.applyTotpState({enabled:false,bound:false,scope:'admin',issuer:'',defaultIssuer:'Volo',windowSteps:1,rememberDays:0,recoveryRemaining:0});
   assert.equal(f.document.getElementById('totpStatusBadge').dataset.state,'unbound');
-  values.set('#totpEnabled','on');
+  values.set('#totpEnabled','true');
   sec.saveTotpSettings();
   assert.equal(requests.length,0,'Cannot enable TOTP before binding a secret');
   sec.startTotpSetup();
@@ -173,7 +173,7 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   assert.equal(f.document.getElementById('totpStatusBadge').dataset.state,'enabled');
   assert.equal(f.document.getElementById('totpRevokeDevicesBtn').hidden,false);
   assert.equal(f.document.getElementById('totpRecoveryList').querySelectorAll('img').length,0,'Recovery codes must render via textContent only');
-  values.set('#totpEnabled','off');
+  values.set('#totpEnabled','false');
   sec.syncTotpToggleVerify();
   assert.equal(f.document.getElementById('totpToggleVerifyWrap').hidden,false,'Toggling enabled state on a bound key must prompt for current OTP');
   sec.saveTotpSettings();
@@ -184,7 +184,7 @@ function click(element){element.dispatchEvent({type:'click',target:element});}
   values.set('#totpWindowSteps','2');
   values.set('#totpRememberDays','30');
   sec.saveTotpSettings();
-  assert.deepEqual(JSON.parse(requests[2].data),{enabled:'off',scope:'all',issuer:'MyBlog',windowSteps:2,rememberDays:30,verifyCode:'654321'});
+  assert.deepEqual(JSON.parse(requests[2].data),{enabled:'false',scope:'all',issuer:'MyBlog',windowSteps:2,rememberDays:30,verifyCode:'654321'});
   requests[2].complete();
   requests[2].success({sc:true,msg:'saved',totp:{enabled:false,bound:true,boundUser:'admin',scope:'all',issuer:'MyBlog',defaultIssuer:'Volo',windowSteps:2,rememberDays:30,recoveryRemaining:8}});
   assert.equal(f.document.getElementById('totpSettingsMessage').dataset.tone,'ok');

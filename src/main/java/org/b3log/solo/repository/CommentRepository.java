@@ -70,6 +70,8 @@ public class CommentRepository extends AbstractRepository {
     @Override
     public String add(final JSONObject comment) throws RepositoryException {
         if (comment.isNull("commentDeleted")) comment.put("commentDeleted", false);
+        if (comment.isNull(Comment.COMMENT_STATUS)) comment.put(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
+        if (comment.isNull(Comment.COMMENT_USER_ID)) comment.put(Comment.COMMENT_USER_ID, "");
         final String id = super.add(comment);
         comment.put(Keys.OBJECT_ID, id);
         if (null != commentCache) {
@@ -132,6 +134,7 @@ public class CommentRepository extends AbstractRepository {
      */
     public List<JSONObject> getRecentComments(final int fetchSize) throws RepositoryException {
         final Query query = new Query().
+                setFilter(new PropertyFilter(Comment.COMMENT_STATUS, FilterOperator.EQUAL, Comment.COMMENT_STATUS_C_APPROVED)).
                 addSort(Keys.OBJECT_ID, SortDirection.DESCENDING).
                 setPage(1, fetchSize).setPageCount(1);
         final List<JSONObject> ret = getList(query);
@@ -139,6 +142,24 @@ public class CommentRepository extends AbstractRepository {
         removeForUnpublishedArticles(ret);
 
         return ret;
+    }
+
+    public boolean hasApprovedCommentByUser(final String userId) throws RepositoryException {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        final Query query = new Query().setFilter(CompositeFilterOperator.and(
+                new PropertyFilter(Comment.COMMENT_USER_ID, FilterOperator.EQUAL, userId),
+                new PropertyFilter(Comment.COMMENT_STATUS, FilterOperator.EQUAL, Comment.COMMENT_STATUS_C_APPROVED),
+                new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false)))
+                .setPage(1, 1).setPageCount(1);
+        return !getList(query).isEmpty();
+    }
+
+    public long countPendingComments() throws RepositoryException {
+        return count(new Query().setFilter(CompositeFilterOperator.and(
+                new PropertyFilter(Comment.COMMENT_STATUS, FilterOperator.EQUAL, Comment.COMMENT_STATUS_C_PENDING),
+                new PropertyFilter("commentDeleted", FilterOperator.EQUAL, false))));
     }
 
     /**
@@ -191,6 +212,10 @@ public class CommentRepository extends AbstractRepository {
 
         while (iterator.hasNext()) {
             final JSONObject comment = iterator.next();
+            if (comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
+                iterator.remove();
+                continue;
+            }
             final String articleId = comment.optString(Comment.COMMENT_ON_ID);
             if (!articleRepository.isPublished(articleId)) {
                 iterator.remove();

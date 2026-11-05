@@ -114,9 +114,17 @@ admin.draftList = {
                     articleData[i].comments = escapeHtml(articles[i].articleCommentCount);
                     articleData[i].articleViewCount = escapeHtml(articles[i].articleViewCount);
                     articleData[i].author = escapeHtml(articles[i].authorName);
+                    var schedMs = Number(articles[i].articleScheduleTime || 0);
+                    var schedBadge = "";
+                    if (schedMs > 0) {
+                        var sd = new Date(schedMs);
+                        var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+                        var schedStr = sd.getFullYear() + '-' + pad(sd.getMonth() + 1) + '-' + pad(sd.getDate()) + ' ' + pad(sd.getHours()) + ':' + pad(sd.getMinutes());
+                        schedBadge = "<span class='table-tag' style='background:rgba(245,158,11,0.16);color:#d97706;border-radius:4px;padding:1px 6px;margin-right:6px;' title='到期将自动公开'>⏰ 定时 " + escapeHtml(schedStr) + "</span>";
+                    }
                     articleData[i].title = "<a class='no-underline console-article-title' href='" + safeHref +
                     "' target='_blank' rel='noopener noreferrer'>" +
-                    safeTitle + "</a><span class='table-tag'>" + escapeHtml(articles[i].articleTags) + "</span>";
+                    safeTitle + "</a>" + schedBadge + "<span class='table-tag'>" + escapeHtml(articles[i].articleTags) + "</span>";
                     articleData[i].expendRow = "<a href='javascript:void(0)' onclick=\"admin.article.get('" + safeId + "', false);\">" + Label.updateLabel + "</a>  \
                                 <a href='javascript:void(0)' onclick=\"admin.article.del('" + safeId + "', 'draft', '" + encodedTitle + "')\">" + Label.removeLabel + "</a>  \
                                 <a href='javascript:void(0)' onclick=\"admin.comment.open('" + safeId + "', 'draft')\">" + Label.commentLabel + "</a>";

@@ -52,9 +52,14 @@ admin.linkList = {
             minWidth: 180
         }, {
             style: "padding-left: 12px;",
+            text: "存活状态",
+            index: "linkHealthBadge",
+            width: 150
+        }, {
+            style: "padding-left: 12px;",
             text: Label.linkDescriptionLabel,
             index: "linkDescription",
-            width: 360
+            width: 280
         }]);
     
         this.tablePagination.initPagination();
@@ -135,6 +140,15 @@ admin.linkList = {
                     linkData[i].linkTitle = escapeHtml(links[i].linkTitle);
                     linkData[i].linkAddress = "<a target='_blank' rel='noopener noreferrer' class='no-underline' href='" + safeHref + "'>"
                     + safeAddrText + "</a>";
+                    var h = links[i].linkHealth;
+                    if (!h) {
+                        linkData[i].linkHealthBadge = '<span style="color:#888;font-size:12px;">未巡检</span>';
+                    } else if (h.ok) {
+                        linkData[i].linkHealthBadge = '<span style="color:#1b7f4b;font-weight:600;font-size:12px;">● 正常 (' + Number(h.status || 200) + ' · ' + Number(h.latencyMs || 0) + 'ms)</span>';
+                    } else {
+                        var errTxt = escapeHtml(h.error || ('HTTP ' + Number(h.status || 0)));
+                        linkData[i].linkHealthBadge = '<span style="color:#b42318;font-weight:600;font-size:12px;" title="' + errTxt + '">● 异常 (' + errTxt + ')</span>';
+                    }
                     linkData[i].linkDescription = escapeHtml(links[i].linkDescription);
                     linkData[i].linkIcon = escapeHtml(links[i].linkIcon);
                     linkData[i].expendRow = "<span><a href='" + safeHref + "' target='_blank' rel='noopener noreferrer'>" + Label.viewLabel + "</a>  \
@@ -361,6 +375,38 @@ admin.linkList = {
                 admin.linkList.getList(admin.linkList.pageInfo.currentPage);
                 
                 $("#loadMsg").text("");
+            }
+        });
+    },
+
+    checkHealth: function (btn) {
+        if (btn && btn.disabled) return;
+        var origText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = "巡检中…";
+        }
+        $("#loadMsg").text(Label.loadingLabel);
+        $("#tipMsg").text("");
+        $.ajax({
+            url: Label.servePath + "/console/links/check-health",
+            type: "POST",
+            contentType: "application/json",
+            data: "{}",
+            timeout: 60000,
+            success: function (res) {
+                $("#tipMsg").text(res.msg || "巡检完成");
+                admin.linkList.getList(admin.linkList.pageInfo.currentPage || 1);
+            },
+            error: function (xhr) {
+                $("#tipMsg").text((xhr.responseJSON && xhr.responseJSON.msg) || "友链巡检失败");
+            },
+            complete: function () {
+                $("#loadMsg").text("");
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = origText;
+                }
             }
         });
     }

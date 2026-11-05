@@ -92,14 +92,32 @@
 <link rel="icon" href="${faviconURL?html}"/>
 <link rel="apple-touch-icon" href="${faviconURL?html}">
 <link rel="shortcut icon" href="${faviconURL?html}">
-<meta name="copyright" content="B3log"/>
+<#assign voloResolvedDesc = (description != '')?then(description, (metaDescription?? && metaDescription != '')?then(metaDescription, blogTitle + '。' + (blogSubtitle!'')))/>
+<#assign voloResolvedImage = (voloOgImage!'')/>
+<#if voloResolvedImage == '' && article?? && (article.articleImg1URL!'') != ''>
+    <#assign voloResolvedImage = article.articleImg1URL/>
+</#if>
+<#if voloResolvedImage == ''>
+    <#assign voloResolvedImage = faviconURL!''/>
+</#if>
+<meta name="copyright" content="Volo"/>
 <meta http-equiv="Window-target" content="_top"/>
+<meta property="og:type" content="<#if article??>article<#else>website</#if>"/>
 <meta property="og:locale" content="${langLabel?html}"/>
 <meta property="og:title" content="${title?html}"/>
 <meta property="og:site_name" content="${blogTitle?html}"/>
 <meta property="og:url"
       content="${servePath}${request.requestURI?html}<#if request.queryString??>?${request.queryString?html}</#if>"/>
-<meta property="og:image" content="${faviconURL?html}"/>
+<meta property="og:image" content="${voloResolvedImage?html}"/>
+<meta name="twitter:card" content="<#if article?? && (voloOgImage!'') != ''>summary_large_image<#else>summary</#if>"/>
+<meta name="twitter:title" content="${title?html}"/>
+<meta name="twitter:description" content="${voloResolvedDesc?html}"/>
+<meta name="twitter:image" content="${voloResolvedImage?html}"/>
+<#if article?? && (article.articleTitle??)>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","headline":"${article.articleTitle?js_string}","description":"${voloResolvedDesc?js_string}","image":"${voloResolvedImage?js_string}","url":"${(servePath + (article.articlePermalink!''))?js_string}","author":{"@type":"Person","name":"${(article.authorName!blogTitle)?js_string}"}<#if article.articleCreateDate??>,"datePublished":"${article.articleCreateDate?string("yyyy-MM-dd'T'HH:mm:ssZ")?js_string}"</#if><#if article.articleUpdateDate??>,"dateModified":"${article.articleUpdateDate?string("yyyy-MM-dd'T'HH:mm:ssZ")?js_string}"</#if>}
+</script>
+</#if>
 <link rel="search" type="application/opensearchdescription+xml" title="${title?html}" href="/opensearch.xml">
 <link href="${servePath}/rss.xml" title="RSS" type="application/rss+xml" rel="alternate"/>
 <link rel="manifest" href="${servePath}/manifest.json">
@@ -114,6 +132,18 @@
     </#if>
     <#nested>
 <link rel="stylesheet" href="${staticServePath}/scss/appearance.css?${staticResourceVersion}"/>
+<script>
+window.VoloSiteConfig = {
+    servePath: "${(servePath!'')?js_string}",
+    allowRegister: ${(allowRegister!false)?c},
+    commentAccessMode: "${(commentAccessMode!'all')?js_string}",
+    enableInstantSearch: ${(enableInstantSearch!true)?c},
+    isLoggedIn: ${(isLoggedIn!false)?c},
+    isAdminLoggedIn: ${(isAdminLoggedIn!false)?c},
+    userName: "${((isLoggedIn!false)?then(userName!'', ''))?js_string}"
+};
+</script>
+<script data-bolo-navigation defer src="${staticServePath}/js/blog-enhancements${miniPostfix!''}.js?${staticResourceVersion}"></script>
 <#if htmlHead??>
     ${htmlHead}
 </#if>

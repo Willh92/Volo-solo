@@ -65,7 +65,7 @@
             </article>
 
             <!-- 文章评论 -->
-            <#if interactive == "on">
+            <#if interactive == "true">
                 <@comments commentList=articleComments article=article></@comments>
             </#if>
         </div>

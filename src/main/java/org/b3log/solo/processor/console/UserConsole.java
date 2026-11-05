@@ -111,7 +111,12 @@ public class UserConsole {
             final JSONObject requestJSONObject = context.requestJSON();
             final String password = requestJSONObject.optString(UserExt.USER_B3_KEY);
             if (!password.isEmpty()) {
-                requestJSONObject.put(UserExt.USER_B3_KEY, MD5Utils.stringToMD5Twice(password));
+                requestJSONObject.put(UserExt.USER_PASSWORD_HASH, org.b3log.solo.util.PasswordHashes.hash(password));
+                if (org.b3log.latke.model.Role.VISITOR_ROLE.equals(requestJSONObject.optString(User.USER_ROLE))) {
+                    requestJSONObject.put(UserExt.USER_B3_KEY, org.b3log.solo.util.PasswordHashes.randomSessionKey());
+                } else {
+                    requestJSONObject.put(UserExt.USER_B3_KEY, MD5Utils.stringToMD5Twice(password));
+                }
             }
             userMgmtService.updateUser(requestJSONObject, !password.isEmpty());
 
@@ -123,7 +128,9 @@ public class UserConsole {
 
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
+            jsonObject.put(Keys.MSG, (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : langPropsService.get("updateFailLabel"));
         }
     }
 
@@ -198,6 +205,12 @@ public class UserConsole {
             final String requestURI = context.requestURI();
             final String path = requestURI.substring((Latkes.getContextPath() + "/console/users/").length());
             final JSONObject requestJSONObject = Solos.buildPaginationRequest(path);
+            if (context.param("role") != null) {
+                requestJSONObject.put("role", context.param("role"));
+            }
+            if (context.param("keyword") != null) {
+                requestJSONObject.put("keyword", context.param("keyword"));
+            }
             final JSONObject result = userQueryService.getUsers(requestJSONObject);
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(result);
@@ -296,6 +309,30 @@ public class UserConsole {
 
             jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             jsonObject.put(Keys.MSG, langPropsService.get("removeFailLabel"));
+        }
+    }
+
+    @Before(ConsoleAdminAuthAdvice.class)
+    public void updateUserStatus(final RequestContext context) {
+        if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        final JSONObject ret = new JSONObject();
+        renderer.setJSONObject(ret);
+        try {
+            final String userId = context.pathVar("id");
+            final JSONObject body = context.requestJSON();
+            final int status = body.optInt(UserExt.USER_STATUS, -1);
+            userMgmtService.setUserStatus(userId, status);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+            ret.put(Keys.MSG, status == UserExt.USER_STATUS_C_DISABLED ? "该账号已禁用。" : "该账号已恢复正常。");
+        } catch (final ServiceException e) {
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
+            ret.put(Keys.MSG, e.getMessage());
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Updates user status failed", e);
+            ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
+            ret.put(Keys.MSG, langPropsService.get("updateFailLabel"));
         }
     }
 }

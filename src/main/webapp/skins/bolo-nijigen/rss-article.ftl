@@ -86,7 +86,7 @@
                                                         <#if articleTag_has_next>,</#if>
                                                     </#list>
                                                 </span>
-                                                <#if interactive=="on">
+                                                <#if interactive == "true">
                                                     <a class="tag" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                                                         <i class="icon__comments"></i>
                                                         ${article.articleCommentCount} ${commentLabel}
@@ -146,7 +146,7 @@
                                             </div>
                                         </div>
                                     </#if>
-                                    <#if interactive=="on">
+                                    <#if interactive == "true">
                                         <@comments commentList=articleComments article=article></@comments>
                                     </#if>
                                     <div class="fn__flex article__relevant" data-article-recommendations>

@@ -165,6 +165,26 @@ public final class Article {
      */
     public static final String ARTICLE_STATUS = "articleStatus";
 
+    /**
+     * Key of scheduled auto-publish epoch millis (0 = not scheduled; kept as draft while > 0).
+     */
+    public static final String ARTICLE_SCHEDULE_TIME = "articleScheduleTime";
+
+    /**
+     * Key of optional podcast/episode audio URL.
+     */
+    public static final String ARTICLE_AUDIO_URL = "articleAudioURL";
+
+    /**
+     * Key of optional podcast/episode audio duration in seconds.
+     */
+    public static final String ARTICLE_AUDIO_DURATION = "articleAudioDuration";
+
+    /**
+     * Key of optional podcast/episode audio file size in bytes.
+     */
+    public static final String ARTICLE_AUDIO_SIZE = "articleAudioSize";
+
     //// Status constants
 
     /**
@@ -238,10 +258,15 @@ public final class Article {
      * @param article the specified article
      * @return the first image URL, returns {@code ""} if not found
      */
+    public static String sanitizePublicMarkdown(final String markdown) {
+        final String unlocked = org.b3log.solo.service.HiddenContentService.stripForExcerptOrImage(markdown);
+        return unlocked.replaceAll("(?m)^\\s*:::(?:bookshelf|book\\b[^\\r\\n]*|)\\s*$", "");
+    }
+
     public static String getArticleImg1URL(final JSONObject article) {
-        final String summary = article.optString(Article.ARTICLE_ABSTRACT);
+        final String summary = sanitizePublicMarkdown(article.optString(Article.ARTICLE_ABSTRACT));
         final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
-                ? "" : article.optString(Article.ARTICLE_CONTENT);
+                ? "" : sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
         final String html = Markdowns.toHTML(summary + "\n\n" + body);
         final String source = firstSafeImageUrl(html);
         return Images.imageSize(source.isEmpty() ? Images.randImage() : source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
@@ -254,9 +279,9 @@ public final class Article {
      * @return the first image URL, returns {@code ""} if not found
      */
     public static String getArticleImg1URLWithoutSetSize(final JSONObject article) {
-        final String summary = article.optString(Article.ARTICLE_ABSTRACT);
+        final String summary = sanitizePublicMarkdown(article.optString(Article.ARTICLE_ABSTRACT));
         final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
-                ? "" : article.optString(Article.ARTICLE_CONTENT);
+                ? "" : sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
         final String combined = summary + "\n\n" + body;
         String source = firstSafeImageUrl(combined);
         if (source.isEmpty()) {
@@ -274,7 +299,7 @@ public final class Article {
      * @return the abstract plain text
      */
     public static String getAbstractText(final String content) {
-        final String ret = Jsoup.parseBodyFragment(Markdowns.toHTML(content)).text();
+        final String ret = Jsoup.parseBodyFragment(Markdowns.toHTML(sanitizePublicMarkdown(content))).text();
         if (ret.length() > ARTICLE_ABSTRACT_LENGTH) {
             return ret.substring(0, ARTICLE_ABSTRACT_LENGTH) + "....";
         }

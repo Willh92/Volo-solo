@@ -20,7 +20,7 @@
 <div class="nexmoe-drawer mdui-drawer" id="drawer">
     <div class="nexmoe-avatar mdui-ripple">
         <a href="${servePath}/" title="${blogTitle}">
-            <img src="${adminUser.userAvatar}" title="${blogTitle}" alt="${userName}"></a>
+            <img src="${adminUser.userAvatar}" title="${blogTitle?html}" alt="${(adminUser.userName!'')?html}"></a>
     </div>
     <div class="nexmoe-count">
         <div>
@@ -29,7 +29,7 @@
             </span>
             ${statistic.statisticPublishedBlogArticleCount}
         </div>
-        <#if interactive=="on">
+        <#if interactive == "true">
             <div>
                 <span>
                     ${commentLabel}

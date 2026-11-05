@@ -104,7 +104,7 @@ public final class SoloApplication {
     /**
      * Internal database migration version, independent of the public Volo release.
      */
-    public static final String DATABASE_VERSION = "2026.11.01";
+    public static final String DATABASE_VERSION = "2026.11.05";
 
     /** Public application version, never used to decide database migrations. */
     public static final String VERSION = BOLO_VERSION_SOURCE;
@@ -490,6 +490,7 @@ public final class SoloApplication {
                 "/admin-main.do",
                 "/admin-about.do",
                 "/admin-tool-box.do",
+                "/admin-book-list.do",
                 "/admin-usite.do" }, adminConsole::showAdminFunctions);
         Routes.get("/console/export/sql", adminConsole::exportSQL);
         Routes.get("/console/export/json", adminConsole::exportJSON);
@@ -505,6 +506,10 @@ public final class SoloApplication {
         Routes.put("/console/article/unpublish/{id}", articleConsole::cancelPublishArticle);
         Routes.put("/console/article/canceltop/{id}", articleConsole::cancelTopArticle);
         Routes.put("/console/article/puttop/{id}", articleConsole::putTopArticle);
+        Routes.post("/console/article/{id}/share-token", articleConsole::createShareToken);
+        Routes.get("/console/article/{id}/revisions", articleConsole::listArticleRevisions);
+        Routes.get("/console/article/{id}/revisions/{revId}", articleConsole::getArticleRevision);
+        Routes.post("/console/article/{id}/revisions/{revId}/restore", articleConsole::restoreArticleRevision);
         Routes.put("/console/article/", articleConsole::updateArticle);
         Routes.post("/console/article/", articleConsole::addArticle);
 
@@ -518,6 +523,7 @@ public final class SoloApplication {
 
         final CommentConsole commentConsole = beanManager.getReference(CommentConsole.class);
         Routes.delete("/console/article/comment/{id}", commentConsole::removeArticleComment);
+        Routes.put("/console/comment/{id}/moderate", commentConsole::moderateComment);
         Routes.get("/console/comments/{page}/{pageSize}/{windowSize}", commentConsole::getComments);
         Routes.get("/console/comments/article/{id}", commentConsole::getArticleComments);
 
@@ -526,6 +532,7 @@ public final class SoloApplication {
         Routes.put("/console/link/", linkConsole::updateLink);
         Routes.put("/console/link/order/", linkConsole::changeOrder);
         Routes.post("/console/link/", linkConsole::addLink);
+        Routes.post("/console/links/check-health", linkConsole::checkLinksHealth);
         Routes.get("/console/links/{page}/{pageSize}/{windowSize}", linkConsole::getLinks);
         Routes.get("/console/link/{id}", linkConsole::getLink);
 
@@ -577,6 +584,7 @@ public final class SoloApplication {
         Routes.get("/console/users/{page}/{pageSize}/{windowSize}", userConsole::getUsers);
         Routes.get("/console/user/{id}", userConsole::getUser);
         Routes.post("/console/changeRole/{id}", userConsole::changeUserRole);
+        Routes.put("/console/user/{id}/status", userConsole::updateUserStatus);
 
     }
 }

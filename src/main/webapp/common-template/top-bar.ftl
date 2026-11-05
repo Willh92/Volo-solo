@@ -87,8 +87,23 @@
     </a>
     <span class="left">&nbsp;${onlineVisitor1Label}${onlineVisitorCnt}</span>
     <span class="right" id="admin" data-login="${isLoggedIn?string}">
-
-            <#if isMobileRequest>
+        <#if isLoggedIn!false>
+            <#if isAdmin!false>
+            <a href="${servePath}/admin-index.do#main" title="${adminLabel!''}">${adminLabel!'管理'}</a>
+            <a href="${(logoutURL!'/logout')?html}" data-no-pjax title="${logoutLabel!''}">${logoutLabel!'退出'}</a>
+            <#else>
+            <span>读者：${(userName!'')?html}</span>
+            <a href="${(logoutURL!'/logout')?html}" data-volo-reader-logout data-no-pjax title="${logoutLabel!'退出'}">${logoutLabel!'退出'}</a>
+            </#if>
+        <#else>
+            <#if (allowRegister!false) || (commentAccessMode!'all') == 'registered'>
+            <a href="${servePath}/user/login" data-volo-auth-trigger="login" title="读者登录">读者登录</a>
+            </#if>
+            <#if showLoginEntry!false>
+            <a href="${(loginURL!'/start')?html}" title="${startToUseLabel!'登录'}">${startToUseLabel!'登录'}</a>
+            </#if>
+        </#if>
+        <#if isMobileRequest>
             <a href="javascript:void(0)" onclick="Util.switchMobile('mobile');" title="${mobileLabel}">${mobileLabel}</a>
         </#if>
         <a href="javascript:void(0)" id="hideTop"></a>

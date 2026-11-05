@@ -63,7 +63,7 @@
             </#list>
             </span>
             <div class="studio-article-counts">
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <a class="ft__red" href="${servePath}${article.articlePermalink}#comments"><#if article.articleCommentCount gt 0>${article.articleCommentCount} </#if>${commentLabel}</a>
                 •
                 </#if>
@@ -86,7 +86,7 @@
         <#include "article-adjacent.ftl"/>
     </div>
 
-    <#if interactive == "on">
+    <#if interactive == "true">
     <@comments commentList=articleComments article=article></@comments>
     </#if>
     <#if 0 != relevantArticlesDisplayCount>

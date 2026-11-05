@@ -49,48 +49,49 @@
         </ul>
         <div class="profile clearfix">
             <div class="feeds fl">
-                <#if (isAdminLoggedIn!false) || (showLoginEntry!false)><p class="links"><#include "../../common-template/macro-management.ftl"><@managementLinks/></p></#if>
+                <#if (isAdminLoggedIn!false) || (isLoggedIn!false) || (showLoginEntry!false) || (allowRegister!false) || (commentAccessMode!'all') == 'registered'><p class="links"><#include "../../common-template/macro-management.ftl"><@managementLinks/></p></#if>
                 <p class="sns">
                     <#include "../../common-template/macro-user_site.ftl"/>
                     <#if usite??>
                         <#if hacpaiUser != ''>
-                            <a href="https://${hacpaiDomain}/member/${adminUser.userName}" target="_blank">
+                            <a href="https://${hacpaiDomain?html}/member/${hacpaiUser?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #3be5d3">■</b>
                                 链滴社区
                             </a>
                         </#if>
-                        <#if usite.usiteGitHub != ''>
-                            <a href="https://github.com/${usite.usiteGitHub}" target="_blank">
+                        <#if (usite.usiteGitHub!"")?has_content>
+                            <a href="https://github.com/${usite.usiteGitHub?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #3b83ee">■</b>
                                 GitHub
                             </a>
                         </#if>
-                        <#if usite.usiteWeiBo != ''>
-                            <a href="https://weibo.com/${usite.usiteWeiBo}" target="_blank">
+                        <#if (usite.usiteWeiBo!"")?has_content>
+                            <a href="https://weibo.com/${usite.usiteWeiBo?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #ee743b">■</b>
                                 新浪微博
                             </a>
                         </#if>
-                        <#if usite.usiteZhiHu != ''>
-                            <a href="https://www.zhihu.com/people/${usite.usiteZhiHu}" target="_blank">
+                        <#if (usite.usiteZhiHu!"")?has_content>
+                            <a href="https://www.zhihu.com/people/${usite.usiteZhiHu?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #35cd90">■</b>
                                 知乎
                             </a>
                         </#if>
-                        <#if usite.usiteQQ != ''>
-                            <a href="tencent://message/?uin=${usite.usiteQQ}" target="_blank">
+                        <#if (usite.usiteQQ!"")?has_content>
+                            <a href="tencent://message/?uin=${usite.usiteQQ?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #cd3535">■</b>
                                 腾讯QQ
                             </a>
                         </#if>
-                        <#if usite.usiteWeChat != ''>
-                            <a href="javascript:alert('微信号：${usite.usiteWeChat}')">
+                        <#if (usite.usiteWeChat!"")?has_content>
+                            <a href="#wechat" role="button" data-wechat="${usite.usiteWeChat?html}"
+                               onclick="alert('微信号：' + this.getAttribute('data-wechat')); return false;">
                                 <b style="color: #a7ec6b">■</b>
                                 微信
                             </a>
                         </#if>
-                        <#if usite.usiteWYMusic != ''>
-                            <a target="_blank" href="https://music.163.com/#/user/home?id=${usite.usiteWYMusic}" target="_blank">
+                        <#if (usite.usiteWYMusic!"")?has_content>
+                            <a href="https://music.163.com/#/user/home?id=${usite.usiteWYMusic?html}" target="_blank" rel="noopener noreferrer nofollow">
                                 <b style="color: #d745f8">■</b>
                                 网易云音乐
                             </a>

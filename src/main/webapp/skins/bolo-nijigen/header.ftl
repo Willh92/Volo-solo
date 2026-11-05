@@ -36,7 +36,7 @@
                     ${page.pageTitle?html}
                 </a>
             </#list>
-            <#if interactive=="on">
+            <#if interactive == "true">
                 <a href="${servePath}/dynamic.html" rel="section">
                     <i class="icon__refresh"></i>
                     ${dynamicLabel}
@@ -83,7 +83,7 @@
                     </a>
                 </li>
             </#list>
-            <#if interactive=="on">
+            <#if interactive == "true">
                 <li>
                     <a href="${servePath}/dynamic.html" rel="section">
                         <i class="icon__refresh"></i>

@@ -162,6 +162,38 @@ $.extend(SoloEditor.prototype, {
       },
     }
 
+    if (this.conf.id === 'articleContent' && window.innerWidth > 768) {
+      const insertSnippet = snippet => {
+        if (this.editor && typeof this.editor.insertValue === 'function') {
+          this.editor.insertValue(snippet)
+        }
+      }
+      options.toolbar.splice(options.toolbar.indexOf('fullscreen'), 0,
+        {
+          name: 'volo-lock-user',
+          tipPosition: 'n',
+          tip: '插入「注册用户可见」隐藏内容块',
+          icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><rect x="16" y="11" width="6" height="5" rx="1"/><path d="M17.5 11V9.5a1.5 1.5 0 0 1 3 0V11"/></svg>',
+          click: () => insertSnippet('\n:::lock type="user" hint="登录或注册后即可阅读隐藏内容"\n在此输入仅登录用户可见的正文...\n:::\n'),
+        },
+        {
+          name: 'volo-lock-pwd',
+          tipPosition: 'n',
+          tip: '插入「局部密码保护」隐藏内容块',
+          icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1"/></svg>',
+          click: () => insertSnippet('\n:::lock type="pwd" pwd="123456" hint="请输入解锁密码查看本段内容"\n在此输入受密码保护的局部内容...\n:::\n'),
+        },
+        {
+          name: 'volo-bookshelf',
+          tipPosition: 'n',
+          tip: '插入「在线书架」内嵌阅读器短代码',
+          icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+          click: () => insertSnippet('\n:::bookshelf:::\n'),
+        },
+        '|'
+      )
+    }
+
     if (window.innerWidth <= 768) {
       options.preview.mode = 'editor'
       options.preview.actions = []

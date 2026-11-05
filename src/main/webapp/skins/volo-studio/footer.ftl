@@ -23,7 +23,7 @@
 <footer class="studio-footer">
   <#if studioContacts?trim?has_content><nav class="studio-contacts" aria-label="联系方式">${studioContacts}</nav></#if>
   <div class="studio-footer-meta"><span>© ${year} ${blogTitle?html}</span><span>Made with <a href="https://github.com/Willh92/Volo-solo" target="_blank" rel="noopener noreferrer">Volo</a> · Studio</span></div>
-  <div class="studio-statistics" aria-label="站点统计"><span>${statistic.statisticPublishedBlogArticleCount} 篇文章</span><#if interactive == "on"><a href="${servePath}/dynamic.html">${statistic.statisticPublishedBlogCommentCount} 条评论</a></#if><span>${statistic.statisticBlogViewCount} 次浏览</span><span>${onlineVisitorCnt} 人在线</span></div>
+  <div class="studio-statistics" aria-label="站点统计"><span>${statistic.statisticPublishedBlogArticleCount} 篇文章</span><#if interactive == "true"><a href="${servePath}/dynamic.html">${statistic.statisticPublishedBlogCommentCount} 条评论</a></#if><span>${statistic.statisticBlogViewCount} 次浏览</span><span>${onlineVisitorCnt} 人在线</span></div>
   <#if footerContent?has_content><div class="studio-footer-content">${footerContent}</div></#if>
 </footer>
 <button id="studioBackToTop" class="studio-back-top" type="button" title="返回顶部" aria-label="返回顶部" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>

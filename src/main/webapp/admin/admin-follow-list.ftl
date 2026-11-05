@@ -23,28 +23,28 @@
 </div>
 <div class="fn__clear"></div>
 <div class="form form__no-table">
-${addFollowLabel}
-    <label>${linkTitle1Label}</label>
+    <h3>${addFollowLabel!'添加关注'}</h3>
+    <label for="followTitle">${linkTitle1Label}</label>
     <input id="followTitle" type="text" autocomplete="off"/>
-    <label>${url1Label}</label>
+    <label for="followAddress">${url1Label}</label>
     <input id="followAddress" type="text" autocomplete="off"/>
-    <label>${linkDescription1Label}</label>
+    <label for="followDescription">${linkDescription1Label}</label>
     <input id="followDescription" type="text" autocomplete="off"/>
-    <label>${linkIcon1Label}</label>
-    <input id="followIcon" type="text" autocomplete="off"/><br><br>
-    <button onclick="admin.followList.add();" class="fn__right">${saveLabel}</button>
+    <label for="followIcon">${linkIcon1Label}</label>
+    <input id="followIcon" type="text" autocomplete="off"/>
+    <div class="console-form-actions"><button type="button" onclick="admin.followList.add();">${saveLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 <div id="updateFollow" class="fn__none form form__no-table" data-title="${updateFollowLabel}">
-    <label>${linkTitle1Label}</label>
+    <label for="followTitleUpdate">${linkTitle1Label}</label>
     <input id="followTitleUpdate" type="text" autocomplete="off"/>
-    <label>${url1Label}</label>
+    <label for="followAddressUpdate">${url1Label}</label>
     <input id="followAddressUpdate" type="text" autocomplete="off"/>
-    <label>${linkDescription1Label}</label>
+    <label for="followDescriptionUpdate">${linkDescription1Label}</label>
     <input id="followDescriptionUpdate" type="text" autocomplete="off"/>
-    <label>${linkIcon1Label}</label>
+    <label for="followIconUpdate">${linkIcon1Label}</label>
     <input id="followIconUpdate" type="text" autocomplete="off"/>
-        <div class="console-form-actions"><button onclick="admin.followList.update();" class="fn__right">${updateLabel}</button></div>
+    <div class="console-form-actions"><button type="button" onclick="admin.followList.update();">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

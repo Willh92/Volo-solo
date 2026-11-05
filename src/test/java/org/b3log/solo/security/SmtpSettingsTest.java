@@ -15,7 +15,7 @@ public class SmtpSettingsTest {
         Assert.assertEquals(ssl.properties().getProperty("mail.smtp.ssl.checkserveridentity"), "true");
         final SmtpSettings tls = SmtpSettings.read(data.put("smtpSecurity", "starttls"));
         Assert.assertEquals(tls.port(), 587); Assert.assertEquals(tls.properties().getProperty("mail.smtp.starttls.required"), "true");
-        final SmtpSettings relay = SmtpSettings.read(new JSONObject().put("smtpHost", "127.0.0.1").put("smtpAuth", "off").put("smtpSecurity", "none").put("smtpFrom", "notifications@example.test"));
+        final SmtpSettings relay = SmtpSettings.read(new JSONObject().put("smtpHost", "127.0.0.1").put("smtpAuth", "false").put("smtpSecurity", "none").put("smtpFrom", "notifications@example.test"));
         Assert.assertTrue(relay.configured()); Assert.assertEquals(relay.port(), 25);
     }
     @Test public void legacyProviderSettingsConvertWithoutDatabaseMigration() {

@@ -22,6 +22,12 @@ import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.util.EntityUtils;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.DefaultRoutePlanner;
@@ -326,6 +332,125 @@ public final class OutboundUrls {
                     }
                     return out.toByteArray();
                 }
+            } finally {
+                PINNED_TARGET.remove();
+            }
+        }
+        throw new IOException("Too many redirects");
+    }
+
+    public record ProbeResult(boolean ok, int status, long latencyMs, String finalUrl, String error) { }
+
+    /**
+     * Probes an external URL using pinned DNS and hop-by-hop SSRF validation (HEAD with GET fallback on 405/403/501).
+     */
+    public static ProbeResult probeUrl(final String rawUrl, final int connectTimeoutMs, final int readTimeoutMs,
+                                       final String userAgent, final boolean allowLoopback) {
+        final long start = System.nanoTime();
+        try {
+            ValidatedTarget current = resolveValidated(rawUrl, allowLoopback);
+            final RequestConfig requestConfig = RequestConfig.custom()
+                    .setConnectTimeout(connectTimeoutMs)
+                    .setConnectionRequestTimeout(connectTimeoutMs)
+                    .setSocketTimeout(readTimeoutMs)
+                    .setRedirectsEnabled(false)
+                    .build();
+            boolean useGet = false;
+            for (int hop = 0; hop <= MAX_REDIRECTS + 1; hop++) {
+                final HttpUriRequest req = useGet ? new HttpGet(current.uri()) : new HttpHead(current.uri());
+                if (req instanceof HttpHead h) {
+                    h.setConfig(requestConfig);
+                } else if (req instanceof HttpGet g) {
+                    g.setConfig(requestConfig);
+                }
+                if (userAgent != null && !userAgent.isBlank()) {
+                    req.setHeader("User-Agent", userAgent);
+                }
+                req.setHeader("Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
+                PINNED_TARGET.set(current);
+                try (CloseableHttpResponse response = SAFE_HTTP_CLIENT.execute(req)) {
+                    final int status = response.getStatusLine().getStatusCode();
+                    if (!useGet && (status == 405 || status == 403 || status == 501)) {
+                        useGet = true;
+                        continue;
+                    }
+                    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                        if (hop >= MAX_REDIRECTS) {
+                            final long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                            return new ProbeResult(false, status, ms, current.uri().toString(), "重定向次数过多");
+                        }
+                        final Header loc = response.getFirstHeader("Location");
+                        final String locVal = loc == null ? null : loc.getValue();
+                        if (locVal == null || locVal.isBlank()) {
+                            final long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                            return new ProbeResult(false, status, ms, current.uri().toString(), "重定向缺少 Location");
+                        }
+                        final URI next = current.uri().resolve(locVal.strip());
+                        current = resolveValidated(next.toString(), allowLoopback);
+                        if (status == 303) {
+                            useGet = true;
+                        }
+                        continue;
+                    }
+                    if (useGet) {
+                        req.abort();
+                    }
+                    final long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                    final boolean ok = status >= 200 && status < 400;
+                    return new ProbeResult(ok, status, ms, current.uri().toString(), ok ? "" : ("HTTP " + status));
+                } finally {
+                    PINNED_TARGET.remove();
+                }
+            }
+            final long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            return new ProbeResult(false, 0, ms, rawUrl, "重定向次数过多");
+        } catch (final Exception e) {
+            final long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+            return new ProbeResult(false, 0, ms, rawUrl, e.getMessage() == null ? "连接失败" : e.getMessage());
+        }
+    }
+
+    /**
+     * Sends an SSRF-safe JSON POST request with pinned DNS resolution and hop-by-hop validation.
+     */
+    public static int postJson(final String rawUrl, final String jsonBody,
+                               final java.util.Map<String, String> extraHeaders,
+                               final int connectTimeoutMs, final int readTimeoutMs,
+                               final boolean allowLoopback) throws IOException {
+        ValidatedTarget current = resolveValidated(rawUrl, allowLoopback);
+        final RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(connectTimeoutMs)
+                .setConnectionRequestTimeout(connectTimeoutMs)
+                .setSocketTimeout(readTimeoutMs)
+                .setRedirectsEnabled(false)
+                .build();
+        for (int hop = 0; hop <= 2; hop++) {
+            final HttpPost post = new HttpPost(current.uri());
+            post.setConfig(requestConfig);
+            post.setHeader("User-Agent", "Volo-Webhook/3.0 (+https://github.com/Willh92/Volo-solo)");
+            post.setHeader("Content-Type", "application/json; charset=UTF-8");
+            if (extraHeaders != null) {
+                for (final var entry : extraHeaders.entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        post.setHeader(entry.getKey(), entry.getValue());
+                    }
+                }
+            }
+            post.setEntity(new StringEntity(jsonBody == null ? "{}" : jsonBody, ContentType.APPLICATION_JSON));
+            PINNED_TARGET.set(current);
+            try (CloseableHttpResponse response = SAFE_HTTP_CLIENT.execute(post)) {
+                final int status = response.getStatusLine().getStatusCode();
+                if ((status == 307 || status == 308) && hop < 2) {
+                    final Header loc = response.getFirstHeader("Location");
+                    if (loc != null && loc.getValue() != null && !loc.getValue().isBlank()) {
+                        final URI next = current.uri().resolve(loc.getValue().strip());
+                        current = resolveValidated(next.toString(), allowLoopback);
+                        EntityUtils.consumeQuietly(response.getEntity());
+                        continue;
+                    }
+                }
+                EntityUtils.consumeQuietly(response.getEntity());
+                return status;
             } finally {
                 PINNED_TARGET.remove();
             }

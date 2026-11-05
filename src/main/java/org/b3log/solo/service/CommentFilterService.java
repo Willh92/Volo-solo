@@ -25,11 +25,11 @@ public class CommentFilterService {
     private record Rules(boolean builtin, List<String> deny, List<String> allow) {
         static Rules read(final JSONObject preference) {
             if (preference == null) throw new IllegalStateException("Comment filter settings are unavailable");
-            final String builtin = preference.optString(Option.ID_C_COMMENT_FILTER_BUILTIN, "on");
-            if (!builtin.isBlank() && !builtin.equals("on") && !builtin.equals("off")) {
+            final String builtin = preference.optString(Option.ID_C_COMMENT_FILTER_BUILTIN, "true").strip();
+            if (!builtin.isEmpty() && !builtin.equals("true") && !builtin.equals("false")) {
                 throw new IllegalArgumentException("第三方评论词库开关不正确。");
             }
-            return new Rules(!builtin.equals("off"), words(preference.optString(Option.ID_C_SPAM)),
+            return new Rules(!"false".equals(builtin), words(preference.optString(Option.ID_C_SPAM)),
                     words(preference.optString(Option.ID_C_COMMENT_FILTER_ALLOW)));
         }
     }

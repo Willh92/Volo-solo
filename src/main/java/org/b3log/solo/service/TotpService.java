@@ -371,9 +371,8 @@ public class TotpService {
         if (!current.bound()) {
             return false;
         }
-        final String enabledParam = request.optString("enabled", current.enabled() ? "on" : "off");
-        return ("on".equals(enabledParam) && !current.enabled())
-                || ("off".equals(enabledParam) && current.enabled());
+        final boolean targetEnabled = Option.optBooleanSwitch(request, "enabled", current.enabled());
+        return targetEnabled != current.enabled();
     }
 
     public synchronized JSONObject updateSettings(final JSONObject request) throws Exception {
@@ -381,11 +380,9 @@ public class TotpService {
             throw new IllegalArgumentException("2FA 配置不能为空。");
         }
         final State current = state();
-        final String enabledParam = request.optString("enabled", current.enabled() ? "on" : "off");
-        if (!Set.of("on", "off").contains(enabledParam)) {
-            throw new IllegalArgumentException("2FA 开关配置不正确。");
-        }
-        final boolean targetEnabled = "on".equals(enabledParam);
+        final String enabledNormalized = Option.normalizeBooleanSwitch(
+                request.opt("enabled"), current.enabled(), "2FA 开关配置不正确。");
+        final boolean targetEnabled = "true".equals(enabledNormalized);
         if (targetEnabled && !current.bound()) {
             throw new IllegalArgumentException("请先点击“生成绑定密钥”并使用身份验证器应用扫码验证后再启用 2FA。");
         }

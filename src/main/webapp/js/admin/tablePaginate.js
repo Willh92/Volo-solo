@@ -43,6 +43,23 @@ $.extend(TablePaginate.prototype, {
         }
         // Keep actions in normal cells: the legacy hover rows depend on the removed $.browser API.
         $("#" + this.id + "Table").addClass('console-card-list').table(tableData);
+        var host = typeof document !== 'undefined' && document && document.getElementById
+            ? document.getElementById(this.id + 'Table')
+            : null;
+        if (host && host.addEventListener && !host._voloHoverCleanupBound) {
+            host._voloHoverCleanupBound = true;
+            host.addEventListener('mouseleave', function (event) {
+                var target = event && event.target;
+                if (!target || !target.classList) return;
+                if (target.tagName === 'TBODY') {
+                    target.classList.remove('table-lineHover');
+                } else if (target === host || target.classList.contains('table-body')) {
+                    host.querySelectorAll('tbody.table-lineHover').forEach(function (tb) {
+                        tb.classList.remove('table-lineHover');
+                    });
+                }
+            }, true);
+        }
     
     },
     

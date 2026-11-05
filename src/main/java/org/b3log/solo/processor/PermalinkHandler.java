@@ -97,8 +97,12 @@ public class PermalinkHandler implements Handler {
             return;
         }
 
+        final org.b3log.solo.service.ShareTokenService shareTokenService =
+                beanManager.getReference(org.b3log.solo.service.ShareTokenService.class);
+        final boolean validPreviewToken = null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article);
+
         // If requests an article and the article need view password, sends redirect to the password form
-        if (Solos.needViewPwd(context, article)) {
+        if (!validPreviewToken && Solos.needViewPwd(context, article)) {
             try {
                 context.sendRedirect(Latkes.getServePath() + "/console/article-pwd?articleId=" + article.optString(Keys.OBJECT_ID));
                 context.abort();
@@ -115,7 +119,10 @@ public class PermalinkHandler implements Handler {
         final OptionQueryService optionQueryService = beanManager.getReference(OptionQueryService.class);
         final JSONObject preference = optionQueryService.getPreference();
         final boolean allowVisitDraftViaPermalink = preference.getBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
-        if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS) && !allowVisitDraftViaPermalink) {
+        if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
+                && !allowVisitDraftViaPermalink
+                && !validPreviewToken
+                && !Solos.isAdminOrAuthorLoggedIn(context)) {
             context.sendError(404);
             context.abort();
 

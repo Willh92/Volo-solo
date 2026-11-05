@@ -108,15 +108,39 @@ public final class Markdowns {
 
     private static final Safelist SAFE_HTML_WHITELIST = Safelist.relaxed()
             .preserveRelativeLinks(true)
+            .addTags("del", "s", "ins", "mark", "kbd", "hr", "details", "summary", "figure", "figcaption", "sup", "sub", "abbr", "audio", "source")
             .addAttributes("a", "target", "rel", "data-github-profile")
+            .addAttributes("h1", "id", "class")
+            .addAttributes("h2", "id", "class")
+            .addAttributes("h3", "id", "class")
+            .addAttributes("h4", "id", "class")
+            .addAttributes("h5", "id", "class")
+            .addAttributes("h6", "id", "class")
+            .addAttributes("p", "class")
+            .addAttributes("ul", "class")
+            .addAttributes("ol", "class", "start")
+            .addAttributes("li", "class")
+            .addAttributes("blockquote", "class")
+            .addAttributes("dl", "class")
+            .addAttributes("dt", "class")
+            .addAttributes("dd", "class")
+            .addAttributes("details", "class", "open")
+            .addAttributes("summary", "class")
+            .addAttributes("figure", "class")
+            .addAttributes("figcaption", "class")
+            .addAttributes("abbr", "title")
             .addAttributes("pre", "class")
             .addAttributes("div", "class", "data-code", "title")
             .addAttributes("span", "class")
             .addAttributes("code", "class")
-            .addAttributes("img", "class", "alt", "title")
+            .addAttributes("img", "class", "alt", "title", "width", "height", "loading", "decoding")
+            .addAttributes("audio", "controls", "preload", "src")
+            .addAttributes("source", "src", "type")
+            .addProtocols("audio", "src", "http", "https")
+            .addProtocols("source", "src", "http", "https")
             .addAttributes("table", "class")
-            .addAttributes("th", "align")
-            .addAttributes("td", "align", "class")
+            .addAttributes("th", "align", "colspan", "rowspan", "class")
+            .addAttributes("td", "align", "colspan", "rowspan", "class")
             .addTags("input")
             .addAttributes("input", "type", "checked", "disabled");
 
@@ -196,8 +220,16 @@ public final class Markdowns {
         }
         final Document.OutputSettings outputSettings = new Document.OutputSettings();
         outputSettings.prettyPrint(false);
-        final String baseUri = StringUtils.defaultIfBlank(Latkes.getServePath(), "https://localhost");
+        final String baseUri = StringUtils.defaultIfBlank(resolveServePath(), "https://localhost");
         return Jsoup.clean(html, baseUri, SAFE_HTML_WHITELIST, outputSettings);
+    }
+
+    private static String resolveServePath() {
+        try {
+            return StringUtils.trimToEmpty(Latkes.getServePath());
+        } catch (final RuntimeException e) {
+            return "";
+        }
     }
 
     private static boolean isSafeLinkHref(final String rawHref) {
@@ -286,11 +318,12 @@ public final class Markdowns {
             }
 
             final Document doc = Jsoup.parseBodyFragment(html);
+            final String servePath = resolveServePath();
             doc.select("a").forEach(a -> {
                 final String src = a.attr("href");
                 if (a.hasAttr("href") && !isSafeLinkHref(src)) {
                     a.removeAttr("href");
-                } else if (a.hasAttr("href") && !StringUtils.startsWithIgnoreCase(src, Latkes.getServePath()) && !StringUtils.startsWithIgnoreCase(src, "#")) {
+                } else if (a.hasAttr("href") && (servePath.isEmpty() || !StringUtils.startsWithIgnoreCase(src, servePath)) && !StringUtils.startsWithIgnoreCase(src, "#")) {
                     a.attr("target", "_blank");
                     a.attr("rel", "noopener noreferrer");
                 }

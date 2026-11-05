@@ -27,6 +27,12 @@
   var heldJQueries = []
   var scriptTypes = /^(?:application|text)\/(?:java|ecma)script$/i
   var persistentAttribute = 'data-bolo-navigation'
+  var loadedPersistentScripts = new Set()
+  Array.from(document.querySelectorAll('script[' + persistentAttribute + ']')).forEach(function (s) {
+    if (s.src) {
+      try { loadedPersistentScripts.add(new URL(s.src, window.location.href).pathname) } catch (e) { loadedPersistentScripts.add(s.src) }
+    }
+  })
   var pageCleanups = []
   var nativeTimeout = window.setTimeout.bind(window)
   var nativeClearTimeout = window.clearTimeout.bind(window)
@@ -144,7 +150,14 @@
   }
 
   function execute (source) {
-    if (source.hasAttribute(persistentAttribute)) return Promise.resolve()
+    var isPersistent = source.hasAttribute(persistentAttribute)
+    if (isPersistent) {
+      if (!source.src) return Promise.resolve()
+      var scriptPath = source.src
+      try { scriptPath = new URL(source.src, window.location.href).pathname } catch (e) {}
+      if (loadedPersistentScripts.has(scriptPath)) return Promise.resolve()
+      loadedPersistentScripts.add(scriptPath)
+    }
     return new Promise(function (resolve, reject) {
       var script = document.createElement('script')
       var timer
@@ -167,7 +180,7 @@
       } else {
         script.textContent = source.textContent
       }
-      document.body.appendChild(script)
+      ;(isPersistent ? document.head : document.body).appendChild(script)
       if (!source.src) resolve()
     })
   }
@@ -280,12 +293,20 @@
   document.addEventListener('click', function (event) {
     if (event.defaultPrevented) return
     var anchor = event.target.closest('a[href]')
-    if (!anchor || anchor.hasAttribute('download') || anchor.hasAttribute('data-no-pjax')) return
+    if (!anchor || anchor.hasAttribute('download') || anchor.hasAttribute('data-no-pjax') || anchor.hasAttribute('data-volo-search-trigger') || anchor.hasAttribute('data-volo-auth-trigger') || anchor.hasAttribute('data-volo-reader-logout')) return
     var destination = new URL(anchor.href, window.location.href)
     preserveSkinPreview(destination)
     if (destination.href !== anchor.href) anchor.href = destination.href
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
-    if (destination.origin === location.origin && /\/search\/?$/.test(destination.pathname)) anchor.target = '_self'
+    if (destination.origin === location.origin && /\/search\/?$/.test(destination.pathname)) {
+      if (!destination.searchParams.has('keyword') && window.VoloSearch && window.VoloSiteConfig && window.VoloSiteConfig.enableInstantSearch !== false) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        window.VoloSearch.open()
+        return
+      }
+      anchor.target = '_self'
+    }
     if (anchor.target && anchor.target !== '_self') return
     if (!pageLink(destination)) return
     if (pageKey(destination) === pageKey(new URL(location.href))) return

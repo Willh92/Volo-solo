@@ -58,7 +58,7 @@
                     </#list>
                 </span>
                 <div class="fn__right">
-                    <#if interactive=="on">
+                    <#if interactive == "true">
                         <a class="ft__red" href="${(isRss?then((article.articlePermalink?starts_with('https://') || article.articlePermalink?starts_with('http://'))?then(article.articlePermalink, '#'), servePath + article.articlePermalink))?html}#comments">
                             <#if article.articleCommentCount gt 0>
                                 ${article.articleCommentCount}

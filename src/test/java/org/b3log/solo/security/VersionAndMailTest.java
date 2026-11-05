@@ -19,7 +19,7 @@ public class VersionAndMailTest {
     @Test public void productAndDatabaseVersionsAreIndependent() {
         Assert.assertEquals(SoloApplication.VERSION, "3.0.0");
         Assert.assertEquals(SoloApplication.BOLO_VERSION_SOURCE, SoloApplication.VERSION);
-        Assert.assertEquals(SoloApplication.DATABASE_VERSION, "2026.11.01");
+        Assert.assertEquals(SoloApplication.DATABASE_VERSION, "2026.11.05");
         Assert.assertNotEquals(SoloApplication.DATABASE_VERSION, SoloApplication.VERSION);
     }
 

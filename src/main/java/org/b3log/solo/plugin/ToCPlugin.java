@@ -62,6 +62,14 @@ public class ToCPlugin extends NotInteractivePlugin {
     @Override
     public void postPlug(Map<String, Object> dataModel, RequestContext context) {
     }
+
+    public static void processArticleToc(final JSONObject article) {
+        if (article == null) {
+            return;
+        }
+        new ToCEventHandler().action(new Event<>(EventTypes.BEFORE_RENDER_ARTICLE,
+                new JSONObject().put(Article.ARTICLE, article)));
+    }
 }
 
 /**
@@ -104,11 +112,15 @@ class ToCEventHandler extends AbstractEventListener<JSONObject> {
             return;
         }
         final List<JSONObject> toc = new ArrayList<>(hs.size());
+        int seq = 0;
         for (int i = 0; i < hs.size(); i++) {
             final Element element = hs.get(i);
+            if (isInsideVoloWidget(element)) {
+                continue;
+            }
             final String tagName = element.tagName().toLowerCase();
             final String text = element.text();
-            final String id = "b3_solo_" + tagName + "_" + i;
+            final String id = "b3_solo_" + tagName + "_" + (seq++);
             element.attr("id", id);
             final JSONObject li = new JSONObject().
                     put("className", "toc__" + tagName).
@@ -119,5 +131,18 @@ class ToCEventHandler extends AbstractEventListener<JSONObject> {
         final Element body = doc.getElementsByTag("body").get(0);
         article.put(Article.ARTICLE_CONTENT, body.html());
         article.put(Article.ARTICLE_T_TOC, (Object) toc);
+    }
+
+    private static boolean isInsideVoloWidget(final Element heading) {
+        for (Element cur = heading; null != cur; cur = cur.parent()) {
+            if (cur.hasClass("volo-bookshelf")
+                    || cur.hasClass("volo-book-card")
+                    || cur.hasClass("volo-book-reader")
+                    || cur.hasClass("volo-series-box")
+                    || cur.hasClass("volo-lock-card")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

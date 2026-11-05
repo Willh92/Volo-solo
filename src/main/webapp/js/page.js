@@ -139,6 +139,9 @@ $.extend(Page.prototype, {
             trigger.defaultValue = '';
             trigger.readOnly = true;
             trigger.setAttribute('autocomplete', 'off');
+            if (that.tips && that.tips.commentAccessMode === 'registered' && !that.commentLoggedIn && that.tips.commentAdministrator !== true) {
+                trigger.placeholder = '登录后发表评论（点击登录 / 注册）...';
+            }
         }
         function restored (event) {
             if (event && event.persisted && !document.getElementById('soloEditor')?.classList.contains('is-open')) {
@@ -205,7 +208,11 @@ $.extend(Page.prototype, {
             input.setAttribute?.('autocomplete', 'off');
             if (input.parentElement !== slot || forceSync) {
                 input.removeAttribute('style');
+                var oldParent = input.parentElement;
                 slot.appendChild(input);
+                if (oldParent && oldParent !== slot && (oldParent.classList?.contains('vheader') || oldParent.classList?.contains('author-info')) && oldParent.children && oldParent.children.length === 0) {
+                    oldParent.hidden = true;
+                }
                 var key = field[0] === 'boloUser' ? 'name' : 'site';
                 input.value = typeof profile[key] === 'string' ? profile[key] : (typeof $.cookie === 'function' ? ($.cookie(field[2]) || '') : '');
                 input.maxLength = field[0] === 'boloUser' ? 20 : 255;
@@ -402,6 +409,12 @@ $.extend(Page.prototype, {
             error: function (xhr) { if (!that.commentDisposed) $('#soloEditorError').text(xhr.responseJSON?.msg || '保存失败，请重试。'); },
             success: function (result) {
                 if (that.commentDisposed || !result.sc) return;
+                if (result.pending) {
+                    that.findCommentElement(id)?.remove?.();
+                    that.cancelCommentEdit(); that.setEditorOpen(false);
+                    if (window.swal) swal({text: result.msg || '修改后的评论已转入待审核队列。', icon: 'info', button: '好'});
+                    return;
+                }
                 var content = that.findCommentElement(id)?.querySelector('[data-comment-content]');
                 if (content) content.innerHTML = result.commentHTML;
                 that.cancelCommentEdit(); that.setEditorOpen(false); Util.parseMarkdown();
@@ -452,8 +465,20 @@ $.extend(Page.prototype, {
         this.updateEditorViewport();
     },
     toggleEditor: function (commentId, name) {
+        if (this.tips && this.tips.commentAccessMode === 'off') {
+            if (window.swal) swal({text: '当前已关闭新评论提交。', icon: 'warning'});
+            return;
+        }
         if (this.editingCommentId) this.cancelCommentEdit();
         this.prepareCommentIdentity(typeof loggedIn !== 'undefined' ? loggedIn : false);
+        if (this.tips && this.tips.commentAccessMode === 'registered' && !this.commentLoggedIn && this.tips.commentAdministrator !== true) {
+            if (window.VoloReaderAuth && typeof window.VoloReaderAuth.open === 'function') {
+                window.VoloReaderAuth.open('login');
+            } else if (window.location) {
+                window.location.href = (Label.servePath || '') + '/user/login?redirect=' + encodeURIComponent(window.location.href || '/');
+            }
+            return;
+        }
         var $editor = $('#soloEditor');
         if ($editor.length === 0) {
             if (window.swal) swal({text: '评论编辑器暂不可用，请刷新页面后重试。', icon: 'warning'});
@@ -555,7 +580,7 @@ $.extend(Page.prototype, {
                 toolbar = [
                     'emoji',
                     'link',
-                    'upload',
+
                     'insert-after',
                     'edit-mode',
                     'preview',
@@ -741,6 +766,15 @@ $.extend(Page.prototype, {
                     }
                     that.setEditorOpen(false);
                     commentEditor.setValue('');
+                    if (result.pending === true) {
+                        swal({
+                            title: "",
+                            text: result.msg || "评论已提交，待博主审核通过后公开显示。",
+                            icon: "info",
+                            button: "好",
+                        });
+                        return;
+                    }
                     swal({
                         title: "",
                         text: "评论已推送!",

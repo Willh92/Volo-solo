@@ -441,6 +441,90 @@ public final class Option {
      */
     public static final String ID_C_HELP_IMPROVE_PLAN = "helpImprovePlan";
 
+    // Volo 3.0 extended options & document root keys (all document roots <= 24 chars for OptionDocuments)
+    public static final String ID_C_ALLOW_REGISTER = "allowRegister";
+    public static final String ID_C_COMMENT_ACCESS_MODE = "commentAccessMode";
+    public static final String ID_C_COMMENT_MODERATION_MODE = "commentModerationMode";
+    public static final String ID_C_ARTICLE_OUTDATED_DAYS = "articleOutdatedDays";
+    public static final String ID_C_ENABLE_READING_STATS = "enableReadingStats";
+    public static final String ID_C_ENABLE_INSTANT_SEARCH = "enableInstantSearch";
+    public static final String ID_C_LOCAL_BACKUP_AUTO = "localBackupAuto";
+    public static final String ID_C_LOCAL_BACKUP_KEEP_COUNT = "localBackupKeepCount";
+    public static final String ID_C_LOCAL_BACKUP_DIR = "localBackupDir";
+
+    public static final String ID_C_VOLO_SERIES = "voloSeries";
+    public static final String ID_C_VOLO_BOOKS = "voloBooks";
+    public static final String ID_C_VOLO_BOOK_TOC_PREFIX = "voloBookToc.";
+    public static final String ID_C_VOLO_WEBHOOKS = "voloWebhooks";
+    public static final String ID_C_VOLO_LINK_HEALTH = "voloLinkHealth";
+
+    /**
+     * Computes effective comment access mode ("all", "registered", or "off") honoring legacy interactive/commentable flags.
+     */
+    public static String effectiveCommentAccessMode(final JSONObject preference) {
+        if (preference == null) {
+            return "all";
+        }
+        if (!optBooleanSwitch(preference, ID_C_INTERACTIVE, true)
+                || !optBooleanSwitch(preference, ID_C_COMMENTABLE, true)) {
+            return "off";
+        }
+        final String mode = preference.optString(ID_C_COMMENT_ACCESS_MODE, "all");
+        return switch (mode) {
+            case "registered", "off" -> mode;
+            default -> "all";
+        };
+    }
+
+    /**
+     * Reads a canonical {@code "true"}/{@code "false"} boolean switch option from preference JSON.
+     */
+    public static boolean optBooleanSwitch(final JSONObject preference, final String key, final boolean defaultValue) {
+        if (preference == null || key == null || !preference.has(key) || preference.isNull(key)) {
+            return defaultValue;
+        }
+        final Object raw = preference.opt(key);
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        final String s = String.valueOf(raw).strip();
+        if (s.isEmpty()) {
+            return defaultValue;
+        }
+        if ("true".equalsIgnoreCase(s)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(s)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Strictly validates and normalizes an incoming 2-state switch value to canonical {@code "true"} or {@code "false"}.
+     */
+    public static String normalizeBooleanSwitch(final Object raw, final boolean defaultValue, final String errorMessage) {
+        if (raw == null || raw == JSONObject.NULL) {
+            return Boolean.toString(defaultValue);
+        }
+        if (raw instanceof Boolean b) {
+            return Boolean.toString(b);
+        }
+        if (raw instanceof String str) {
+            final String trimmed = str.strip();
+            if (trimmed.isEmpty()) {
+                return Boolean.toString(defaultValue);
+            }
+            if ("true".equals(trimmed)) {
+                return "true";
+            }
+            if ("false".equals(trimmed)) {
+                return "false";
+            }
+        }
+        throw new IllegalArgumentException(errorMessage);
+    }
+
     /**
      * Private constructor.
      */
@@ -647,6 +731,8 @@ public final class Option {
          * Default B3log password.
          */
         public static final String DEFAULT_B3LOG_PASSWORD = "123456";
+
+        public static final int DEFAULT_ARTICLE_OUTDATED_DAYS = 365;
 
         static {
             final JSONArray signs = new JSONArray();

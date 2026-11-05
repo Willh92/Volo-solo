@@ -79,6 +79,15 @@ admin.article = {
         $('#permalink').val(result.article.articlePermalink)
         $('#viewPwd').val(result.article.articleViewPwd)
         $("#categorySelector").val(result.category);
+        if (Array.isArray(result.seriesList)) {
+          admin.article._populateSeriesOptions(result.seriesList, result.seriesId || '')
+        } else {
+          $('#seriesSelector').val(result.seriesId || '')
+        }
+        $('#audioUrl').val(result.article.articleAudioURL || '')
+        $('#audioDuration').val(result.article.articleAudioDuration > 0 ? result.article.articleAudioDuration : '')
+        $('#audioSize').val(result.article.articleAudioSize > 0 ? result.article.articleAudioSize : '')
+        $('#articleAudioDetails').prop('open', Boolean(result.article.articleAudioURL))
 
         $('#articleCommentable').
           prop('checked', result.article.articleCommentable)
@@ -113,6 +122,17 @@ admin.article = {
         var createDate = new Date();
         createDate.setTime(result.article.articleCreated);
         $('#createDate').val(getNowFormatDate(createDate));
+
+        if (result.article.articleScheduleTime && Number(result.article.articleScheduleTime) > 0) {
+          var schedDate = new Date()
+          schedDate.setTime(Number(result.article.articleScheduleTime))
+          $('#scheduleDate').val(getNowFormatDate(schedDate))
+        } else {
+          $('#scheduleDate').val('')
+        }
+        $('#shareTokenBox').hide()
+        $('#articleRevisionsDrawer').hide()
+        $('#articleRevisionDiffBox').hide()
 
         admin.article.setStatus()
         $('#loadMsg').text('')
@@ -198,12 +218,19 @@ admin.article = {
           'articleCommentable': $('#articleCommentable').prop('checked'),
           'articleViewPwd': $('#viewPwd').val(),
           'category': $("#categorySelector").val(),
+          'seriesId': $('#seriesSelector').val() || '',
+          'articleAudioURL': $.trim($('#audioUrl').val() || ''),
+          'articleAudioDuration': parseInt($('#audioDuration').val() || '0', 10) || 0,
+          'articleAudioSize': parseInt($('#audioSize').val() || '0', 10) || 0,
         },
       }
       var created = new Date($('#createDate').val()).getTime();
       if (!isNaN(created)) {
         requestJSONObject.article.articleCreated = created;
       }
+      var schedVal = $('#scheduleDate').val();
+      var schedTime = schedVal ? new Date(schedVal).getTime() : 0;
+      requestJSONObject.article.articleScheduleTime = (!isNaN(schedTime) && schedTime > 0) ? schedTime : 0;
 
       $.ajax({
         url: Label.servePath + '/console/article/',
@@ -217,7 +244,7 @@ admin.article = {
           }
 
           admin.article.status.id = undefined
-          if (articleStatus === 0) {
+          if (articleStatus === 0 && !(requestJSONObject.article.articleScheduleTime > Date.now())) {
             admin.selectTab('article/article-list')
           } else {
             admin.selectTab('article/draft-list')
@@ -274,7 +301,16 @@ admin.article = {
           'articleViewPwd': $('#viewPwd').val(),
           'postToCommunity': $('#postToCommunity').prop('checked'),
           'category': $("#categorySelector").val(),
+          'seriesId': $('#seriesSelector').val() || '',
+          'articleAudioURL': $.trim($('#audioUrl').val() || ''),
+          'articleAudioDuration': parseInt($('#audioDuration').val() || '0', 10) || 0,
+          'articleAudioSize': parseInt($('#audioSize').val() || '0', 10) || 0,
           'articleCreated': new Date($('#createDate').val()).getTime(),
+          'articleScheduleTime': (function () {
+            var sv = $('#scheduleDate').val();
+            var st = sv ? new Date(sv).getTime() : 0;
+            return (!isNaN(st) && st > 0) ? st : 0;
+          })(),
         },
       }
 
@@ -289,7 +325,7 @@ admin.article = {
             return
           }
 
-          if (articleStatus === 0) {
+          if (articleStatus === 0 && !(requestJSONObject.article.articleScheduleTime > Date.now())) {
             admin.selectTab('article/article-list')
           } else {
             admin.selectTab('article/draft-list')
@@ -329,6 +365,13 @@ admin.article = {
         $('#loadMsg').text('')
       },
     })
+
+    this._loadSeriesCatalog()
+    if (this.status && this.status.id) {
+      $('#articleAdvancedTools').show()
+    } else {
+      $('#articleAdvancedTools').hide()
+    }
 
     // set button status
     if (this.status) {
@@ -370,7 +413,17 @@ admin.article = {
     $('#permalink').val('')
     $('#viewPwd').val('')
     $('#categorySelector').val('')
+    $('#seriesSelector').val('')
     $('#createDate').val('')
+    $('#scheduleDate').val('')
+    $('#audioUrl').val('')
+    $('#audioDuration').val('')
+    $('#audioSize').val('')
+    $('#articleAudioDetails').prop('open', false)
+    $('#articleAdvancedTools').hide()
+    $('#shareTokenBox').hide()
+    $('#articleRevisionsDrawer').hide()
+    $('#articleRevisionDiffBox').hide()
     $('#articleTagInput').val('')
     this.content = ''
     $('#articleCommentable').prop('checked', true)
@@ -579,6 +632,192 @@ admin.article = {
     $('#unSubmitArticle').removeAttr('disabled')
     $('#saveArticle').removeAttr('disabled')
     $('#submitArticle').removeAttr('disabled')
+  },
+  _populateSeriesOptions: function (list, selectedId) {
+    var sel = $('#seriesSelector')
+    if (!sel.length) return
+    var keep = selectedId !== undefined ? selectedId : (sel.val() || '')
+    sel.empty().append($('<option value="">不加入专题系列</option>'))
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i]
+      sel.append($('<option></option>').val(s.id).text(s.title))
+    }
+    sel.val(keep || '')
+  },
+  _loadSeriesCatalog: function () {
+    var that = this
+    $.ajax({
+      url: Label.servePath + '/console/series',
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (res && res.sc && Array.isArray(res.series)) {
+          that._populateSeriesOptions(res.series)
+        }
+      },
+    })
+  },
+  generateShareToken: function () {
+    if (!this.status || !this.status.id) return
+    var duration = $('#shareTokenDuration').val() || '24h'
+    $.ajax({
+      url: Label.servePath + '/console/article/' + encodeURIComponent(this.status.id) + '/share-token',
+      type: 'POST',
+      contentType: 'application/json;charset=UTF-8',
+      data: JSON.stringify({ action: 'create', duration: duration }),
+      success: function (res) {
+        if (!res || !res.sc) {
+          $('#tipMsg').text((res && res.msg) || '生成预览链接失败')
+          return
+        }
+        $('#shareTokenOutput').val(res.shareUrl || '')
+        $('#shareTokenBox').show()
+        $('#tipMsg').text(res.msg || '已生成限时免密预览链接')
+      },
+    })
+  },
+  copyShareToken: function () {
+    var val = $('#shareTokenOutput').val()
+    if (!val) return
+    if (typeof Util !== 'undefined' && Util.copyCodeText) {
+      Util.copyCodeText(val).then(function (ok) {
+        $('#tipMsg').text(ok ? '预览链接已复制到剪贴板' : '请手动复制输入框中的链接')
+      })
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(val).then(function () {
+        $('#tipMsg').text('预览链接已复制到剪贴板')
+      })
+    }
+  },
+  revokeShareTokens: function () {
+    if (!this.status || !this.status.id) return
+    if (!confirm('重置全局预览密钥后，所有已分享的草稿/密码免密预览链接将立即失效。确定继续吗？')) return
+    $.ajax({
+      url: Label.servePath + '/console/article/' + encodeURIComponent(this.status.id) + '/share-token',
+      type: 'POST',
+      contentType: 'application/json;charset=UTF-8',
+      data: JSON.stringify({ action: 'revoke' }),
+      success: function (res) {
+        $('#shareTokenBox').hide()
+        $('#tipMsg').text((res && res.msg) || '已吊销所有预览链接')
+      },
+    })
+  },
+  toggleRevisions: function () {
+    var drawer = $('#articleRevisionsDrawer')
+    if (drawer.is(':visible')) {
+      drawer.slideUp(150)
+      return
+    }
+    drawer.slideDown(150)
+    this.loadRevisions()
+  },
+  loadRevisions: function () {
+    if (!this.status || !this.status.id) return
+    var box = $('#articleRevisionsList')
+    box.html('正在加载历史版本...')
+    $('#articleRevisionDiffBox').hide()
+    var aid = this.status.id
+    var esc = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      })
+    }
+    $.ajax({
+      url: Label.servePath + '/console/article/' + encodeURIComponent(aid) + '/revisions',
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (!res || !res.sc || !Array.isArray(res.revisions) || res.revisions.length === 0) {
+          box.html('<span style="opacity:0.7;">暂无历史快照（每次保存或更新文章时自动保留最近 10 个版本）。</span>')
+          return
+        }
+        var html = '<ul style="list-style:none;margin:0;padding:0;">'
+        for (var i = 0; i < res.revisions.length; i++) {
+          var r = res.revisions[i]
+          var d = new Date(Number(r.revisionCreated || 0))
+          var timeStr = isNaN(d.getTime()) ? '' : d.toLocaleString()
+          var revId = esc(r.oId)
+          html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(127,127,127,0.14);gap:8px;flex-wrap:wrap;">' +
+            '<span><strong>' + esc(timeStr) + '</strong> · ' + esc(r.revisionTitle || '') +
+            (r.revisionAuthorName ? ' <em style="opacity:0.75;">(' + esc(r.revisionAuthorName) + ')</em>' : '') +
+            (r.revisionNote ? ' <span style="opacity:0.7;">[' + esc(r.revisionNote) + ']</span>' : '') +
+            '</span>' +
+            '<span class="console-row-actions">' +
+            '<a href="javascript:void(0)" data-rev="' + revId + '" onclick="admin.article.viewRevisionDiff(this.dataset.rev)">对比差异</a>' +
+            '<a href="javascript:void(0)" data-rev="' + revId + '" onclick="admin.article.restoreRevision(this.dataset.rev)">一键回滚</a>' +
+            '</span></li>'
+        }
+        html += '</ul>'
+        box.html(html)
+      },
+    })
+  },
+  viewRevisionDiff: function (revId) {
+    if (!this.status || !this.status.id || !revId) return
+    var that = this
+    $.ajax({
+      url: Label.servePath + '/console/article/' + encodeURIComponent(this.status.id) + '/revisions/' + encodeURIComponent(revId),
+      type: 'GET',
+      cache: false,
+      success: function (res) {
+        if (!res || !res.sc || !res.revision) {
+          $('#tipMsg').text((res && res.msg) || '加载历史快照失败')
+          return
+        }
+        var oldContent = String(res.revision.revisionContent || '')
+        var curContent = admin.editors.articleEditor.getContent() || ''
+        var diffHtml = that._buildLineDiffHtml(oldContent, curContent)
+        $('#articleRevisionDiffBox').html(diffHtml).show()
+      },
+    })
+  },
+  _buildLineDiffHtml: function (oldText, newText) {
+    var esc = function (v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      })
+    }
+    var oldLines = oldText.replace(/\r\n/g, '\n').split('\n')
+    var newLines = newText.replace(/\r\n/g, '\n').split('\n')
+    var max = Math.max(oldLines.length, newLines.length)
+    var out = ['<div style="margin-bottom:6px;font-weight:bold;">版本差异对比（<span style="color:#dc2626;">- 历史快照</span> / <span style="color:#16a34a;">+ 当前编辑器</span>）：</div>']
+    var diffCount = 0
+    for (var i = 0; i < max && out.length < 400; i++) {
+      var o = oldLines[i]
+      var n = newLines[i]
+      if (o === n) continue
+      diffCount++
+      if (o !== undefined) {
+        out.push('<div style="color:#dc2626;background:rgba(220,38,38,0.08);padding:1px 4px;">- [L' + (i + 1) + '] ' + esc(o) + '</div>')
+      }
+      if (n !== undefined) {
+        out.push('<div style="color:#16a34a;background:rgba(22,163,74,0.08);padding:1px 4px;">+ [L' + (i + 1) + '] ' + esc(n) + '</div>')
+      }
+    }
+    if (diffCount === 0) {
+      out.push('<div style="opacity:0.75;">当前编辑器正文与该历史快照完全一致。</div>')
+    }
+    return out.join('')
+  },
+  restoreRevision: function (revId) {
+    if (!this.status || !this.status.id || !revId) return
+    if (!confirm('确定回滚到该历史版本吗？回滚前系统会自动为您保存当前内容的最新快照。')) return
+    var that = this
+    $.ajax({
+      url: Label.servePath + '/console/article/' + encodeURIComponent(this.status.id) + '/revisions/' + encodeURIComponent(revId) + '/restore',
+      type: 'POST',
+      contentType: 'application/json;charset=UTF-8',
+      data: '{}',
+      success: function (res) {
+        if (!res || !res.sc) {
+          $('#tipMsg').text((res && res.msg) || '回滚失败')
+          return
+        }
+        $('#tipMsg').text(res.msg || '已回滚至所选历史版本')
+        that.getAndSet()
+      },
+    })
   },
 }
 

@@ -60,7 +60,7 @@
                                     ${article.articleCreateDate?string("yyyy-MM-dd")}/${article.articleUpdateDate?string("yyyy-MM-dd")}
                                 </time>
                             </span>
-                        <#if interactive == "on">
+                        <#if interactive == "true">
                         <span class="post-comments-count">
                                 &nbsp; | &nbsp;
                                 <a href="${servePath}${article.articlePermalink}#comments">
@@ -110,7 +110,7 @@
                 </footer>
             </article>
         </div>
-        <#if interactive == "on">
+        <#if interactive == "true">
         <@comments commentList=articleComments article=article></@comments>
         </#if>
         <#if 0 != relevantArticlesDisplayCount>

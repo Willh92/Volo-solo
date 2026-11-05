@@ -53,6 +53,34 @@ public final class UserExt {
     public static final String USER_GITHUB_ID = "userGitHubId";
 
     /**
+     * Key of verified user email address.
+     */
+    public static final String USER_EMAIL = "userEmail";
+
+    /**
+     * Key of whether user email has been verified.
+     */
+    public static final String USER_EMAIL_VERIFIED = "userEmailVerified";
+
+    /**
+     * Key of salted PBKDF2 password hash.
+     */
+    public static final String USER_PASSWORD_HASH = "userPasswordHash";
+
+    /**
+     * Key of user account status (0 = active, 1 = disabled).
+     */
+    public static final String USER_STATUS = "userStatus";
+
+    /**
+     * Key of user account creation timestamp.
+     */
+    public static final String USER_CREATED = "userCreated";
+
+    public static final int USER_STATUS_C_VALID = 0;
+    public static final int USER_STATUS_C_DISABLED = 1;
+
+    /**
      * Private constructor.
      */
     private UserExt() {

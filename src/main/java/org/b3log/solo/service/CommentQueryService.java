@@ -172,6 +172,19 @@ public class CommentQueryService {
                 if (!legacyIds.isEmpty()) query.setFilter(org.b3log.latke.repository.CompositeFilterOperator.or(query.getFilter(),
                         new org.b3log.latke.repository.PropertyFilter(Keys.OBJECT_ID, org.b3log.latke.repository.FilterOperator.IN, legacyIds)));
             }
+            final String statusFilter = requestJSONObject.optString("status", "all").trim().toLowerCase(java.util.Locale.ROOT);
+            final Integer statusCode = switch (statusFilter) {
+                case "pending" -> Comment.COMMENT_STATUS_C_PENDING;
+                case "approved" -> Comment.COMMENT_STATUS_C_APPROVED;
+                case "rejected" -> Comment.COMMENT_STATUS_C_REJECTED;
+                default -> null;
+            };
+            if (statusCode != null) {
+                final var pf = new org.b3log.latke.repository.PropertyFilter(Comment.COMMENT_STATUS,
+                        org.b3log.latke.repository.FilterOperator.EQUAL, statusCode);
+                query.setFilter(query.getFilter() == null ? pf
+                        : org.b3log.latke.repository.CompositeFilterOperator.and(query.getFilter(), pf));
+            }
             final JSONObject result = commentRepository.get(query);
             final JSONArray comments = org.b3log.solo.util.QueryResults.array(result);
 
@@ -220,6 +233,7 @@ public class CommentQueryService {
 
             ret.put(Comment.COMMENTS, comments);
             ret.put(Pagination.PAGINATION, pagination);
+            ret.put("pendingCount", commentRepository.countPendingComments());
 
             return ret;
         } catch (final Exception e) {
@@ -241,6 +255,11 @@ public class CommentQueryService {
             final List<JSONObject> ret = new ArrayList<>();
             final List<JSONObject> comments = commentRepository.getComments(onId, 1, Integer.MAX_VALUE);
             for (final JSONObject comment : comments) {
+                if (comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
+                    continue;
+                }
+                comment.put("commentRegistered", !comment.optString(Comment.COMMENT_USER_ID).isBlank());
+                comment.remove(Comment.COMMENT_USER_ID);
                 comment.put(Comment.COMMENT_TIME, comment.optLong(Comment.COMMENT_CREATED));
                 comment.put(Comment.COMMENT_T_DATE, new Date(comment.optLong(Comment.COMMENT_CREATED)));
                 comment.put("commentDate2", new Date(comment.optLong(Comment.COMMENT_CREATED))); // 1.9.0 向后兼容

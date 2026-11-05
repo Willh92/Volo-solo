@@ -30,7 +30,7 @@ public class CaptchaProcessor {
         context.setHeader("Cache-Control", "no-store");
         try {
             final String purpose = context.param("purpose");
-            if (!java.util.Set.of("login", "comment").contains(purpose == null ? "" : purpose)) throw new IllegalArgumentException("验证码用途不正确。");
+            if (!java.util.Set.of("login", "comment", "register").contains(purpose == null ? "" : purpose)) throw new IllegalArgumentException("验证码用途不正确。");
             if (purpose.equals("login") && !loginRequired()) {
                 context.renderJSON(new JSONObject().put("sc", true).put("required", false)); return;
             }

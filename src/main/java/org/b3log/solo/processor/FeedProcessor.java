@@ -144,6 +144,8 @@ public class FeedProcessor {
         final JSONObject author = articleQueryService.getAuthor(article);
         String summary = isFullContent ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
+        summary = org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
+                org.b3log.solo.service.HiddenContentService.stripForFeed(summary));
         summary = Markdowns.toHTML(EmojiParser.parseToAliases(summary));
         if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
             summary = Markdowns.clean(summary);
@@ -234,6 +236,8 @@ public class FeedProcessor {
         String description = isFullContent
                 ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
+        description = org.b3log.solo.service.SeriesAndBookshelfService.stripForFeed(
+                org.b3log.solo.service.HiddenContentService.stripForFeed(description));
         final JSONObject author = articleQueryService.getAuthor(article);
         description = EmojiParser.parseToAliases(description);
         description = Markdowns.toHTML(description);
@@ -248,6 +252,15 @@ public class FeedProcessor {
         ret.setGUID(link);
         final String authorName = author.getString(User.USER_NAME);
         ret.setAuthor(authorName);
+        final String rawAudioUrl = org.apache.commons.lang3.StringUtils.trimToEmpty(article.optString(Article.ARTICLE_AUDIO_URL));
+        if (org.b3log.solo.util.ReadingStatsUtil.isSafeAudioUrl(rawAudioUrl)) {
+            final String fullAudioUrl = rawAudioUrl.startsWith("/")
+                    ? (Latkes.getServePath() + rawAudioUrl)
+                    : rawAudioUrl;
+            final long audioSize = Math.max(0L, article.optLong(Article.ARTICLE_AUDIO_SIZE, 0L));
+            final String audioMime = org.b3log.solo.util.ReadingStatsUtil.inferAudioMimeType(fullAudioUrl);
+            ret.setEnclosure(fullAudioUrl, audioSize, audioMime);
+        }
         final String tagsString = article.getString(Article.ARTICLE_TAGS_REF);
         final String[] tagStrings = tagsString.split(",");
         for (final String tagString : tagStrings) {

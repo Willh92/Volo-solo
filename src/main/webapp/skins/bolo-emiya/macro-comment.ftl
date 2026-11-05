@@ -73,12 +73,10 @@
   <textarea rows="3" placeholder="${postCommentsLabel}" class="comment__textarea" id="comment" readonly autocomplete="off" name="volo-comment-trigger"></textarea>
   <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
 </#if>
-<#if commentList?size != 0>
-  <h3>评论列表</h3>
+<#if commentList?size != 0><h3>评论列表</h3></#if>
   <ul class="article__comments" id="comments">
     <#list commentList as comment>
       <@article_comment comment=comment article=article></@article_comment>
     </#list>
   </ul>
-</#if>
 </#macro>

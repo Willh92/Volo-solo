@@ -165,66 +165,146 @@ public class UserTemplateProcessor {
         org.b3log.solo.web.JsonResponses.json(context).renderMsg("OK");
     }
 
+    public static final List<String> USITE_KEYS = List.of(
+            "usiteUserId", "usiteResume", "usiteWeiBo", "usiteQQMusic",
+            "usiteStackOverflow", "usiteDribbble", "usiteGitHub", "usiteMedium", "usiteTwitter", "usiteQQ",
+            "usiteLinkedIn", "usiteSteam", "oId", "usiteInstagram", "usiteCodePen", "usiteWYMusic",
+            "usiteWeChat", "usiteZhiHu", "usiteBehance", "usiteTelegram", "usiteFacebook"
+    );
+
+    private static final java.util.Set<String> USITE_KEY_SET = java.util.Set.copyOf(USITE_KEYS);
+
+    private static final Map<String, List<String>> USITE_PREFIXES = Map.ofEntries(
+            Map.entry("usiteWeiBo", List.of("https://www.weibo.com/", "http://www.weibo.com/", "https://weibo.com/", "http://weibo.com/")),
+            Map.entry("usiteQQMusic", List.of("https://y.qq.com/portal/profile.html?uin=", "http://y.qq.com/portal/profile.html?uin=")),
+            Map.entry("usiteStackOverflow", List.of("https://stackoverflow.com/users/", "http://stackoverflow.com/users/")),
+            Map.entry("usiteDribbble", List.of("https://dribbble.com/", "http://dribbble.com/")),
+            Map.entry("usiteGitHub", List.of("https://github.com/", "http://github.com/")),
+            Map.entry("usiteMedium", List.of("https://medium.com/@", "http://medium.com/@", "https://medium.com/", "http://medium.com/")),
+            Map.entry("usiteTwitter", List.of("https://twitter.com/", "http://twitter.com/", "https://x.com/", "http://x.com/")),
+            Map.entry("usiteLinkedIn", List.of("https://www.linkedin.com/in/", "http://www.linkedin.com/in/", "https://linkedin.com/in/", "http://linkedin.com/in/")),
+            Map.entry("usiteSteam", List.of("https://steamcommunity.com/id/", "http://steamcommunity.com/id/")),
+            Map.entry("usiteInstagram", List.of("https://www.instagram.com/", "http://www.instagram.com/", "https://instagram.com/", "http://instagram.com/")),
+            Map.entry("usiteCodePen", List.of("https://codepen.io/", "http://codepen.io/")),
+            Map.entry("usiteWYMusic", List.of("https://music.163.com/#/user/home?id=", "http://music.163.com/#/user/home?id=", "https://music.163.com/user/home?id=")),
+            Map.entry("usiteZhiHu", List.of("https://www.zhihu.com/people/", "http://www.zhihu.com/people/", "https://zhihu.com/people/", "http://zhihu.com/people/")),
+            Map.entry("usiteBehance", List.of("https://www.behance.net/", "http://www.behance.net/", "https://behance.net/", "http://behance.net/")),
+            Map.entry("usiteTelegram", List.of("https://telegram.me/", "http://telegram.me/", "https://t.me/", "http://t.me/")),
+            Map.entry("usiteFacebook", List.of("https://www.facebook.com/", "http://www.facebook.com/", "https://facebook.com/", "http://facebook.com/"))
+    );
+
+    /**
+     * Normalizes and validates contact configuration fields.
+     * {@code usiteResume} accepts empty, root-relative ({@code /...}), or {@code http(s)://} URLs;
+     * all other fields store platform account handles/IDs (with automatic prefix stripping if a full profile URL is pasted).
+     */
+    public static JSONObject normalizeAndValidateUsite(final JSONObject incoming, final JSONObject stored) {
+        if (incoming == null) {
+            throw new IllegalArgumentException("联系方式提交内容不能为空。");
+        }
+        for (final String key : incoming.keySet()) {
+            if (!USITE_KEY_SET.contains(key)) {
+                throw new IllegalArgumentException("包含未知的联系方式字段。");
+            }
+        }
+        final JSONObject normalized = new JSONObject();
+        for (final String key : USITE_KEYS) {
+            String val = incoming.has(key)
+                    ? incoming.optString(key, "").trim()
+                    : (stored != null ? stored.optString(key, "").trim() : "");
+            if ("usiteResume".equals(key)) {
+                if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(val)) {
+                    throw new IllegalArgumentException("个人简历地址需填写以 / 开头的站内路径或 http(s):// 网址。");
+                }
+                normalized.put(key, val);
+                continue;
+            }
+            if (val.isEmpty()) {
+                normalized.put(key, "");
+                continue;
+            }
+            final List<String> prefixes = USITE_PREFIXES.get(key);
+            if (prefixes != null) {
+                final String lowerVal = val.toLowerCase(java.util.Locale.ROOT);
+                for (final String prefix : prefixes) {
+                    if (lowerVal.startsWith(prefix)) {
+                        val = val.substring(prefix.length()).trim();
+                        break;
+                    }
+                }
+                while (val.endsWith("/")) {
+                    val = val.substring(0, val.length() - 1).trim();
+                }
+            }
+            if (java.util.Set.of("usiteMedium", "usiteTwitter", "usiteInstagram", "usiteTelegram").contains(key)
+                    && val.startsWith("@")) {
+                val = val.substring(1).trim();
+            }
+            if (val.isEmpty()) {
+                normalized.put(key, "");
+                continue;
+            }
+            final String lower = val.toLowerCase(java.util.Locale.ROOT);
+            if (val.contains("://") || lower.startsWith("javascript:") || lower.startsWith("data:") || lower.startsWith("vbscript:")) {
+                throw new IllegalArgumentException("请直接填写对应平台的账号标识（无需包含其他网址协议），或清空不填。");
+            }
+            final boolean allowSpace = "usiteWeChat".equals(key);
+            if (val.length() > 200 || val.chars().anyMatch(ch ->
+                    Character.isISOControl(ch)
+                            || (!allowSpace && Character.isWhitespace(ch))
+                            || ch == '<' || ch == '>' || ch == '"' || ch == '\'' || ch == '\\' || ch == '`')) {
+                throw new IllegalArgumentException("社交账号格式不合法，请填写对应平台的账号标识（勿包含引号、尖括号或空白字符）。");
+            }
+            normalized.put(key, val);
+        }
+        return normalized;
+    }
+
     @RequestProcessing(value = "/admin/usite/set", method = HttpMethod.POST)
     public void setUsite(final RequestContext context) {
         if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
         JSONObject usiteOpt = optionQueryService.getOptionById(Option.ID_C_USITE);
+        JSONObject storedObj = null;
         if (null == usiteOpt) {
             usiteOpt = new JSONObject();
             usiteOpt.put(Keys.OBJECT_ID, Option.ID_C_USITE);
             usiteOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_HACPAI);
-        }
-        String usite = context.requestJSON().toString();
-
-        // Usite 合法性检测
-        try {
-            JSONObject usiteObject = new JSONObject(usite);
-            List<String> usiteList = new ArrayList<>();
-            Collections.addAll(usiteList, "usiteUserId", "usiteResume", "usiteWeiBo", "usiteQQMusic",
-                    "usiteStackOverflow", "usiteDribbble", "usiteGitHub", "usiteMedium", "usiteTwitter", "usiteQQ",
-                    "usiteLinkedIn", "usiteSteam", "oId", "usiteInstagram", "usiteCodePen", "usiteWYMusic",
-                    "usiteWeChat", "usiteZhiHu", "usiteBehance", "usiteTelegram", "usiteFacebook");
-            for (String i : usiteList) {
-                if (usiteObject.has(i)) {
-                    final String val = usiteObject.optString(i).trim();
-                    if (!val.isEmpty() && !java.util.Set.of("usiteUserId", "oId", "usiteQQ", "usiteWeChat").contains(i)) {
-                        final boolean ok = "usiteResume".equals(i)
-                                ? org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(val)
-                                : org.b3log.solo.util.OutboundUrls.isHttpOrHttps(val);
-                        if (!ok) {
-                            org.b3log.solo.web.JsonResponses.json(context).renderCode(400);
-                            org.b3log.solo.web.JsonResponses.json(context).renderMsg("社交链接地址不合法。");
-                            return;
-                        }
-                    }
-                }
-                if (!usiteObject.has(i)) {
-                    LOGGER.log(Level.ERROR, "Updates usite option failed: Invalid JSON Object.");
-                    org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
-
-                    return;
+        } else {
+            final String rawStored = usiteOpt.optString(Option.OPTION_VALUE);
+            if (rawStored != null && !rawStored.isBlank()) {
+                try {
+                    storedObj = new JSONObject(rawStored);
+                } catch (final Exception ignored) {
+                    storedObj = null;
                 }
             }
-        } catch (Exception e) {
-            LOGGER.log(Level.ERROR, "Updates usite option failed", e);
-            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
-
-            return;
         }
 
-        usiteOpt.put(Option.OPTION_VALUE, usite);
+        final JSONObject normalized;
         try {
-            optionMgmtService.addOrUpdateOption(usiteOpt);
-            LOGGER.log(Level.INFO, "Contact settings updated");
-            org.b3log.solo.web.JsonResponses.json(context).renderCode(200);
-
+            normalized = normalizeAndValidateUsite(context.requestJSON(), storedObj);
+        } catch (final IllegalArgumentException invalid) {
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(400).renderMsg(invalid.getMessage());
             return;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Updates usite option failed", e);
-            org.b3log.solo.web.JsonResponses.json(context).renderCode(500);
-
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(400).renderMsg("联系方式提交格式不正确。");
             return;
+        }
+
+        usiteOpt.put(Option.OPTION_VALUE, normalized.toString());
+        try {
+            optionMgmtService.addOrUpdateOption(usiteOpt);
+            LOGGER.log(Level.INFO, "Contact settings updated");
+            context.renderJSON(new JSONObject()
+                    .put(org.b3log.solo.model.Common.STATUS_CODE, true)
+                    .put("code", 200)
+                    .put("msg", "联系方式已保存。")
+                    .put("data", normalized));
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Updates usite option failed", e);
+            org.b3log.solo.web.JsonResponses.json(context).renderCode(500).renderMsg("保存联系方式失败，请稍后重试。");
         }
     }
 

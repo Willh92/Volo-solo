@@ -154,6 +154,9 @@ public class CommentMgmtService {
     @Inject
     private LangPropsService langPropsService;
 
+    @Inject
+    private WebhookNotifyService webhookNotifyService;
+
     /**
      * Checks the specified comment adding request.
      * <p>
@@ -228,7 +231,9 @@ public class CommentMgmtService {
             }
             if (!parentId.isBlank()) {
                 final JSONObject parent = commentRepository.get(parentId);
-                if (parent == null || !id.equals(parent.optString(Comment.COMMENT_ON_ID))) {
+                if (parent == null || !id.equals(parent.optString(Comment.COMMENT_ON_ID))
+                        || parent.optBoolean("commentDeleted")
+                        || parent.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
                     ret.put(Keys.MSG, "回复的评论不存在，或不属于当前文章。");
                     return ret;
                 }
@@ -326,6 +331,12 @@ public class CommentMgmtService {
             comment.put("commentNotifyEmail", requestJSONObject.optString("email"));
             comment.put(org.b3log.solo.util.CommentOwnership.KEY_HASH, requestJSONObject.optString(org.b3log.solo.util.CommentOwnership.KEY_HASH));
             comment.put("commentDeleted", false);
+            final int commentStatus = requestJSONObject.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
+            final String commentUserId = requestJSONObject.optString(Comment.COMMENT_USER_ID, "");
+            comment.put(Comment.COMMENT_STATUS, commentStatus);
+            comment.put(Comment.COMMENT_USER_ID, commentUserId);
+            ret.put(Comment.COMMENT_STATUS, commentStatus);
+            ret.put("pending", commentStatus == Comment.COMMENT_STATUS_C_PENDING);
             comment.put(org.b3log.solo.util.IpAddresses.COMMENT_IP,
                     org.b3log.solo.util.IpAddresses.canonical(requestJSONObject.optString(org.b3log.solo.util.IpAddresses.COMMENT_IP)));
             final JSONObject preference = optionQueryService.getPreference();
@@ -370,7 +381,9 @@ public class CommentMgmtService {
             org.b3log.solo.util.CommentNames.apply(ret);
             org.b3log.solo.util.IpAddresses.hidePrivateAddress(ret);
             commentRepository.add(comment);
-            articleMgmtService.incArticleCommentCount(articleId);
+            if (commentStatus == Comment.COMMENT_STATUS_C_APPROVED) {
+                articleMgmtService.incArticleCommentCount(articleId);
+            }
 
             transaction.commit();
         } catch (final Exception e) {
@@ -381,6 +394,21 @@ public class CommentMgmtService {
             throw new ServiceException(e);
         }
 
+        if (null != webhookNotifyService) {
+            try {
+                final boolean pending = ret.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) == Comment.COMMENT_STATUS_C_PENDING;
+                final JSONObject art = ret.optJSONObject(Article.ARTICLE);
+                final String artTitle = art == null ? "" : art.optString(Article.ARTICLE_TITLE);
+                webhookNotifyService.notifyEvent(
+                        pending ? "comment.pending" : "comment.created",
+                        (pending ? "新评论待审核：" : "收到新评论：") + ret.optString(Comment.COMMENT_NAME),
+                        new JSONObject()
+                                .put("article", artTitle)
+                                .put("author", ret.optString(Comment.COMMENT_NAME))
+                                .put("status", pending ? "pending" : "approved"));
+            } catch (final Exception ignored) {
+            }
+        }
         return ret;
     }
 
@@ -390,6 +418,39 @@ public class CommentMgmtService {
      * @param commentId the given comment id
      * @throws ServiceException service exception
      */
+    public synchronized void updateCommentContentAndStatus(final String commentId, final String content, final int status) throws ServiceException {
+        JSONObject updatedComment = null;
+        final Transaction transaction = commentRepository.beginTransaction();
+        try {
+            final JSONObject comment = commentRepository.get(commentId);
+            if (comment == null || comment.optBoolean("commentDeleted")) throw new ServiceException("评论已删除。");
+            comment.put(Comment.COMMENT_CONTENT, content);
+            comment.put(Comment.COMMENT_STATUS, status);
+            commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT, Comment.COMMENT_STATUS);
+            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            if (!articleId.isBlank()) {
+                final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
+                setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
+            }
+            updatedComment = comment;
+            transaction.commit();
+        } catch (Exception failure) {
+            if (transaction.isActive()) transaction.rollback();
+            throw new ServiceException(failure);
+        }
+        if (status == Comment.COMMENT_STATUS_C_PENDING && null != webhookNotifyService && null != updatedComment) {
+            try {
+                webhookNotifyService.notifyEvent(
+                        "comment.pending",
+                        "编辑评论待审核：" + updatedComment.optString(Comment.COMMENT_NAME),
+                        new JSONObject()
+                                .put("author", updatedComment.optString(Comment.COMMENT_NAME))
+                                .put("status", "pending"));
+            } catch (final Exception ignored) {
+            }
+        }
+    }
+
     public synchronized void updateCommentContent(final String commentId, final String content) throws ServiceException {
         final Transaction transaction = commentRepository.beginTransaction();
         try {
@@ -414,7 +475,7 @@ public class CommentMgmtService {
             commentRepository.update(commentId, comment, Comment.COMMENT_CONTENT, "commentDeleted", "commentNotifyEmail");
             final String articleId = comment.optString(Comment.COMMENT_ON_ID);
             final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
-            setArticleCommentCount(articleId, (int) comments.stream().filter(item -> !item.optBoolean("commentDeleted")).count());
+            setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
             final JSONObject mail = optionRepository.get(Option.ID_C_MAIL_USER_CONTEXT);
             if (mail != null) {
                 mail.put(Option.OPTION_VALUE, CommentThreads.removeMailBindings(mail.optString(Option.OPTION_VALUE), java.util.Set.of(commentId)));
@@ -439,8 +500,7 @@ public class CommentMgmtService {
                     .map(item -> item.getString("commentThreadId")).findFirst().orElse(commentId);
             final java.util.Set<String> removed = CommentThreads.descendants(comments, articleId, rootId);
             for (final String id : removed) commentRepository.remove(id);
-            setArticleCommentCount(articleId, (int) comments.stream().filter(item -> !removed.contains(item.optString(Keys.OBJECT_ID))
-                    && !item.optBoolean("commentDeleted")).count());
+            setArticleCommentCount(articleId, countApprovedComments(comments, removed));
             final JSONObject mail = optionRepository.get(Option.ID_C_MAIL_USER_CONTEXT);
             if (mail != null) {
                 mail.put(Option.OPTION_VALUE, CommentThreads.removeMailBindings(mail.optString(Option.OPTION_VALUE), removed));
@@ -468,9 +528,90 @@ public class CommentMgmtService {
         }
     }
 
+    private static int countApprovedComments(final java.util.List<JSONObject> comments, final java.util.Set<String> excludedIds) {
+        return (int) comments.stream().filter(item -> !excludedIds.contains(item.optString(Keys.OBJECT_ID))
+                && !item.optBoolean("commentDeleted")
+                && item.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) == Comment.COMMENT_STATUS_C_APPROVED).count();
+    }
+
+    public int resolveInitialStatus(final JSONObject preference, final boolean adminLoggedIn,
+            final String userId, final String content) throws RepositoryException {
+        if (adminLoggedIn) {
+            return Comment.COMMENT_STATUS_C_APPROVED;
+        }
+        final String mode = preference == null ? "off"
+                : preference.optString(Option.ID_C_COMMENT_MODERATION_MODE, "off").trim().toLowerCase(java.util.Locale.ROOT);
+        if ("all".equals(mode)) {
+            return Comment.COMMENT_STATUS_C_PENDING;
+        }
+        if ("smart".equals(mode)) {
+            if (countExternalLinks(content) >= 2) {
+                return Comment.COMMENT_STATUS_C_PENDING;
+            }
+            if (userId == null || userId.isBlank()) {
+                return Comment.COMMENT_STATUS_C_PENDING;
+            }
+            return commentRepository != null && commentRepository.hasApprovedCommentByUser(userId)
+                    ? Comment.COMMENT_STATUS_C_APPROVED
+                    : Comment.COMMENT_STATUS_C_PENDING;
+        }
+        return Comment.COMMENT_STATUS_C_APPROVED;
+    }
+
+    public static int countExternalLinks(final String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        final java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?i)https?://").matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    public synchronized JSONObject moderateComment(final String commentId, final int targetStatus) throws ServiceException {
+        if (targetStatus != Comment.COMMENT_STATUS_C_APPROVED && targetStatus != Comment.COMMENT_STATUS_C_REJECTED) {
+            throw new ServiceException("不支持的审核状态。");
+        }
+        final Transaction transaction = commentRepository.beginTransaction();
+        try {
+            final JSONObject comment = commentRepository.get(commentId);
+            if (comment == null || comment.optBoolean("commentDeleted")) {
+                throw new ServiceException("评论不存在或已删除。");
+            }
+            final int previousStatus = comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
+            comment.put(Comment.COMMENT_STATUS, targetStatus);
+            commentRepository.update(commentId, comment, Comment.COMMENT_STATUS);
+            final String articleId = comment.optString(Comment.COMMENT_ON_ID);
+            if (!articleId.isBlank()) {
+                final java.util.List<JSONObject> comments = commentRepository.getComments(articleId, 1, Integer.MAX_VALUE);
+                setArticleCommentCount(articleId, countApprovedComments(comments, java.util.Set.of()));
+            }
+            transaction.commit();
+            return new JSONObject()
+                    .put("previousStatus", previousStatus)
+                    .put("status", targetStatus)
+                    .put("comment", comment);
+        } catch (final ServiceException se) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw se;
+        } catch (final Exception e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw new ServiceException(e);
+        }
+    }
+
     private void setArticleCommentCount(final String articleId, final int cnt)
             throws JSONException, RepositoryException {
         final JSONObject article = articleRepository.get(articleId);
+        if (article == null) {
+            return;
+        }
         final JSONObject newArticle = new JSONObject(article, JSONObject.getNames(article));
         newArticle.put(Article.ARTICLE_COMMENT_COUNT, cnt);
         articleRepository.update(articleId, newArticle, Article.ARTICLE_COMMENT_COUNT);

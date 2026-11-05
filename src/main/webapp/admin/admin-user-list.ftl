@@ -18,6 +18,21 @@
 
 -->
 <div>
+    <div class="console-table-toolbar">
+        <div class="console-table-toolbar__group">
+            <label for="userRoleFilter">角色筛选</label>
+            <select id="userRoleFilter" onchange="admin.userList.getList(1)">
+                <option value="all">全部角色</option>
+                <option value="visitorRole">注册读者 (访客)</option>
+                <option value="defaultRole">协作者</option>
+                <option value="adminRole">管理员</option>
+            </select>
+        </div>
+        <div class="console-table-toolbar__group console-table-toolbar__group--grow">
+            <input id="userKeywordFilter" type="search" placeholder="搜索昵称或邮箱..." aria-label="搜索昵称或邮箱" onkeydown="if(event.key==='Enter'){event.preventDefault();admin.userList.getList(1)}"/>
+            <button type="button" onclick="admin.userList.getList(1)">筛选</button>
+        </div>
+    </div>
     <div id="userTable"></div>
     <div id="userPagination" class="fn__margin12 fn__right"></div>
 </div>
@@ -32,7 +47,7 @@
     <label for="userB3KeyUpdate">${passwordLabel}</label>
     <input id="userB3KeyUpdate" type="password" autocomplete="new-password" placeholder="${password1Label}"/>
 
-        <div class="console-form-actions"><button onclick="admin.userList.update();" class="fn__right">${updateLabel}</button></div>
+    <div class="console-form-actions"><button type="button" onclick="admin.userList.update();">${updateLabel}</button></div>
     <div class="fn__clear"></div>
 </div>
 ${plugins}

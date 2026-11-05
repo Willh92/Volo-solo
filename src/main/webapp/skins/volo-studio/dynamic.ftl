@@ -26,7 +26,7 @@
 <main id="pjax" class="wrapper">
   <section class="article__item">
     <h1 class="article__title">${dynamicLabel}</h1>
-    <#if interactive == "on" && recentComments?has_content>
+    <#if interactive == "true" && recentComments?has_content>
       <ul class="studio-dynamic-list"><#list recentComments as comment>
         <li><header><strong>${comment.commentName?html}</strong><time datetime="${comment.commentDate2?string('yyyy-MM-dd')} ${comment.commentDate2?string('HH:mm')}">${comment.commentDate2?string('yyyy-MM-dd HH:mm')}</time><a href="${servePath}${comment.commentSharpURL?html}">查看评论 →</a></header><div class="vditor-reset">${comment.commentContent}</div></li>
       </#list></ul>

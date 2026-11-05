@@ -157,7 +157,7 @@ public class IndexProcessor {
     @RequestProcessing(value = "/start", method = HttpMethod.GET)
     public void showStart(final RequestContext context) {
         context.setHeader("Cache-Control", "no-store");
-        if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
+        if (initService.isInited() && Solos.isAdminOrAuthorLoggedIn(context)) {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
 
             return;
@@ -212,7 +212,7 @@ public class IndexProcessor {
     @Deprecated
     public void showRoot(final RequestContext context) {
         context.setHeader("Cache-Control", "no-store");
-        if (initService.isInited() && null != Solos.getCurrentUser(context.getRequest(), context.getResponse())) {
+        if (initService.isInited() && Solos.isAdminOrAuthorLoggedIn(context)) {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.panel() + "#main");
         } else {
             context.sendRedirect(Latkes.getServePath() + AdminPaths.login());

@@ -86,6 +86,9 @@ public class CronMgmtService {
     @Inject
     private FollowService followService;
 
+    @Inject
+    private LocalRollingBackupService localRollingBackupService;
+
     /**
      * Start all cron tasks.
      */
@@ -101,6 +104,17 @@ public class CronMgmtService {
                 try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay, 1000 * 60 * 10, TimeUnit.MILLISECONDS);
+        delay += 2000;
+
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
+            try {
+                articleMgmtService.publishDueScheduledArticles();
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Executes scheduled article publish cron failed", e);
+            } finally {
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+            }
+        }, delay, 1000 * 60, TimeUnit.MILLISECONDS);
         delay += 2000;
 
         SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
@@ -151,6 +165,18 @@ public class CronMgmtService {
                 try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
             }
         }, delay + 1000 * 60 * 10, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> {
+            try {
+                if (null != localRollingBackupService) {
+                    localRollingBackupService.runScheduledBackupIfEnabled();
+                }
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Executes local rolling backup cron failed", e);
+            } finally {
+                try { org.b3log.latke.repository.jdbc.JdbcRepository.dispose(); } finally { Stopwatchs.release(); }
+            }
+        }, delay + 1000 * 60 * 15, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }
 
     /**

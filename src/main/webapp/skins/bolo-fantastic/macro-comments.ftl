@@ -20,7 +20,7 @@
 <#macro comments commentList article count>
     <#if article.commentable || 0 != commentList?size>
         <div class="halo-comment">
-            <#if article.commentable>
+            <#if true>
                 <style type="text/css">
                     .halo-comment {
                         position: relative;
@@ -566,7 +566,7 @@
                     }
                 </style>
                 <div id="halo-comment" class="halo-comment">
-                    <section role="form" class="comment-editor">
+                    <#if article.commentable><section role="form" class="comment-editor">
                         <div class="inner">
                             <div class="commentator">
                                 <img src="${staticServePath}/images/volo-mark.svg" alt=""
@@ -576,7 +576,7 @@
                                 <div class="author-info">
                                     <input autocomplete="off" type="text" tabindex="1" required="required" aria-required="true"
                                            id="boloUser" placeholder="你的昵称">
-                                    <input autocomplete="off" type="text" tabindex="2" required="required" aria-required="true"
+                                    <input autocomplete="off" type="text" tabindex="2"
                                            id="boloSite" placeholder="你的个人主页URL（选填）">
                                 </div>
                                 <div class="comment-textarea">
@@ -585,7 +585,7 @@
                                 </div>
                             </form>
                         </div>
-                    </section>
+                    </section></#if>
                     <script type="text/javascript" src="${staticServePath}/js/bolo/sweetalert.min.js"></script>
                     <ol class="comment-nodes" id="comments">
                         <#list commentList as comment>

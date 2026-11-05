@@ -65,6 +65,18 @@ public class ArticleRepository extends AbstractRepository {
 
     @Override
     public String add(final JSONObject article) throws RepositoryException {
+        if (!article.has(Article.ARTICLE_SCHEDULE_TIME)) {
+            article.put(Article.ARTICLE_SCHEDULE_TIME, 0L);
+        }
+        if (!article.has(Article.ARTICLE_AUDIO_URL)) {
+            article.put(Article.ARTICLE_AUDIO_URL, "");
+        }
+        if (!article.has(Article.ARTICLE_AUDIO_DURATION)) {
+            article.put(Article.ARTICLE_AUDIO_DURATION, 0);
+        }
+        if (!article.has(Article.ARTICLE_AUDIO_SIZE)) {
+            article.put(Article.ARTICLE_AUDIO_SIZE, 0L);
+        }
         final String id = super.add(article);
         article.put(Keys.OBJECT_ID, id);
         if (null != articleCache) {

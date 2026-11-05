@@ -54,6 +54,6 @@ public class CommentFilterTest {
     }
 
     private static JSONObject rules(final String deny, final String allow) {
-        return new JSONObject().put(Option.ID_C_COMMENT_FILTER_BUILTIN, "off").put(Option.ID_C_SPAM, deny).put(Option.ID_C_COMMENT_FILTER_ALLOW, allow);
+        return new JSONObject().put(Option.ID_C_COMMENT_FILTER_BUILTIN, "false").put(Option.ID_C_SPAM, deny).put(Option.ID_C_COMMENT_FILTER_ALLOW, allow);
     }
 }

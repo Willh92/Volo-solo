@@ -206,8 +206,8 @@ public class UserMgmtService {
             oldUser.put(User.USER_ROLE, userRole);
 
             final String userURL = requestJSONObject.optString(User.USER_URL).trim();
-            if (!userURL.isEmpty() && !org.b3log.solo.util.OutboundUrls.isHttpOrHttps(userURL)) {
-                throw new ServiceException("用户主页地址必须以 http:// 或 https:// 开头。");
+            if (!org.b3log.solo.util.OutboundUrls.isOptionalSafeIconOrAvatar(userURL)) {
+                throw new ServiceException("用户主页地址仅支持站内路径或 http(s):// 地址。");
             }
             oldUser.put(User.USER_URL, userURL);
 
@@ -221,6 +221,10 @@ public class UserMgmtService {
                 final String userB3Key = requestJSONObject.optString(UserExt.USER_B3_KEY);
                 if (userB3Key != null && !userB3Key.isEmpty()) {
                     oldUser.put(UserExt.USER_B3_KEY, userB3Key);
+                }
+                final String passwordHash = requestJSONObject.optString(UserExt.USER_PASSWORD_HASH);
+                if (passwordHash != null && !passwordHash.isEmpty()) {
+                    oldUser.put(UserExt.USER_PASSWORD_HASH, passwordHash);
                 }
             }
 
@@ -365,6 +369,110 @@ public class UserMgmtService {
      * @param userId the given user id
      * @throws ServiceException service exception
      */
+    /**
+     * Registers a verified public reader account strictly isolated to {@link Role#VISITOR_ROLE}.
+     */
+    public synchronized JSONObject registerReader(final String rawUserName, final String normalizedEmail,
+                                                  final String rawPassword, final String rawUserUrl) throws ServiceException {
+        final Transaction transaction = userRepository.beginTransaction();
+        try {
+            final String userName = rawUserName == null ? "" : rawUserName.strip();
+            if (UserExt.invalidUserName(userName) || org.b3log.solo.processor.ReaderAuthProcessor.validateReaderName(userName) != null) {
+                throw new ServiceException("用户昵称格式不合法。");
+            }
+            if (userRepository.getByUserName(userName) != null) {
+                throw new ServiceException("该昵称已被占用，请更换其他昵称。");
+            }
+            if (userRepository.getByEmail(normalizedEmail) != null) {
+                throw new ServiceException("该邮箱已被注册，请直接登录。");
+            }
+            String userURL = rawUserUrl == null ? "" : rawUserUrl.strip();
+            if (!userURL.isEmpty() && !org.b3log.solo.util.OutboundUrls.isHttpOrHttps(userURL)) {
+                throw new ServiceException("个人主页地址必须以 http:// 或 https:// 开头。");
+            }
+            final JSONObject user = new JSONObject();
+            user.put(User.USER_NAME, userName);
+            user.put(User.USER_URL, userURL);
+            user.put(User.USER_ROLE, Role.VISITOR_ROLE);
+            user.put(UserExt.USER_AVATAR, "");
+            user.put(UserExt.USER_GITHUB_ID, "");
+            user.put(UserExt.USER_EMAIL, normalizedEmail);
+            user.put(UserExt.USER_EMAIL_VERIFIED, true);
+            user.put(UserExt.USER_PASSWORD_HASH, org.b3log.solo.util.PasswordHashes.hash(rawPassword));
+            user.put(UserExt.USER_B3_KEY, org.b3log.solo.util.PasswordHashes.randomSessionKey());
+            user.put(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID);
+            user.put(UserExt.USER_CREATED, System.currentTimeMillis());
+            final String id = userRepository.add(user);
+            user.put(Keys.OBJECT_ID, id);
+            transaction.commit();
+            return user;
+        } catch (final Exception e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            if (e instanceof ServiceException se) {
+                throw se;
+            }
+            LOGGER.log(Level.ERROR, "Registers reader failed", e);
+            throw new ServiceException("注册读者账号失败，请稍后重试。");
+        }
+    }
+
+    public void upgradePasswordHashQuietly(final String userId, final String rawPassword) {
+        if (StringUtils.isBlank(userId) || StringUtils.isEmpty(rawPassword)) {
+            return;
+        }
+        final Transaction transaction = userRepository.beginTransaction();
+        try {
+            final JSONObject user = userRepository.get(userId);
+            if (user != null) {
+                user.put(UserExt.USER_PASSWORD_HASH, org.b3log.solo.util.PasswordHashes.hash(rawPassword));
+                userRepository.update(userId, user, UserExt.USER_PASSWORD_HASH);
+            }
+            transaction.commit();
+        } catch (final Exception ignored) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+        }
+    }
+
+    /**
+     * Enables or disables a non-administrator user account and immediately revokes active cookies on disable.
+     */
+    public synchronized void setUserStatus(final String userId, final int status) throws ServiceException {
+        if (status != UserExt.USER_STATUS_C_VALID && status != UserExt.USER_STATUS_C_DISABLED) {
+            throw new ServiceException("用户状态参数不正确。");
+        }
+        final Transaction transaction = userRepository.beginTransaction();
+        try {
+            final JSONObject user = userRepository.get(userId);
+            if (user == null) {
+                throw new ServiceException("用户不存在。");
+            }
+            if (Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))) {
+                throw new ServiceException("不能禁用站点管理员账号。");
+            }
+            user.put(UserExt.USER_STATUS, status);
+            if (status == UserExt.USER_STATUS_C_DISABLED && Role.VISITOR_ROLE.equals(user.optString(User.USER_ROLE))) {
+                user.put(UserExt.USER_B3_KEY, org.b3log.solo.util.PasswordHashes.randomSessionKey());
+                userRepository.update(userId, user, UserExt.USER_STATUS, UserExt.USER_B3_KEY);
+            } else {
+                userRepository.update(userId, user, UserExt.USER_STATUS);
+            }
+            transaction.commit();
+        } catch (final Exception e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+            if (e instanceof ServiceException se) {
+                throw se;
+            }
+            LOGGER.log(Level.ERROR, "Updates user status failed", e);
+            throw new ServiceException("更新用户状态失败。");
+        }
+    }
+
     public void removeUser(final String userId) throws ServiceException {
         final Transaction transaction = userRepository.beginTransaction();
         try {

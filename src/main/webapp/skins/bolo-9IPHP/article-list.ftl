@@ -49,7 +49,7 @@
                     </time>
                 </span>
                 &nbsp; | &nbsp;
-                <#if interactive == "on">
+                <#if interactive == "true">
                 <span class="vditor-tooltipped vditor-tooltipped__n" aria-label="${commentCountLabel}">
                     <i class="icon-comments"></i>
                     <a href="${servePath}${article.articlePermalink}#comments">

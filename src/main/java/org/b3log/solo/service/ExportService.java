@@ -377,7 +377,7 @@ public class ExportService {
             final JSONObject gitHubUser) {
         try {
             String pat = preference.optString(Option.ID_C_GITHUB_PAT);
-            final JSONObject mds = exportHexoMDs();
+            final JSONObject mds = exportHexoMDs(true);
             JdbcRepository.dispose();
             final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
 
@@ -517,7 +517,7 @@ public class ExportService {
                 }
             }
 
-            final JSONObject mds = exportHexoMDs();
+            final JSONObject mds = exportHexoMDs(true);
             final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
 
             File localFile = null;
@@ -759,6 +759,10 @@ public class ExportService {
      *         </pre>
      */
     public JSONObject exportHexoMDs() {
+        return exportHexoMDs(false);
+    }
+
+    public JSONObject exportHexoMDs(final boolean stripLockedContent) {
         final JSONObject ret = new JSONObject();
         final List<JSONObject> posts = new ArrayList<>();
         ret.put("posts", (Object) posts);
@@ -787,7 +791,8 @@ public class ExportService {
             final JSONObject one = new JSONObject();
             one.put("front", new Yaml().dump(front));
             one.put("title", title);
-            one.put("content", article.optString(Article.ARTICLE_CONTENT));
+            final String rawContent = article.optString(Article.ARTICLE_CONTENT);
+            one.put("content", stripLockedContent ? HiddenContentService.stripForFeed(rawContent) : rawContent);
             one.put("created", article.optLong(Article.ARTICLE_CREATED));
 
             if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
@@ -832,9 +837,20 @@ public class ExportService {
         final JSONArray options = new JSONArray();
         for (int i = 0; i < rawOptions.length(); i++) {
             final JSONObject option = rawOptions.optJSONObject(i);
-            if (option != null && !TotpService.isProtectedOptionId(option.optString(Keys.OBJECT_ID))) {
-                options.put(option);
+            if (option == null) {
+                continue;
             }
+            final String optId = option.optString(Keys.OBJECT_ID);
+            if (TotpService.isProtectedOptionId(optId) || ShareTokenService.OPTION_ID_SECRET.equals(optId)) {
+                continue;
+            }
+            if (Option.ID_C_VOLO_WEBHOOKS.equals(optId)) {
+                final JSONObject masked = new JSONObject(option.toString());
+                masked.put(Option.OPTION_VALUE, WebhookNotifyService.maskJsonArrayString(option.optString(Option.OPTION_VALUE)));
+                options.put(masked);
+                continue;
+            }
+            options.put(option);
         }
         ret.put(Option.OPTIONS, options);
 

@@ -79,7 +79,7 @@
                     </div>
                     <p id="totpHint" class="auth-totp-hint">请打开身份验证器应用输入当前 6 位 2FA 动态口令；不便使用验证器时也可输入一次性应急恢复码。</p>
                     <label id="totpRememberRow" class="auth-totp-remember" hidden>
-                        <input id="rememberDevice" name="rememberDevice" type="checkbox" value="on" autocomplete="off" disabled/>
+                        <input id="rememberDevice" name="rememberDevice" type="checkbox" value="true" autocomplete="off" disabled/>
                         <span id="totpRememberLabel">在此浏览器免 2FA 二次验证</span>
                     </label>
                 </div>

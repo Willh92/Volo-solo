@@ -54,7 +54,7 @@
                 data-url="${servePath}${article.articlePermalink}"
                 data-avatar="${article.authorThumbnailURL}"></a>
             </div>
-            <#if interactive == "on">
+            <#if interactive == "true">
             <div class="comment__container">
               <@article_comments commentList=articleComments article=article></@article_comments>
             </div>
