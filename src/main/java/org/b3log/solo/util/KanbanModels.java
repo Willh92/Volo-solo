@@ -203,8 +203,8 @@ public final class KanbanModels {
         for (int i = 0; i < variantsJson.length(); i++) {
             final Object variant = variantsJson.get(i);
             final JSONArray arr = variant instanceof JSONArray ja
-                    ? deepCloneArray(ja)
-                    : new JSONArray().put(deepCloneValue(variant));
+                    ? ja
+                    : new JSONArray().put(variant);
             normalizedVariants.add(arr);
         }
 
@@ -224,11 +224,11 @@ public final class KanbanModels {
     private JSONObject materializeModel(final String name,
                                         final CachedModelDescriptor descriptor,
                                         final boolean skipStatIfValidated) throws IOException {
-        final JSONObject copy = deepCloneObject(descriptor.baseModel);
+        final JSONObject copy = Solos.clone(descriptor.baseModel);
         if (descriptor.textureVariants != null) {
             final int idx = ThreadLocalRandom.current().nextInt(descriptor.textureVariants.size());
             ensureVariantValidated(descriptor, idx, skipStatIfValidated);
-            copy.put("textures", deepCloneArray(descriptor.textureVariants.get(idx)));
+            copy.put("textures", Solos.cloneArray(descriptor.textureVariants.get(idx)));
         }
         copy.put("name", name);
         return copy;
@@ -312,32 +312,6 @@ public final class KanbanModels {
             }
         }
         return true;
-    }
-
-    private static JSONObject deepCloneObject(final JSONObject source) {
-        final JSONObject copy = new JSONObject();
-        for (final String key : source.keySet()) {
-            copy.put(key, deepCloneValue(source.get(key)));
-        }
-        return copy;
-    }
-
-    private static JSONArray deepCloneArray(final JSONArray source) {
-        final JSONArray copy = new JSONArray();
-        for (int i = 0; i < source.length(); i++) {
-            copy.put(deepCloneValue(source.get(i)));
-        }
-        return copy;
-    }
-
-    private static Object deepCloneValue(final Object value) {
-        if (value instanceof JSONObject obj) {
-            return deepCloneObject(obj);
-        }
-        if (value instanceof JSONArray arr) {
-            return deepCloneArray(arr);
-        }
-        return value;
     }
 
     private static boolean isDefaultWebResources(final WebResources candidate) {

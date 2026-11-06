@@ -44,7 +44,8 @@ public final class DatabaseIndexMigration {
             new IndexSpec("article", "st_view_upd", "articleStatus", "articleViewCount", "articleUpdated"),
             new IndexSpec("article", "st_cmt_upd", "articleStatus", "articleCommentCount", "articleUpdated"),
             new IndexSpec("article", "st_rand", "articleStatus", "articleRandomDouble"),
-            new IndexSpec("article", "auth_st_upd", "articleAuthorId", "articleStatus", "articleUpdated"),
+            new IndexSpec("article", "auth_st_top_upd", "articleAuthorId", "articleStatus", "articlePutTop", "articleUpdated"),
+            new IndexSpec("article", "auth_st_top_crt", "articleAuthorId", "articleStatus", "articlePutTop", "articleCreated"),
             new IndexSpec("article", "st_sched", "articleStatus", "articleScheduleTime"),
             // comment
             new IndexSpec("comment", "on_st_id", "commentOnId", "commentStatus", "oId"),
@@ -86,7 +87,7 @@ public final class DatabaseIndexMigration {
      */
     public static void ensureCoreIndexes() throws Exception {
         final String prefix = Latkes.getLocalProperty("jdbc.tablePrefix");
-        final String p = (prefix == null || prefix.isBlank()) ? "" : prefix + "_";
+        final String p = (prefix == null || prefix.isBlank()) ? "" : prefix.trim() + "_";
         try (Connection connection = Connections.getConnection()) {
             ensureCoreIndexes(connection, p);
             if (!connection.getAutoCommit()) {

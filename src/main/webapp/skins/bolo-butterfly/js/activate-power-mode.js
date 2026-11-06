@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 !function (t, e) {
-    "object" == typeof exports && "object" == typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define([], e) : "object" == typeof exports ? exports.POWERMODE = e() : t.POWERMODE = t.POWERMODE || e()
+    "object" == typeof exports && "object" == typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define([], e) : "object" == typeof exports ? exports.POWERMODE = e() : (t.POWERMODE = t.POWERMODE || e(), "function" == typeof t.POWERMODE._mount && t.POWERMODE._mount())
 }(this, (function () {
     return function (t) {
         var e = {};
@@ -35,19 +35,42 @@
             n = document.createElement("canvas");
             n.id = "bolo-power-mode-canvas";
             n.style.cssText = "position:fixed;top:0;left:0;pointer-events:none;z-index:999999;will-change:transform";
-            if (document.body) document.body.appendChild(n);
-            else document.addEventListener("DOMContentLoaded", function () { document.body && !n.isConnected && document.body.appendChild(n) }, {once: !0});
         }
         function syncSize() {
             n.width = window.innerWidth;
             n.height = window.innerHeight;
         }
-        syncSize();
-        if (!window._boloPowerModeResizeBound) {
-            window._boloPowerModeResizeBound = !0;
-            window.addEventListener("resize", syncSize, {passive: !0});
+        var r = n.getContext("2d"), i = [], d = !1, joltTimer = 0, leaveRegistered = !1;
+        function cleanupPowerMode() {
+            leaveRegistered = !1;
+            clearTimeout(joltTimer);
+            joltTimer = 0;
+            i.length = 0;
+            d = !1;
+            if (r) r.clearRect(0, 0, n.width, n.height);
+            if (window._boloPowerModeResizeBound) {
+                window._boloPowerModeResizeBound = !1;
+                window.removeEventListener("resize", syncSize);
+            }
+            if (n.parentNode) n.parentNode.removeChild(n);
         }
-        var r = n.getContext("2d"), i = [], d = !1, joltTimer = 0;
+        function mountPowerMode() {
+            if (document.body) {
+                if (!n.isConnected) document.body.appendChild(n);
+            } else {
+                document.addEventListener("DOMContentLoaded", function () { document.body && !n.isConnected && document.body.appendChild(n) }, {once: !0});
+            }
+            syncSize();
+            if (!window._boloPowerModeResizeBound) {
+                window._boloPowerModeResizeBound = !0;
+                window.addEventListener("resize", syncSize, {passive: !0});
+            }
+            if (!leaveRegistered && window.BoloNavigation && typeof window.BoloNavigation.onLeave === "function") {
+                leaveRegistered = !0;
+                window.BoloNavigation.onLeave(cleanupPowerMode);
+            }
+        }
+        mountPowerMode();
         var reducedMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
         function l(t, e) {
@@ -127,7 +150,7 @@
             i.length > 0 ? requestAnimationFrame(f) : (d = !1, r.clearRect(0, 0, n.width, n.height))
         }
 
-        p.shake = !0, p.colorful = !1, t.exports = p
+        p.shake = !0, p.colorful = !1, p._mount = mountPowerMode, p.destroy = cleanupPowerMode, t.exports = p
     }, function (t, e) {
         !function () {
             var e = ["direction", "boxSizing", "width", "height", "overflowX", "overflowY", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderStyle", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize", "fontSizeAdjust", "lineHeight", "fontFamily", "textAlign", "textTransform", "textIndent", "textDecoration", "letterSpacing", "wordSpacing", "tabSize", "MozTabSize"],

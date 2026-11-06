@@ -24,6 +24,7 @@ import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.ArchiveDate;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONObject;
 
 import java.util.List;
@@ -62,6 +63,32 @@ public class ArchiveDateRepository extends AbstractRepository {
         super(ArchiveDate.ARCHIVE_DATE.toLowerCase());
     }
 
+    private static JSONObject normalizeArchiveRow(final JSONObject row) {
+        if (null == row) {
+            return null;
+        }
+        final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+        final long archiveTime = QueryResults.optLongIgnoreCase(row, ArchiveDate.ARCHIVE_TIME);
+        QueryResults.removeIgnoreCase(row, Keys.OBJECT_ID);
+        QueryResults.removeIgnoreCase(row, ArchiveDate.ARCHIVE_TIME);
+        row.put(Keys.OBJECT_ID, id);
+        row.put(ArchiveDate.ARCHIVE_TIME, archiveTime);
+        return row;
+    }
+
+    private static List<JSONObject> normalizeArchiveRows(final List<JSONObject> rows) {
+        if (null == rows || rows.isEmpty()) {
+            return new ArrayList<>();
+        }
+        final List<JSONObject> normalized = new ArrayList<>(rows.size());
+        for (final JSONObject row : rows) {
+            if (null != row) {
+                normalized.add(normalizeArchiveRow(row));
+            }
+        }
+        return normalized;
+    }
+
     /**
      * Gets an archive date by the specified archive date string.
      *
@@ -84,25 +111,37 @@ public class ArchiveDateRepository extends AbstractRepository {
         final ZoneId zone = ZoneId.systemDefault();
         final long start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
         final long end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
-        return select("SELECT * FROM " + getName() + " WHERE archiveTime >= ? AND archiveTime < ? ORDER BY archiveTime, oId", start, end);
+        return normalizeArchiveRows(select("SELECT * FROM " + getName()
+                + " WHERE archiveTime >= ? AND archiveTime < ? ORDER BY archiveTime, oId", start, end));
     }
 
     /** Resolves all records represented by the same public yyyy/MM link. */
     public List<String> getMonthArchiveIds(final String archiveDateId) throws RepositoryException {
-        final List<JSONObject> rows = select("SELECT * FROM " + getName() + " WHERE oId = ?", archiveDateId);
         final List<String> ids = new ArrayList<>();
+        if (null == archiveDateId || archiveDateId.isBlank()) {
+            return ids;
+        }
+        final List<JSONObject> rows = normalizeArchiveRows(
+                select("SELECT * FROM " + getName() + " WHERE oId = ?", archiveDateId));
         if (rows.isEmpty()) return ids;
-        for (final JSONObject row : datesInMonth(monthOf(rows.get(0)))) ids.add(row.getString(Keys.OBJECT_ID));
+        for (final JSONObject row : datesInMonth(monthOf(rows.get(0)))) {
+            final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+            if (!id.isEmpty()) {
+                ids.add(id);
+            }
+        }
         return ids;
     }
 
     private static YearMonth monthOf(final JSONObject row) {
-        return YearMonth.from(Instant.ofEpochMilli(row.getLong(ArchiveDate.ARCHIVE_TIME)).atZone(ZoneId.systemDefault()));
+        return YearMonth.from(Instant.ofEpochMilli(
+                QueryResults.optLongIgnoreCase(row, ArchiveDate.ARCHIVE_TIME)).atZone(ZoneId.systemDefault()));
     }
 
     /** Public month counts and detail queries use the same union of published articles. */
     public List<JSONObject> getPublishedArchiveDates() throws RepositoryException {
-        final List<JSONObject> dates = select("SELECT * FROM " + getName() + " ORDER BY archiveTime DESC, oId");
+        final List<JSONObject> dates = normalizeArchiveRows(
+                select("SELECT * FROM " + getName() + " ORDER BY archiveTime DESC, oId"));
         if (dates.isEmpty()) return new ArrayList<>();
         final java.util.Map<String, Integer> countsById = archiveDateArticleRepository.getPublishedArticleCountsByArchiveDate();
         final LinkedHashMap<YearMonth, List<JSONObject>> months = new LinkedHashMap<>();
@@ -111,13 +150,13 @@ public class ArchiveDateRepository extends AbstractRepository {
         for (final List<JSONObject> month : months.values()) {
             final int count;
             if (month.size() == 1) {
-                count = countsById.getOrDefault(month.get(0).getString(Keys.OBJECT_ID), 0);
+                count = countsById.getOrDefault(QueryResults.optStringIgnoreCase(month.get(0), Keys.OBJECT_ID), 0);
             } else {
                 int nonZeroRecords = 0;
                 int singleCount = 0;
                 final List<String> ids = new ArrayList<>(month.size());
                 for (final JSONObject date : month) {
-                    final String id = date.getString(Keys.OBJECT_ID);
+                    final String id = QueryResults.optStringIgnoreCase(date, Keys.OBJECT_ID);
                     ids.add(id);
                     final int c = countsById.getOrDefault(id, 0);
                     if (c > 0) {
@@ -150,7 +189,8 @@ public class ArchiveDateRepository extends AbstractRepository {
         }
         final java.util.Map<String, Integer> countsById = archiveDateArticleRepository.getPublishedArticleCountsByArchiveDate();
         for (final JSONObject archiveDate : ret) {
-            final String archiveDateId = archiveDate.optString(Keys.OBJECT_ID);
+            normalizeArchiveRow(archiveDate);
+            final String archiveDateId = QueryResults.optStringIgnoreCase(archiveDate, Keys.OBJECT_ID);
             archiveDate.put(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT, countsById.getOrDefault(archiveDateId, 0));
         }
 

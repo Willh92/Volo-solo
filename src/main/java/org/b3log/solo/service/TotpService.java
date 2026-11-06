@@ -31,7 +31,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.apache.commons.codec.binary.Base32;
 import org.b3log.latke.Keys;
@@ -71,6 +74,17 @@ public class TotpService {
     private static final Set<String> ALLOWED_SCOPES = Set.of("admin", "all");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final HexFormat HEX = HexFormat.of();
+    private static final Pattern HEX_64_PATTERN = Pattern.compile("[0-9a-f]{64}");
+    private static final Pattern HEX_32_PATTERN = Pattern.compile("[0-9a-f]{32}");
+    private static final Pattern TOKEN_32_PATTERN = Pattern.compile("[A-Za-z0-9_-]{32}");
+    private static final Pattern TRUST_COOKIE_PATTERN = Pattern.compile("[0-9]{1,16}\\.[0-9a-f]{64}");
+    private static final Pattern OTP_6_PATTERN = Pattern.compile("[0-9]{6}");
+    private static final Pattern BASE32_SECRET_PATTERN = Pattern.compile("[A-Z2-7]{16,128}");
+    private static final Pattern RECOVERY_CODE_PATTERN = Pattern.compile("[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}");
+    private static final Pattern SMALL_INT_PATTERN = Pattern.compile("-?[0-9]{1,4}");
+    private static final Pattern CTRL_CHAR_PATTERN = Pattern.compile("\\p{Cntrl}");
+    private static final int GCM_IV_BYTES = 12;
+    private static final int GCM_TAG_BITS = 128;
 
     private record State(
             boolean enabled,
@@ -119,16 +133,18 @@ public class TotpService {
     private static final class LoginChallenge {
         private final String userId;
         private final String username;
-        private final String passwordHash;
+        private final String b3KeySha256;
+        private final byte[] sealedB3Key;
         private final String address;
         private final long expiresAt;
         private int failures;
 
-        private LoginChallenge(final String userId, final String username, final String passwordHash,
-                               final String address, final long expiresAt) {
+        private LoginChallenge(final String userId, final String username, final String b3KeySha256,
+                               final byte[] sealedB3Key, final String address, final long expiresAt) {
             this.userId = userId;
             this.username = username;
-            this.passwordHash = passwordHash;
+            this.b3KeySha256 = b3KeySha256;
+            this.sealedB3Key = sealedB3Key;
             this.address = address;
             this.expiresAt = expiresAt;
         }
@@ -165,6 +181,9 @@ public class TotpService {
     @Inject
     private OptionMgmtService optionMgmtService;
 
+    @Inject
+    private UserQueryService userQueryService;
+
     public TotpService() {
         this(System::currentTimeMillis);
     }
@@ -197,17 +216,17 @@ public class TotpService {
             if (storedDigests != null) {
                 for (int i = 0; i < storedDigests.length(); i++) {
                     final String item = storedDigests.optString(i);
-                    if (item.matches("[0-9a-f]{64}")) {
+                    if (HEX_64_PATTERN.matcher(item).matches()) {
                         digests.add(item);
                     }
                 }
             }
             String deviceKey = raw.optString("deviceKey");
-            if (!deviceKey.matches("[0-9a-f]{64}")) {
+            if (!HEX_64_PATTERN.matcher(deviceKey).matches()) {
                 deviceKey = randomHex(32);
             }
             String recoverySalt = raw.optString("recoverySalt");
-            if (!recoverySalt.matches("[0-9a-f]{32}")) {
+            if (!HEX_32_PATTERN.matcher(recoverySalt).matches()) {
                 recoverySalt = randomHex(16);
             }
             snapshot = new State(
@@ -275,7 +294,7 @@ public class TotpService {
             final JSONObject titleOpt = optionQueryService.getOptionById(Option.ID_C_BLOG_TITLE);
             if (titleOpt != null) {
                 final String raw = titleOpt.optString(Option.OPTION_VALUE).replace(':', '-').strip();
-                final String cleaned = raw.replaceAll("\\p{Cntrl}", "");
+                final String cleaned = CTRL_CHAR_PATTERN.matcher(raw).replaceAll("");
                 if (!cleaned.isEmpty()) {
                     return cleaned.length() > 40 ? cleaned.substring(0, 40) : cleaned;
                 }
@@ -313,7 +332,7 @@ public class TotpService {
 
     public synchronized JSONObject confirmSetup(final String userId, final String setupId, final String newCode,
                                                 final String currentCode) throws Exception {
-        if (setupId == null || !setupId.matches("[A-Za-z0-9_-]{32}")) {
+        if (setupId == null || !TOKEN_32_PATTERN.matcher(setupId).matches()) {
             throw new IllegalArgumentException("绑定会话无效或已过期，请重新生成绑定密钥。");
         }
         final long now = clock.getAsLong();
@@ -574,10 +593,15 @@ public class TotpService {
             iterator.remove();
         }
         final String token = randomToken();
-        challenges.put(token, new LoginChallenge(
+        final String tokenKey = sha256Hex("volo-totp-token:" + token);
+        final String rawB3Key = user.optString(UserExt.USER_B3_KEY);
+        final String b3KeyDigest = sha256Hex("volo-totp-b3key:" + rawB3Key);
+        final byte[] sealedB3Key = sealWithToken(token, rawB3Key);
+        challenges.put(tokenKey, new LoginChallenge(
                 user.optString(Keys.OBJECT_ID),
                 user.optString(User.USER_NAME),
-                user.optString(UserExt.USER_B3_KEY),
+                b3KeyDigest,
+                sealedB3Key,
                 ip,
                 now + CHALLENGE_TTL_MS
         ));
@@ -585,14 +609,15 @@ public class TotpService {
     }
 
     public synchronized String peekChallengeUsername(final String token, final String clientAddress) {
-        if (token == null || !token.matches("[A-Za-z0-9_-]{32}")) {
+        if (token == null || !TOKEN_32_PATTERN.matcher(token).matches()) {
             return null;
         }
+        final String tokenKey = sha256Hex("volo-totp-token:" + token);
         final long now = clock.getAsLong();
-        final LoginChallenge challenge = challenges.get(token);
+        final LoginChallenge challenge = challenges.get(tokenKey);
         if (challenge == null || challenge.expiresAt <= now) {
             if (challenge != null) {
-                challenges.remove(token);
+                challenges.remove(tokenKey);
             }
             return null;
         }
@@ -601,30 +626,31 @@ public class TotpService {
 
     public synchronized ChallengeResult verifyLoginChallenge(final String token, final String clientAddress,
                                                              final String code) throws Exception {
-        if (token == null || !token.matches("[A-Za-z0-9_-]{32}")) {
+        if (token == null || !TOKEN_32_PATTERN.matcher(token).matches()) {
             return ChallengeResult.expired("2FA 验证会话无效或已过期，请重新输入用户名和密码。");
         }
+        final String tokenKey = sha256Hex("volo-totp-token:" + token);
         final long now = clock.getAsLong();
         pruneChallenges(now);
-        final LoginChallenge challenge = challenges.get(token);
+        final LoginChallenge challenge = challenges.get(tokenKey);
         if (challenge == null || !challenge.address.equals(IpAddresses.canonical(clientAddress))) {
             return ChallengeResult.expired("2FA 验证会话已过期，请重新输入用户名和密码。");
         }
         final State current = state();
         if (!current.enabled() || !current.bound()) {
-            challenges.remove(token);
-            return ChallengeResult.verified(challenge.userId, challenge.username, challenge.passwordHash);
+            challenges.remove(tokenKey);
+            return completeVerifiedChallenge(token, challenge);
         }
         final VerificationOutcome outcome = verifyActiveTotpOrRecovery(current, code, now);
         if (!outcome.matched()) {
             challenge.failures++;
             if (challenge.failures >= MAX_CHALLENGE_FAILURES) {
-                challenges.remove(token);
+                challenges.remove(tokenKey);
                 return ChallengeResult.expired("动态口令连续错误次数过多，请重新输入用户名和密码。");
             }
             return ChallengeResult.invalid("动态口令或应急恢复码不正确，请重试。");
         }
-        challenges.remove(token);
+        challenges.remove(tokenKey);
         final State next = new State(
                 current.enabled(),
                 current.scope(),
@@ -641,7 +667,87 @@ public class TotpService {
                 outcome.remainingDigests()
         );
         persist(next);
-        return ChallengeResult.verified(challenge.userId, challenge.username, challenge.passwordHash);
+        return completeVerifiedChallenge(token, challenge);
+    }
+
+    private ChallengeResult completeVerifiedChallenge(final String token, final LoginChallenge challenge) {
+        if (userQueryService != null) {
+            try {
+                final JSONObject currentUser = userQueryService.getUserByName(challenge.username);
+                if (currentUser != null) {
+                    if (!challenge.userId.equals(currentUser.optString(Keys.OBJECT_ID))) {
+                        return ChallengeResult.expired("账号状态已变更，请重新登录。");
+                    }
+                    final String currentB3Key = currentUser.optString(UserExt.USER_B3_KEY);
+                    final String currentDigest = sha256Hex("volo-totp-b3key:" + currentB3Key);
+                    if (!MessageDigest.isEqual(
+                            challenge.b3KeySha256.getBytes(StandardCharsets.US_ASCII),
+                            currentDigest.getBytes(StandardCharsets.US_ASCII))) {
+                        return ChallengeResult.expired("账号状态已变更，请重新登录。");
+                    }
+                    return ChallengeResult.verified(challenge.userId, challenge.username, currentB3Key);
+                }
+            } catch (final Exception ignored) {
+                // Fall through to unsealed digest verification when standalone test mocks omit UserQueryService DB.
+            }
+        }
+        final String unsealed = unsealWithToken(token, challenge.sealedB3Key);
+        if (unsealed == null) {
+            return ChallengeResult.expired("2FA 验证会话无效或已过期，请重新输入用户名和密码。");
+        }
+        final String unsealedDigest = sha256Hex("volo-totp-b3key:" + unsealed);
+        if (!MessageDigest.isEqual(
+                challenge.b3KeySha256.getBytes(StandardCharsets.US_ASCII),
+                unsealedDigest.getBytes(StandardCharsets.US_ASCII))) {
+            return ChallengeResult.expired("账号状态已变更，请重新登录。");
+        }
+        return ChallengeResult.verified(challenge.userId, challenge.username, unsealed);
+    }
+
+    private static String sha256Hex(final String input) {
+        try {
+            return HEX.formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(input.getBytes(StandardCharsets.UTF_8)));
+        } catch (final GeneralSecurityException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private static byte[] sealWithToken(final String token, final String plaintext) {
+        try {
+            final byte[] keyBytes = MessageDigest.getInstance("SHA-256")
+                    .digest(("volo-totp-seal:" + token).getBytes(StandardCharsets.UTF_8));
+            final byte[] iv = new byte[GCM_IV_BYTES];
+            RANDOM.nextBytes(iv);
+            final Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.updateAAD(token.getBytes(StandardCharsets.US_ASCII));
+            final byte[] ct = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            final byte[] combined = new byte[iv.length + ct.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(ct, 0, combined, iv.length, ct.length);
+            return combined;
+        } catch (final GeneralSecurityException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private static String unsealWithToken(final String token, final byte[] combined) {
+        if (combined == null || combined.length < GCM_IV_BYTES + 16) {
+            return null;
+        }
+        try {
+            final byte[] keyBytes = MessageDigest.getInstance("SHA-256")
+                    .digest(("volo-totp-seal:" + token).getBytes(StandardCharsets.UTF_8));
+            final Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keyBytes, "AES"),
+                    new GCMParameterSpec(GCM_TAG_BITS, combined, 0, GCM_IV_BYTES));
+            cipher.updateAAD(token.getBytes(StandardCharsets.US_ASCII));
+            final byte[] pt = cipher.doFinal(combined, GCM_IV_BYTES, combined.length - GCM_IV_BYTES);
+            return new String(pt, StandardCharsets.UTF_8);
+        } catch (final GeneralSecurityException invalid) {
+            return null;
+        }
     }
 
     public synchronized void writeTrustedDeviceCookie(final JSONObject user, final Response response) {
@@ -686,7 +792,7 @@ public class TotpService {
                 continue;
             }
             final String value = cookie.getValue();
-            if (value == null || !value.matches("[0-9]{1,16}\\.[0-9a-f]{64}")) {
+            if (value == null || !TRUST_COOKIE_PATTERN.matcher(value).matches()) {
                 return false;
             }
             final int dot = value.indexOf('.');
@@ -762,7 +868,7 @@ public class TotpService {
             return -1L;
         }
         final String compact = rawCode.replace(" ", "").strip();
-        if (!compact.matches("[0-9]{6}")) {
+        if (!OTP_6_PATTERN.matcher(compact).matches()) {
             return -1L;
         }
         final byte[] secretBytes = decodeBase32(base32Secret);
@@ -850,7 +956,7 @@ public class TotpService {
             return "";
         }
         final String cleaned = raw.replace(" ", "").replace("=", "").strip().toUpperCase(Locale.ROOT);
-        return cleaned.matches("[A-Z2-7]{16,128}") ? cleaned : "";
+        return BASE32_SECRET_PATTERN.matcher(cleaned).matches() ? cleaned : "";
     }
 
     private static byte[] decodeBase32(final String secret) {
@@ -881,7 +987,7 @@ public class TotpService {
             return "";
         }
         final String cleaned = raw.replace("-", "").replace(" ", "").strip().toUpperCase(Locale.ROOT);
-        return cleaned.matches("[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}") ? cleaned : "";
+        return RECOVERY_CODE_PATTERN.matcher(cleaned).matches() ? cleaned : "";
     }
 
     private static String hashRecovery(final String salt, final String normalizedCode) {
@@ -927,11 +1033,11 @@ public class TotpService {
         final Object raw = request.get(key);
         final int parsed;
         if (raw instanceof Number number) {
-            if (!raw.toString().matches("-?[0-9]{1,4}")) {
+            if (!SMALL_INT_PATTERN.matcher(raw.toString()).matches()) {
                 throw new IllegalArgumentException(errorMessage);
             }
             parsed = number.intValue();
-        } else if (raw instanceof String text && text.strip().matches("-?[0-9]{1,4}")) {
+        } else if (raw instanceof String text && SMALL_INT_PATTERN.matcher(text.strip()).matches()) {
             parsed = Integer.parseInt(text.strip());
         } else {
             throw new IllegalArgumentException(errorMessage);

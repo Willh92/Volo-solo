@@ -51,12 +51,14 @@ import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.QueryResults;
 import org.b3log.solo.util.S3CompatibleUploader;
 import org.b3log.solo.util.Uploads;
+import org.b3log.solo.web.NettyFileSender;
 import org.b3log.solo.web.annotation.Before;
 import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -545,18 +547,23 @@ public class OpsConsole {
         try {
             final String name = StringUtils.trimToEmpty(context.param("name"));
             final Path file = localRollingBackupService.resolveValidatedBackupFile(name);
-            final byte[] bytes = Files.readAllBytes(file);
+            final long size = Files.size(file);
+            if (size < 0L) {
+                throw new IOException("Invalid backup archive size: " + size);
+            }
             final Response response = context.getResponse();
             context.setHeader("Cache-Control", "no-store");
             context.setHeader("X-Content-Type-Options", "nosniff");
             context.setHeader("Content-Disposition", "attachment; filename=\"" + file.getFileName().toString() + "\"");
             response.setContentType("application/zip");
-            response.sendBytes(bytes);
+            NettyFileSender.sendFile(context, file, 0L, size, null);
         } catch (final IllegalArgumentException invalid) {
             AdminRequests.reject(context, 400, invalid.getMessage());
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Download local backup failed", e);
-            context.sendError(404);
+            if (context.getResponse() == null || !context.getResponse().isCommitted()) {
+                context.sendError(404);
+            }
         }
     }
 

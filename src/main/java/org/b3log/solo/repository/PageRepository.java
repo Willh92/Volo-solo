@@ -72,7 +72,7 @@ public class PageRepository extends AbstractRepository {
 
     @Override
     public JSONObject get(final String id) throws RepositoryException {
-        JSONObject ret = pageCache.getPage(id);
+        JSONObject ret = null == pageCache ? null : pageCache.getPage(id);
         if (null != ret) {
             return ret;
         }
@@ -82,7 +82,9 @@ public class PageRepository extends AbstractRepository {
             return null;
         }
 
-        pageCache.putPage(ret);
+        if (null != pageCache) {
+            pageCache.putPage(ret);
+        }
 
         return org.b3log.solo.util.Solos.clone(ret);
     }
@@ -114,7 +116,10 @@ public class PageRepository extends AbstractRepository {
                 return null;
             }
         }
-        final Query query = new Query().setFilter(new PropertyFilter(Page.PAGE_PERMALINK, FilterOperator.EQUAL, permalink)).setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Page.PAGE_PERMALINK, FilterOperator.EQUAL, permalink))
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
@@ -135,7 +140,11 @@ public class PageRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public int getMaxOrder() throws RepositoryException {
-        final Query query = new Query().addSort(Page.PAGE_ORDER, SortDirection.DESCENDING).setPageCount(1);
+        final Query query = new Query()
+                .select(Page.PAGE_ORDER)
+                .addSort(Page.PAGE_ORDER, SortDirection.DESCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
@@ -158,8 +167,11 @@ public class PageRepository extends AbstractRepository {
             return null;
         }
 
-        final Query query = new Query().setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.LESS_THAN, page.optInt(Page.PAGE_ORDER))).
-                addSort(Page.PAGE_ORDER, SortDirection.DESCENDING).setPage(1, 1).setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.LESS_THAN, page.optInt(Page.PAGE_ORDER)))
+                .addSort(Page.PAGE_ORDER, SortDirection.DESCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
@@ -182,8 +194,11 @@ public class PageRepository extends AbstractRepository {
             return null;
         }
 
-        final Query query = new Query().setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.GREATER_THAN, page.optInt(Page.PAGE_ORDER))).
-                addSort(Page.PAGE_ORDER, SortDirection.ASCENDING).setPage(1, 1).setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.GREATER_THAN, page.optInt(Page.PAGE_ORDER)))
+                .addSort(Page.PAGE_ORDER, SortDirection.ASCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
@@ -201,7 +216,10 @@ public class PageRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByOrder(final int order) throws RepositoryException {
-        final Query query = new Query().setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.EQUAL, order)).setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Page.PAGE_ORDER, FilterOperator.EQUAL, order))
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
@@ -214,7 +232,7 @@ public class PageRepository extends AbstractRepository {
     /**
      * Gets pages.
      *
-     * @return a list of pages, returns an empty list if  not found
+     * @return a list of pages, returns an empty list if not found
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getPages() throws RepositoryException {

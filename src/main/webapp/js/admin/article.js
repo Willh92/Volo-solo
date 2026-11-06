@@ -179,7 +179,11 @@ admin.article = {
             return
           }
 
-          if (document.querySelectorAll('tr').length === 2) {
+          var tableSelector = '#' + fromId + 'Table .table-body tr:not(.table-expendRow)'
+          var rowCount = (typeof document !== 'undefined' && document && typeof document.querySelectorAll === 'function')
+            ? document.querySelectorAll(tableSelector).length
+            : $(tableSelector).length
+          if (rowCount <= 1) {
             const refreshPage = Math.max(
               (admin[fromId + 'List'].tablePagination.currentPage - 1), 1)
             admin[fromId + 'List'].getList(refreshPage)
@@ -214,11 +218,10 @@ admin.article = {
         articleAbstract = admin.editors.abstractEditor.getContent()
 
       if ($('#articleThumbnail').prop('checked')) {
-        var bgImage = $('.thumbnail__img').css('background-image')
-        articleContent = '![](' + bgImage.substring(5, bgImage.length - 2).
-          replace('w/768', 'w/960').
-          replace('h/432', 'h/540') +
-          ')\n\n' + articleContent
+        var thumbUrl = this._extractThumbnailUrl()
+        if (thumbUrl) {
+          articleContent = '![](' + thumbUrl + ')\n\n' + articleContent
+        }
       }
 
       var requestJSONObject = {
@@ -272,7 +275,7 @@ admin.article = {
         complete: function (jqXHR, textStatus) {
           that._removeDisabled()
           $('#loadMsg').text('')
-          admin.inited();
+
         },
       })
     }
@@ -298,11 +301,10 @@ admin.article = {
       var articleContent = admin.editors.articleEditor.getContent(),
         articleAbstract = admin.editors.abstractEditor.getContent()
       if ($('#articleThumbnail').prop('checked')) {
-        var bgImage = $('.thumbnail__img').css('background-image')
-        articleContent = '![](' + bgImage.substring(5, bgImage.length - 2).
-          replace('w/768', 'w/960').
-          replace('h/432', 'h/540') +
-          ') \n\n' + articleContent
+        var thumbUrl = this._extractThumbnailUrl()
+        if (thumbUrl) {
+          articleContent = '![](' + thumbUrl + ') \n\n' + articleContent
+        }
       }
       var requestJSONObject = {
         'article': {
@@ -348,7 +350,7 @@ admin.article = {
             admin.selectTab('article/draft-list')
           }
 
-          $('#tipMsg').text(Label.updateSuccLabel)
+          $('#tipMsg').text(Label.updateSuccLabel || '更新成功')
 
           admin.article._clearLocalDraft(admin.article.status.id || 'new')
           admin.article.status.id = undefined
@@ -358,7 +360,7 @@ admin.article = {
         complete: function (jqXHR, textStatus) {
           that._removeDisabled()
           $('#loadMsg').text('')
-          admin.inited();
+
         },
       })
     }
@@ -613,18 +615,39 @@ admin.article = {
    * @param {String} str 被解析的字符串
    * @returns {String} 无重复的字符串
    */
+  _formatDate: function (value, mode) {
+    if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+      return Util.formatDate(value, mode)
+    }
+    if (value === null || value === undefined || typeof value === 'boolean' || value === '') return '—'
+    var d = value instanceof Date ? value : new Date(typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value)
+    if (!Number.isFinite(d.getTime()) || d.getTime() < 0) return '—'
+    var pad = function (n) { return (n < 10 ? '0' : '') + n }
+    var ymd = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    if (mode === 1) return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    if (mode === 2) return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+    return ymd
+  },
+  _extractThumbnailUrl: function () {
+    var raw = String($('.thumbnail__img').css('background-image') || '').trim()
+    if (!raw || raw.toLowerCase() === 'none') return ''
+    var match = /^url\(\s*['"]?(.+?)['"]?\s*\)$/i.exec(raw)
+    var url = match && match[1] ? match[1].trim() : ''
+    if (!url || url.toLowerCase() === 'none') return ''
+    return url.replace('w/768', 'w/960').replace('h/432', 'h/540')
+  },
   trimUniqueArray: function (str) {
-    str = str.toString()
-    var arr = str.split(',')
-    for (var i = 0; i < arr.length; i++) {
-      arr[i] = arr[i].replace(/(^\s*)|(\s*$)/g, '')
-      if (arr[i] === '') {
-        arr.splice(i, 1)
-        i--
+    var parts = String(str == null ? '' : str).split(',')
+    var seen = new Set()
+    var unique = []
+    for (var i = 0; i < parts.length; i++) {
+      var tag = parts[i].replace(/(^\s*)|(\s*$)/g, '')
+      if (tag !== '' && !seen.has(tag)) {
+        seen.add(tag)
+        unique.push(tag)
       }
     }
-    var unique = $.unique(arr)
-    return unique.toString()
+    return unique.join(',')
   },
   /**
    * @description 点击发文文章时的处理
@@ -747,6 +770,7 @@ admin.article = {
     var box = $('#articleRevisionsList')
     box.html('正在加载历史版本...')
     $('#articleRevisionDiffBox').hide()
+    var that = this
     var aid = this.status.id
     var esc = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
       return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -765,8 +789,8 @@ admin.article = {
         var html = '<ul style="list-style:none;margin:0;padding:0;">'
         for (var i = 0; i < res.revisions.length; i++) {
           var r = res.revisions[i]
-          var d = new Date(Number(r.revisionCreated || 0))
-          var timeStr = isNaN(d.getTime()) ? '' : d.toLocaleString()
+          var revTs = Number(r.revisionCreated || 0)
+          var timeStr = revTs > 0 ? that._formatDate(revTs, 2) : '—'
           var revId = esc(r.oId)
           html += '<li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(127,127,127,0.14);gap:8px;flex-wrap:wrap;">' +
             '<span><strong>' + esc(timeStr) + '</strong> · ' + esc(r.revisionTitle || '') +
@@ -921,8 +945,9 @@ admin.article = {
         bar.hide()
         return
       }
-      var d = new Date(Number(snap.updatedAt || 0))
-      var timeText = isNaN(d.getTime()) ? '' : ('保存于 ' + d.toLocaleString())
+      var snapTs = Number(snap.updatedAt || 0)
+      var snapFmt = snapTs > 0 ? this._formatDate(snapTs, 2) : '—'
+      var timeText = snapFmt !== '—' ? ('保存于 ' + snapFmt) : ''
       var previewTitle = snapTitle ? ('《' + snapTitle.slice(0, 32) + '》 · ') : ''
       $('#articleDraftRecoveryMeta').text(previewTitle + timeText + ' · 正文 ' + snapContent.length + ' 字')
       bar.show()
@@ -1150,6 +1175,9 @@ admin.register.article = {
   'obj': admin.article,
   'init': admin.article.init,
   'refresh': function () {
+    if (admin.article.status.id) {
+      return
+    }
     admin.editors.abstractEditor.setContent('')
     admin.editors.articleEditor.setContent('')
     $('#loadMsg').text('')

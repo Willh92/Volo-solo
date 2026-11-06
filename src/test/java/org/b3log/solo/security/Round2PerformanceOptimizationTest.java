@@ -123,7 +123,9 @@ public class Round2PerformanceOptimizationTest {
                     }
                 }
             }
-            Assert.assertEquals(createdIndexes.size(), 30, "Expected all 30 core secondary indexes to exist: " + createdIndexes);
+            Assert.assertEquals(createdIndexes.size(), 31, "Expected all 31 core secondary indexes to exist: " + createdIndexes);
+            Assert.assertTrue(createdIndexes.contains("idx_b3_article_auth_st_top_upd"));
+            Assert.assertTrue(createdIndexes.contains("idx_b3_article_auth_st_top_crt"));
             Assert.assertTrue(createdIndexes.contains("idx_b3_article_permalink"));
             Assert.assertTrue(createdIndexes.contains("idx_b3_article_st_top_upd"));
             Assert.assertTrue(createdIndexes.contains("idx_b3_article_st_sched"));

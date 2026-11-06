@@ -60,21 +60,20 @@ public final class V431_432 {
         final BeanManager beanManager = BeanManager.getInstance();
         final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
         final UserRepository userRepository = beanManager.getReference(UserRepository.class);
+        Transaction transaction = null;
         try {
-            final Transaction transaction = optionRepository.beginTransaction();
+            transaction = optionRepository.beginTransaction();
 
             // 将明文密码和一次MD5加密的密码强制转为二次加密的MD5密码，确保安全性
-            Query query = new Query().setFilter(CompositeFilterOperator.or(
+            final Query query = new Query().setFilter(CompositeFilterOperator.or(
                     new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, Role.ADMIN_ROLE),
                     new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, Role.DEFAULT_ROLE),
                     new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, Role.VISITOR_ROLE)
             ));
-            List<JSONObject> users = userRepository.getList(query);
-            for (JSONObject user : users) {
-                String username = user.optString(User.USER_NAME);
+            final List<JSONObject> users = userRepository.getList(query);
+            for (final JSONObject user : users) {
                 String password = user.optString(UserExt.USER_B3_KEY);
-                String userRole = user.optString(User.USER_ROLE);
-                String id = user.optString(Keys.OBJECT_ID);
+                final String id = user.optString(Keys.OBJECT_ID);
 
                 // 密码判断
                 if (password.length() == 32) {
@@ -87,7 +86,6 @@ public final class V431_432 {
                 user.put(UserExt.USER_B3_KEY, password);
 
                 userRepository.update(id, user);
-                System.out.println("[Upgrade] " + username + " / " + password + " / " + userRole);
             }
 
             final JSONObject versionOpt = optionRepository.get(Option.ID_C_VERSION);
@@ -98,9 +96,12 @@ public final class V431_432 {
 
             LOGGER.log(Level.INFO, "Upgraded from version [" + fromVer + "] to version [" + toVer + "] successfully");
         } catch (final Exception e) {
+            if (transaction != null && transaction.isActive()) {
+                transaction.rollback();
+            }
             LOGGER.log(Level.ERROR, "Upgrade failed!", e);
 
-            throw new Exception("Upgrade failed from version [" + fromVer + "] to version [" + toVer + "]");
+            throw new Exception("Upgrade failed from version [" + fromVer + "] to version [" + toVer + "]", e);
         }
     }
 }

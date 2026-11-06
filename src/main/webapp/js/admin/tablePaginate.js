@@ -35,7 +35,7 @@ $.extend(TablePaginate.prototype, {
     buildTable: function (colModel, noExpend) {
         this.columnModel = colModel.slice();
         if (!noExpend && !colModel.some(function (column) { return column.index === 'actions' || column.index === 'expendRow'; })) {
-            this.columnModel.push({text: Label.operationsLabel || '操作', index: 'expendRow', width: this.id === 'article' ? 230 : 170});
+            this.columnModel.push({text: Label.operationsLabel || '操作', index: 'expendRow', width: this.id === 'article' ? 228 : (this.id === 'draft' ? 192 : 170)});
         }
         var tableData = {
             colModel: this.columnModel,
@@ -133,7 +133,11 @@ $.extend(TablePaginate.prototype, {
                 groupName: "all",
                 groupData: data.map(function (row) {
                     var item = Object.assign({}, row);
-                    if (filtering && Object.prototype.hasOwnProperty.call(item, 'linkOrder')) item.linkOrder = '';
+                    if (filtering) {
+                        if (Object.prototype.hasOwnProperty.call(item, 'linkOrder')) item.linkOrder = '';
+                        if (Object.prototype.hasOwnProperty.call(item, 'pageOrder')) item.pageOrder = '';
+                        if (Object.prototype.hasOwnProperty.call(item, 'followOrder')) item.followOrder = '';
+                    }
                     ['expendRow', 'actions'].forEach(function (key) {
                         if (typeof item[key] === 'string' && item[key].trim()) {
                             item[key] = '<div class="console-row-actions">' + item[key] + '</div>';

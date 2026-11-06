@@ -31,7 +31,7 @@
 <#include "header.ftl">
 <main id="pjax" class="fn__flex-1">
     <div class="wrapper wrapper--min">
-        <div id="pjax">
+        <div>
             <#if pjax><!---- pjax {#pjax} start ----></#if>
         <div class="container body clearfix">
             <#include "article-list.ftl">

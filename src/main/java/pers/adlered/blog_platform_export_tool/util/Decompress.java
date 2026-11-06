@@ -18,10 +18,13 @@
 package pers.adlered.blog_platform_export_tool.util;
 
 import org.b3log.solo.bolo.tool.ZipFilterUtils;
+import org.b3log.solo.logging.Logger;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * <h3>BlogPlatformExportTool</h3>
@@ -31,53 +34,89 @@ import java.util.List;
  * @date : 2020-05-14
  **/
 public class Decompress {
-    public static String path;
 
-    public Decompress(String path) {
+    private static final Logger LOGGER = Logger.getLogger(Decompress.class);
+    private static final ThreadLocal<String> THREAD_LOCAL_PATH = new ThreadLocal<>();
+
+    @Deprecated
+    public static volatile String path;
+
+    private final String targetPath;
+
+    public Decompress(final String path) {
+        this.targetPath = path;
+        THREAD_LOCAL_PATH.set(path);
         Decompress.path = path;
     }
 
-    public void run() throws java.io.IOException {
-        List<String> unzipFiles = analyze();
-        for (String i : unzipFiles) {
-            String filename = path + "/" + i;
-            String[] splitFilename = i.split("\\.");
-            i = splitFilename[splitFilename.length - 1];
-            System.out.println("Unpacking " + filename);
-            if ("zip".equals(i)) {
-                ZipFilterUtils.unpackFilteredZip(new File(filename), new File(path), null);
+    public String getTargetPath() {
+        return targetPath;
+    }
+
+    public static String currentPath() {
+        final String local = THREAD_LOCAL_PATH.get();
+        return local != null ? local : path;
+    }
+
+    public static void clearCurrentPath() {
+        THREAD_LOCAL_PATH.remove();
+    }
+
+    /**
+     * Unpacks supported archives inside {@code targetDirectory} and returns {@code targetDirectory} explicitly.
+     */
+    public static String unpackDirectory(final String targetDirectory) throws IOException {
+        final Decompress decompress = new Decompress(targetDirectory);
+        decompress.run();
+        return targetDirectory;
+    }
+
+    public void run() throws IOException {
+        if (targetPath == null || targetPath.isBlank()) {
+            return;
+        }
+        final List<String> unzipFiles = analyze();
+        final File destDir = new File(targetPath);
+        for (final String name : unzipFiles) {
+            final File archiveFile = new File(destDir, name);
+            LOGGER.debug("Unpacking " + archiveFile.getAbsolutePath());
+            if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                ZipFilterUtils.unpackFilteredZip(archiveFile, destDir,
+                        entry -> entry.toLowerCase(Locale.ROOT).endsWith(".xml") ? entry : null);
             }
         }
         delete(unzipFiles);
     }
 
     private List<String> analyze() {
-        File file = new File(path);
-        File[] files = file.listFiles();
-        List<String> supported = new ArrayList<>();
-        supported.add("zip");
-        List<String> result = new ArrayList<>();
-        for (File i : files != null ? files : new File[0]) {
-            String filename = i.getName();
-            String[] splitFilename = filename.split("\\.");
-            String prefix = splitFilename[splitFilename.length - 1];
-            if (supported.contains(prefix)) {
+        final List<String> result = new ArrayList<>();
+        if (targetPath == null || targetPath.isBlank()) {
+            return result;
+        }
+        final File dir = new File(targetPath);
+        final File[] files = dir.listFiles();
+        if (files == null) {
+            return result;
+        }
+        for (final File f : files) {
+            final String filename = f.getName();
+            if (filename.toLowerCase(Locale.ROOT).endsWith(".zip")) {
                 result.add(filename);
             }
         }
         return result;
     }
 
-    private void delete(List<String> unzipFiles) {
-        File dsStore = new File(path + "/.DS_Store");
+    private void delete(final List<String> unzipFiles) {
+        final File destDir = new File(targetPath);
+        final File dsStore = new File(destDir, ".DS_Store");
         if (dsStore.exists()) {
             unzipFiles.add(dsStore.getName());
         }
-        for (String i : unzipFiles) {
-            String filename = path + "/" + i;
-            File file = new File(filename);
-            boolean result = file.delete();
-            System.out.println("Remove " + i + "  " + result);
+        for (final String name : unzipFiles) {
+            final File file = new File(destDir, name);
+            final boolean removed = file.delete();
+            LOGGER.debug("Removed " + name + ": " + removed);
         }
     }
 }

@@ -27,6 +27,8 @@
   if (!modes[mode]) mode = 'auto'
   var resolved
   var hasOpenMenu = false
+  var pjaxNavigating = false
+  var resizeRaf = 0
   var headerSlotHostSelector = 'header, nav, aside, [id*="nav"], [class*="header"], [class*="drawer"], [class*="sidebar"], [data-bolo-theme-slot]'
   var accents = ['forest', 'ocean', 'teal', 'amber', 'plum', 'rose']
   var accentMeta = document.querySelector('meta[name="bolo-accent"]')
@@ -64,7 +66,8 @@
     var changed = resolved !== next
     resolved = next
     root.dataset.boloTheme = resolved
-    root.dataset.theme = resolved // Butterfly and comment integrations use this attribute.
+    if (root.dataset.boloSkin === 'bolo-butterfly') root.dataset.theme = resolved
+    else delete root.dataset.theme
     root.dataset.boloThemeMode = mode
     root.dataset.boloAccent = accent
     root.style.colorScheme = resolved
@@ -94,7 +97,11 @@
         if (editor && typeof editor.setTheme === 'function') editor.setTheme(resolved === 'dark' ? 'dark' : 'classic', resolved, resolved === 'dark' ? 'github-dark' : window.Label && Label.hljsStyle || 'github')
       })
     }
-    if (changed) window.dispatchEvent(new CustomEvent('bolo:theme-change', {detail: {theme: resolved, mode: mode}}))
+    if (changed) {
+      var detail = {theme: resolved, mode: mode}
+      window.dispatchEvent(new CustomEvent('bolo:theme-change', {detail: detail}))
+      window.dispatchEvent(new CustomEvent('bolo:themechange', {detail: detail}))
+    }
   }
 
   function close (focus) {
@@ -168,15 +175,39 @@
     menu.style.top = top + 'px'
   }
 
+  var excludedTableClasses = ['hljs-ln', 'rouge-table', 'lntable', 'volo-github-repos-table', 'nexmoe-album']
+  var excludedTableAncestors = '.vditor-reset, .volo-github-repos-wrap, .table-wrap, .table-area, .volo-table-scroll, .table-overflow, .highlight, .gist, .rouge-table, .lntable, .syntaxhighlighter, .code-toolbar, pre, code, .comments, #comments, .comment-respond'
+
+  function wrapArticleTables () {
+    if (root.dataset.boloPage !== 'public' || typeof document.createElement !== 'function') return
+    document.querySelectorAll(':is(.post__content, .entry-content, .article__content, .post-body, .post-content, #article-container, .content, article) table').forEach(function (table) {
+      if (!table || typeof table.closest !== 'function' || !table.parentNode) return
+      if (table.classList && excludedTableClasses.some(function (cls) { return table.classList.contains(cls) })) return
+      if (table.closest(excludedTableAncestors)) return
+      var wrapper = document.createElement('div')
+      wrapper.className = 'volo-table-scroll'
+      table.parentNode.insertBefore(wrapper, table)
+      wrapper.appendChild(table)
+    })
+  }
+
   function syncGitHubRepoDescriptions () {
-    document.querySelectorAll('.volo-github-repo-desc').forEach(function (desc) {
+    var measurements = Array.from(document.querySelectorAll('.volo-github-repo-desc')).map(function (desc) {
       var expanded = desc.classList.contains('is-expanded')
-      var truncatable = expanded || desc.scrollHeight > desc.clientHeight + 1
-      if (truncatable) {
+      return {
+        desc: desc,
+        expanded: expanded,
+        truncatable: expanded || desc.scrollHeight > desc.clientHeight + 1,
+        hasTabIndex: desc.hasAttribute('tabindex'),
+      }
+    })
+    measurements.forEach(function (item) {
+      var desc = item.desc
+      if (item.truncatable) {
         desc.dataset.truncatable = 'true'
-        if (!desc.hasAttribute('tabindex')) desc.tabIndex = 0
+        if (!item.hasTabIndex) desc.tabIndex = 0
         desc.setAttribute('role', 'button')
-        desc.setAttribute('aria-expanded', String(expanded))
+        desc.setAttribute('aria-expanded', String(item.expanded))
       } else {
         delete desc.dataset.truncatable
         desc.removeAttribute('tabindex')
@@ -216,6 +247,10 @@
     moveHeaderControl()
     apply()
     syncNativeControls()
+    if (pjaxNavigating && typeof root.hasAttribute === 'function' && !root.hasAttribute('data-bolo-loading')) {
+      pjaxNavigating = false
+    }
+    if (!pjaxNavigating) wrapArticleTables()
     syncGitHubRepoDescriptions()
   }
 
@@ -238,9 +273,21 @@
   apply() // Resolve before styles load to avoid a bright flash at night.
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, {once: true})
   else mount()
-  window.addEventListener('bolo:after-navigate', mount)
-  window.addEventListener('bolo:before-navigate', function () { close(false) })
-  window.addEventListener('resize', function () { close(false); moveHeaderControl(); syncGitHubRepoDescriptions() })
+  function handleResize () {
+    resizeRaf = 0
+    moveHeaderControl()
+    syncGitHubRepoDescriptions()
+  }
+  window.addEventListener('bolo:after-navigate', function () { pjaxNavigating = false; mount() })
+  window.addEventListener('bolo:before-navigate', function () { pjaxNavigating = true; close(false) })
+  window.addEventListener('resize', function () {
+    close(false)
+    if (typeof window.requestAnimationFrame === 'function') {
+      if (!resizeRaf) resizeRaf = window.requestAnimationFrame(handleResize)
+    } else {
+      handleResize()
+    }
+  })
   window.addEventListener('scroll', function () { close(false) }, {passive: true})
   document.addEventListener('transitionend', function (event) {
     if (event.propertyName !== 'transform' && event.propertyName !== 'left') return
@@ -263,7 +310,14 @@
   media.addEventListener('change', function () { if (mode === 'system') apply() })
   setInterval(function () { if (mode === 'auto') apply() }, 30000)
   // Older skin scripts may set data-theme once during startup. Keep one source of truth.
-  new MutationObserver(function () { if (root.dataset.theme !== resolved) root.dataset.theme = resolved }).observe(root, {attributes: true, attributeFilter: ['data-theme']})
+  new MutationObserver(function () {
+    if (pjaxNavigating) return
+    if (root.dataset.boloSkin === 'bolo-butterfly') {
+      if (root.dataset.theme !== resolved) root.dataset.theme = resolved
+    } else if ('theme' in root.dataset) {
+      delete root.dataset.theme
+    }
+  }).observe(root, {attributes: true, attributeFilter: ['data-theme']})
   document.addEventListener('click', function (event) {
     var option = event.target.closest('[data-bolo-mode]')
     if (option) { set(option.dataset.boloMode); close(true); return }

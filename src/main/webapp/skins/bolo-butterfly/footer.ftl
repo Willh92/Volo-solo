@@ -36,16 +36,12 @@
 <#--</svg>-->
 <#include "rightside.ftl">
 <#include "mobile-menu.ftl">
-<script src="${staticServePath}/js/lib/jquery/jquery.min.js?${staticResourceVersion}"></script>
 <script src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"></script>
 <script type="text/javascript"
-        src="${staticServePath}/skins/${skinDirName}/js/common.min.js?${staticResourceVersion}"
+        src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <#include "../../common-template/label.ftl">
 <script type="text/javascript"
-        src="${staticServePath}/skins/${skinDirName}/js/circleMagic.min.js?${staticResourceVersion}"
+        src="${staticServePath}/skins/${skinDirName}/js/circleMagic${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
-<script>
-    if (window.BoloTheme) BoloTheme.refresh();
-</script>
 ${plugins}

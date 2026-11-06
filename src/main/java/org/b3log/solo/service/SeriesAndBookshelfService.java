@@ -569,57 +569,91 @@ public class SeriesAndBookshelfService {
     }
 
     /**
-     * Fetches and parses the remote chapter tree for a book using SSRF-safe {@link OutboundUrls}.
+     * Fetches and parses the remote chapter tree for a book using SSRF-safe {@link OutboundUrls}
+     * without holding {@code synchronized (this)} across remote network I/O or HTML parsing.
      */
-    public synchronized JSONObject syncBookToc(final String bookId, final boolean allowLoopback) throws ServiceException {
+    public JSONObject syncBookToc(final String bookId, final boolean allowLoopback) throws ServiceException {
         final String cleanId = normalizeShortId(bookId);
         if (cleanId.isEmpty()) {
             throw new ServiceException("无效的书籍 ID。");
         }
-        final JSONArray all = getAllBooks();
-        JSONObject book = null;
-        int bookIdx = -1;
-        for (int i = 0; i < all.length(); i++) {
-            final JSONObject candidate = all.optJSONObject(i);
-            if (candidate != null && cleanId.equals(candidate.optString("id"))) {
-                book = candidate;
-                bookIdx = i;
-                break;
+
+        final String sourceType;
+        final String sourceUrl;
+        synchronized (this) {
+            final JSONArray all = getAllBooks();
+            JSONObject book = null;
+            int bookIdx = -1;
+            for (int i = 0; i < all.length(); i++) {
+                final JSONObject candidate = all.optJSONObject(i);
+                if (candidate != null && cleanId.equals(candidate.optString("id"))) {
+                    book = candidate;
+                    bookIdx = i;
+                    break;
+                }
+            }
+            if (book == null) {
+                throw new ServiceException("未找到指定书籍。");
+            }
+
+            sourceType = book.optString("sourceType", "auto");
+            if ("series".equals(sourceType) || "manual".equals(sourceType)) {
+                JSONArray localToc = "series".equals(sourceType)
+                        ? buildTocFromSeries(book.optString("seriesId"))
+                        : getBookToc(cleanId);
+                localToc = sanitizeTocTree(localToc, new int[]{0}, 0);
+                saveBookToc(cleanId, localToc);
+                final int count = countTocChapters(localToc);
+                book.put("chapterCount", count);
+                book.put("syncedAt", System.currentTimeMillis());
+                all.put(bookIdx, book);
+                persistBooks(all);
+                return new JSONObject().put("book", book).put("toc", localToc).put("chapterCount", count);
+            }
+
+            sourceUrl = StringUtils.trimToEmpty(book.optString("sourceUrl"));
+            if (!OutboundUrls.isHttpOrHttps(sourceUrl)) {
+                throw new ServiceException("外部书籍源地址必须是合法的 http:// 或 https:// URL。");
             }
         }
-        if (book == null) {
-            throw new ServiceException("未找到指定书籍。");
-        }
 
-        final String sourceType = book.optString("sourceType", "auto");
-        JSONArray toc;
-        if ("series".equals(sourceType)) {
-            toc = buildTocFromSeries(book.optString("seriesId"));
-        } else if ("manual".equals(sourceType)) {
-            toc = getBookToc(cleanId);
-        } else {
-            final String sourceUrl = book.optString("sourceUrl");
-            try {
-                final byte[] bytes = OutboundUrls.fetchBytes(
-                        sourceUrl, 5000, 12000, FETCH_MAX_BYTES,
-                        "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-                        Solos.USER_AGENT, allowLoopback);
-                final String html = new String(bytes, StandardCharsets.UTF_8);
-                toc = parseHtmlDocumentToToc(html, sourceUrl, sourceType, allowLoopback);
-            } catch (final Exception e) {
-                LOGGER.log(Level.WARN, "Syncs remote book TOC failed [bookId=" + cleanId + ", url=" + sourceUrl + "]", e);
-                throw new ServiceException("同步章节目录失败：" + e.getMessage());
+        JSONArray parsedToc;
+        try {
+            final byte[] bytes = OutboundUrls.fetchBytes(
+                    sourceUrl, 5000, 12000, FETCH_MAX_BYTES,
+                    "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                    Solos.USER_AGENT, allowLoopback);
+            final String html = new String(bytes, StandardCharsets.UTF_8);
+            parsedToc = parseHtmlDocumentToToc(html, sourceUrl, sourceType, allowLoopback);
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARN, "Syncs remote book TOC failed [bookId=" + cleanId + ", url=" + sourceUrl + "]", e);
+            throw new ServiceException("同步章节目录失败：" + e.getMessage());
+        }
+        final JSONArray sanitizedToc = sanitizeTocTree(parsedToc, new int[]{0}, 0);
+
+        synchronized (this) {
+            final JSONArray latestAll = getAllBooks();
+            JSONObject latestBook = null;
+            int latestIdx = -1;
+            for (int i = 0; i < latestAll.length(); i++) {
+                final JSONObject candidate = latestAll.optJSONObject(i);
+                if (candidate != null && cleanId.equals(candidate.optString("id"))) {
+                    latestBook = candidate;
+                    latestIdx = i;
+                    break;
+                }
             }
+            if (latestBook == null) {
+                throw new ServiceException("未找到指定书籍。");
+            }
+            saveBookToc(cleanId, sanitizedToc);
+            final int count = countTocChapters(sanitizedToc);
+            latestBook.put("chapterCount", count);
+            latestBook.put("syncedAt", System.currentTimeMillis());
+            latestAll.put(latestIdx, latestBook);
+            persistBooks(latestAll);
+            return new JSONObject().put("book", latestBook).put("toc", sanitizedToc).put("chapterCount", count);
         }
-
-        toc = sanitizeTocTree(toc, new int[]{0}, 0);
-        saveBookToc(cleanId, toc);
-        final int count = countTocChapters(toc);
-        book.put("chapterCount", count);
-        book.put("syncedAt", System.currentTimeMillis());
-        all.put(bookIdx, book);
-        persistBooks(all);
-        return new JSONObject().put("book", book).put("toc", toc).put("chapterCount", count);
     }
 
     /**

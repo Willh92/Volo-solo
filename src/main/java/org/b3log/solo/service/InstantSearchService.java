@@ -36,6 +36,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -47,8 +49,8 @@ import java.util.regex.Pattern;
 /**
  * In-memory zero-leak public article snapshot for {@code Ctrl/Cmd + K} instant search.
  * Strips all {@code :::lock:::} blocks and password-protected/draft articles before indexing,
- * reuses per-article plain-text extractions across edits, and stores a single case-preserving
- * {@code plainText} string per document matched case-insensitively.
+ * reuses per-article plain-text extractions across edits via a two-phase incremental build,
+ * and stores compact case-preserving {@code SearchDoc} entries matched case-insensitively.
  *
  * @author <a href="https://github.com/Willh92">Willh92</a>
  * @since 3.0.0
@@ -59,7 +61,9 @@ public class InstantSearchService {
     private static final Logger LOGGER = Logger.getLogger(InstantSearchService.class);
     private static final int MAX_INDEXED_ARTICLES = 2000;
     private static final int MAX_PLAIN_TEXT_CACHE_ENTRIES = 2500;
+    private static final int MAX_PLAIN_CACHE_CHARS = 8_000_000;
     private static final int MAX_PLAIN_TEXT_CHARS = 16_384;
+    private static final int CONTENT_FETCH_BATCH_SIZE = 50;
     private static final int SNIPPET_RADIUS = 56;
 
     @Inject
@@ -80,14 +84,21 @@ public class InstantSearchService {
     private record SearchDoc(
             String id,
             String title,
-            String titleLower,
             String permalink,
             List<String> tags,
-            List<String> tagsLower,
             String category,
-            String categoryLower,
             String plainText,
             long updatedAt) {
+    }
+
+    private record PendingDoc(
+            String id,
+            String title,
+            String permalink,
+            List<String> tags,
+            String category,
+            long updatedAt,
+            String inlinePlainText) {
     }
 
     private record Snapshot(
@@ -98,12 +109,8 @@ public class InstantSearchService {
     }
 
     private final Object buildLock = new Object();
-    private final Map<String, CachedPlainText> plainTextCache = new LinkedHashMap<>(256, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(final Map.Entry<String, CachedPlainText> eldest) {
-            return size() > MAX_PLAIN_TEXT_CACHE_ENTRIES;
-        }
-    };
+    private final Map<String, CachedPlainText> plainTextCache = new LinkedHashMap<>(256, 0.75f, true);
+    private long plainTextCacheChars = 0L;
 
     private volatile Snapshot cachedSnapshot;
     private volatile Snapshot lastGoodSnapshot;
@@ -118,14 +125,77 @@ public class InstantSearchService {
     }
 
     /**
+     * Completely resets all cached search snapshots and per-article plain-text cache entries
+     * (used after full backup restore or bulk database replacement).
+     */
+    public void invalidateAll() {
+        cachedSnapshot = null;
+        lastGoodSnapshot = null;
+        synchronized (buildLock) {
+            plainTextCache.clear();
+            plainTextCacheChars = 0L;
+            cachedSnapshot = null;
+            lastGoodSnapshot = null;
+        }
+    }
+
+    private void putPlainTextCacheLocked(final String id, final CachedPlainText entry) {
+        final CachedPlainText prev = plainTextCache.put(id, entry);
+        if (prev != null) {
+            plainTextCacheChars -= prev.text().length();
+        }
+        plainTextCacheChars += entry.text().length();
+        final Iterator<Map.Entry<String, CachedPlainText>> it = plainTextCache.entrySet().iterator();
+        while ((plainTextCache.size() > MAX_PLAIN_TEXT_CACHE_ENTRIES || plainTextCacheChars > MAX_PLAIN_CACHE_CHARS)
+                && it.hasNext()) {
+            final Map.Entry<String, CachedPlainText> eldest = it.next();
+            plainTextCacheChars -= eldest.getValue().text().length();
+            it.remove();
+        }
+        if (plainTextCacheChars < 0L || plainTextCache.isEmpty()) {
+            plainTextCacheChars = 0L;
+        }
+    }
+
+    private void removePlainTextCacheLocked(final String id) {
+        final CachedPlainText removed = plainTextCache.remove(id);
+        if (removed != null) {
+            plainTextCacheChars = Math.max(0L, plainTextCacheChars - removed.text().length());
+        }
+    }
+
+    private void retainPlainTextCacheIdsLocked(final Set<String> seenPublicIds) {
+        final Iterator<Map.Entry<String, CachedPlainText>> it = plainTextCache.entrySet().iterator();
+        while (it.hasNext()) {
+            final Map.Entry<String, CachedPlainText> entry = it.next();
+            if (!seenPublicIds.contains(entry.getKey())) {
+                plainTextCacheChars -= entry.getValue().text().length();
+                it.remove();
+            }
+        }
+        if (plainTextCacheChars < 0L || plainTextCache.isEmpty()) {
+            plainTextCacheChars = 0L;
+        }
+    }
+
+    private static boolean containsTagIgnoreCase(final List<String> tags, final String tagFilter) {
+        for (final String tag : tags) {
+            if (StringUtils.equalsIgnoreCase(tag, tagFilter)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Searches public articles with optional tag/category filters and returns highlighted snippets.
      */
     public JSONObject search(final String rawQuery, final String rawTag, final String rawCategory, final int maxResults) {
         final Snapshot snapshot = getOrBuildSnapshot();
         final int limit = Math.max(1, Math.min(30, maxResults));
         final String query = StringUtils.left(StringUtils.trimToEmpty(rawQuery), 100);
-        final String tagFilter = StringUtils.trimToEmpty(rawTag).toLowerCase(Locale.ROOT);
-        final String catFilter = StringUtils.trimToEmpty(rawCategory).toLowerCase(Locale.ROOT);
+        final String tagFilter = StringUtils.trimToEmpty(rawTag);
+        final String catFilter = StringUtils.trimToEmpty(rawCategory);
 
         final List<String> terms = query.isEmpty()
                 ? Collections.emptyList()
@@ -138,10 +208,10 @@ public class InstantSearchService {
         final List<ScoredDoc> matches = new ArrayList<>();
 
         for (final SearchDoc doc : snapshot.docs()) {
-            if (!tagFilter.isEmpty() && !doc.tagsLower().contains(tagFilter)) {
+            if (!tagFilter.isEmpty() && !containsTagIgnoreCase(doc.tags(), tagFilter)) {
                 continue;
             }
-            if (!catFilter.isEmpty() && !catFilter.equals(doc.categoryLower())) {
+            if (!catFilter.isEmpty() && !StringUtils.equalsIgnoreCase(catFilter, doc.category())) {
                 continue;
             }
             if (terms.isEmpty()) {
@@ -155,16 +225,16 @@ public class InstantSearchService {
             boolean allMatched = true;
             for (final String term : terms) {
                 int termScore = 0;
-                if (doc.titleLower().contains(term)) {
-                    termScore += doc.titleLower().startsWith(term) ? 16 : 10;
+                if (StringUtils.containsIgnoreCase(doc.title(), term)) {
+                    termScore += StringUtils.startsWithIgnoreCase(doc.title(), term) ? 16 : 10;
                 }
-                for (final String tl : doc.tagsLower()) {
-                    if (tl.contains(term)) {
+                for (final String tag : doc.tags()) {
+                    if (StringUtils.containsIgnoreCase(tag, term)) {
                         termScore += 6;
                         break;
                     }
                 }
-                if (!doc.categoryLower().isEmpty() && doc.categoryLower().contains(term)) {
+                if (!doc.category().isEmpty() && StringUtils.containsIgnoreCase(doc.category(), term)) {
                     termScore += 5;
                 }
                 if (StringUtils.indexOfIgnoreCase(doc.plainText(), term) >= 0) {
@@ -240,6 +310,7 @@ public class InstantSearchService {
 
     private Snapshot buildSnapshot(final long now) {
         try {
+            // Phase 1: lightweight metadata projection ONLY (no articleContent CLOBs).
             final Query query = new Query()
                     .setPageCount(1)
                     .setPage(1, MAX_INDEXED_ARTICLES)
@@ -250,7 +321,6 @@ public class InstantSearchService {
                     .select(Keys.OBJECT_ID,
                             Article.ARTICLE_TITLE,
                             Article.ARTICLE_PERMALINK,
-                            Article.ARTICLE_CONTENT,
                             Article.ARTICLE_TAGS_REF,
                             Article.ARTICLE_VIEW_PWD,
                             Article.ARTICLE_STATUS,
@@ -260,9 +330,10 @@ public class InstantSearchService {
 
             final JSONArray rows = QueryResults.array(articleRepository.get(query));
             final Map<String, String> tagToCategoryTitle = loadTagCategoryMap();
-            final Map<String, Integer> tagFreq = new HashMap<>();
-            final Set<String> categorySet = new LinkedHashSet<>();
-            final List<SearchDoc> docs = new ArrayList<>(rows.length());
+            final Map<String, String> stringPool = new HashMap<>();
+            final Set<String> seenPublicIds = new LinkedHashSet<>();
+            final List<String> missingContentIds = new ArrayList<>();
+            final List<PendingDoc> pendingDocs = new ArrayList<>(rows.length());
 
             for (int i = 0; i < rows.length(); i++) {
                 final JSONObject row = rows.optJSONObject(i);
@@ -272,24 +343,30 @@ public class InstantSearchService {
                     continue;
                 }
                 final String id = row.optString(Keys.OBJECT_ID);
+                if (!id.isEmpty()) {
+                    seenPublicIds.add(id);
+                }
                 final String title = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_TITLE));
                 final String permalink = row.optString(Article.ARTICLE_PERMALINK);
                 final long updatedAt = row.optLong(Article.ARTICLE_UPDATED, row.optLong(Article.ARTICLE_CREATED, 0L));
 
-                final String plain;
+                String inlinePlain = null;
                 final CachedPlainText cachedPlain = (!id.isEmpty() && updatedAt > 0L) ? plainTextCache.get(id) : null;
                 if (cachedPlain != null && cachedPlain.updated() == updatedAt) {
-                    plain = cachedPlain.text();
-                } else {
+                    inlinePlain = cachedPlain.text();
+                } else if (row.has(Article.ARTICLE_CONTENT)) {
                     final String rawMd = Article.sanitizePublicMarkdown(row.optString(Article.ARTICLE_CONTENT));
-                    plain = extractPlainText(rawMd);
+                    inlinePlain = extractPlainText(rawMd);
                     if (!id.isEmpty() && updatedAt > 0L) {
-                        plainTextCache.put(id, new CachedPlainText(updatedAt, plain));
+                        putPlainTextCacheLocked(id, new CachedPlainText(updatedAt, inlinePlain));
                     }
+                } else if (!id.isEmpty()) {
+                    missingContentIds.add(id);
+                } else {
+                    inlinePlain = "";
                 }
 
                 final List<String> tags = new ArrayList<>();
-                final List<String> tagsLower = new ArrayList<>();
                 String category = tagToCategoryTitle.getOrDefault(id, "");
 
                 final String tagsRef = row.optString(Article.ARTICLE_TAGS_REF);
@@ -297,32 +374,113 @@ public class InstantSearchService {
                     for (final String t : tagsRef.split(",")) {
                         final String cleanTag = t.trim();
                         if (!cleanTag.isEmpty()) {
-                            tags.add(cleanTag);
-                            tagsLower.add(cleanTag.toLowerCase(Locale.ROOT));
-                            tagFreq.merge(cleanTag, 1, Integer::sum);
+                            final String internedTag = stringPool.computeIfAbsent(cleanTag, k -> k);
+                            tags.add(internedTag);
                             if (category.isEmpty()) {
-                                category = tagToCategoryTitle.getOrDefault("tag:" + cleanTag, "");
+                                category = tagToCategoryTitle.getOrDefault("tag:" + internedTag, "");
                             }
                         }
                     }
                 }
-                if (!category.isEmpty()) {
-                    categorySet.add(category);
-                }
+                final String internedCategory = category.isEmpty()
+                        ? ""
+                        : stringPool.computeIfAbsent(category, k -> k);
 
-                docs.add(new SearchDoc(
+                pendingDocs.add(new PendingDoc(
                         id,
                         title,
-                        title.toLowerCase(Locale.ROOT),
                         permalink,
-                        tags,
-                        tagsLower,
-                        category,
-                        category.toLowerCase(Locale.ROOT),
-                        plain,
-                        updatedAt
+                        tags.isEmpty() ? Collections.emptyList() : List.copyOf(tags),
+                        internedCategory,
+                        updatedAt,
+                        inlinePlain
                 ));
             }
+
+            // Phase 2: fetch missing articleContent CLOBs in IN batches of 50.
+            final Map<String, String> fetchedPlainById = new HashMap<>();
+            final Set<String> invalidatedIds = new HashSet<>();
+            if (!missingContentIds.isEmpty()) {
+                final List<String> uniqueMissingIds = new ArrayList<>(new LinkedHashSet<>(missingContentIds));
+                for (int start = 0; start < uniqueMissingIds.size(); start += CONTENT_FETCH_BATCH_SIZE) {
+                    final int end = Math.min(start + CONTENT_FETCH_BATCH_SIZE, uniqueMissingIds.size());
+                    final List<String> batchIds = uniqueMissingIds.subList(start, end);
+                    final Query contentQuery = new Query()
+                            .setPageCount(1)
+                            .setPage(1, batchIds.size())
+                            .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, batchIds))
+                            .select(Keys.OBJECT_ID,
+                                    Article.ARTICLE_CONTENT,
+                                    Article.ARTICLE_STATUS,
+                                    Article.ARTICLE_VIEW_PWD);
+                    final JSONArray contentRows = QueryResults.array(articleRepository.get(contentQuery));
+                    final Set<String> fetchedInBatch = new HashSet<>(batchIds.size() * 2);
+                    for (int i = 0; i < contentRows.length(); i++) {
+                        final JSONObject crow = contentRows.optJSONObject(i);
+                        if (crow == null) {
+                            continue;
+                        }
+                        final String cid = crow.optString(Keys.OBJECT_ID);
+                        if (cid.isEmpty()) {
+                            continue;
+                        }
+                        fetchedInBatch.add(cid);
+                        if (crow.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                                || StringUtils.isNotBlank(crow.optString(Article.ARTICLE_VIEW_PWD))) {
+                            invalidatedIds.add(cid);
+                            removePlainTextCacheLocked(cid);
+                            continue;
+                        }
+                        final String rawMd = Article.sanitizePublicMarkdown(crow.optString(Article.ARTICLE_CONTENT));
+                        fetchedPlainById.put(cid, extractPlainText(rawMd));
+                    }
+                    for (final String expectedId : batchIds) {
+                        if (!fetchedInBatch.contains(expectedId)) {
+                            invalidatedIds.add(expectedId);
+                            removePlainTextCacheLocked(expectedId);
+                        }
+                    }
+                }
+                if (!invalidatedIds.isEmpty()) {
+                    seenPublicIds.removeAll(invalidatedIds);
+                }
+            }
+
+            final Map<String, Integer> tagFreq = new HashMap<>();
+            final Set<String> categorySet = new LinkedHashSet<>();
+            final List<SearchDoc> docs = new ArrayList<>(pendingDocs.size());
+
+            for (final PendingDoc pending : pendingDocs) {
+                if (!pending.id().isEmpty() && invalidatedIds.contains(pending.id())) {
+                    continue;
+                }
+                final String plain;
+                if (pending.inlinePlainText() != null) {
+                    plain = pending.inlinePlainText();
+                } else {
+                    plain = fetchedPlainById.getOrDefault(pending.id(), "");
+                    if (!pending.id().isEmpty() && pending.updatedAt() > 0L) {
+                        putPlainTextCacheLocked(pending.id(), new CachedPlainText(pending.updatedAt(), plain));
+                    }
+                }
+                for (final String tag : pending.tags()) {
+                    tagFreq.merge(tag, 1, Integer::sum);
+                }
+                if (!pending.category().isEmpty()) {
+                    categorySet.add(pending.category());
+                }
+                docs.add(new SearchDoc(
+                        pending.id(),
+                        pending.title(),
+                        pending.permalink(),
+                        pending.tags(),
+                        pending.category(),
+                        plain,
+                        pending.updatedAt()
+                ));
+            }
+
+            retainPlainTextCacheIdsLocked(seenPublicIds);
 
             final List<String> topTags = tagFreq.entrySet().stream()
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())

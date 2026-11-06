@@ -20,7 +20,7 @@ package org.b3log.solo.cache;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.solo.model.Article;
-import org.b3log.solo.util.Solos;
+import org.b3log.solo.service.ArticleMgmtService;
 import org.json.JSONObject;
 
 import java.util.HashMap;
@@ -46,6 +46,11 @@ public class ArticleCache {
     public static final int MAX_ENTRIES = 256;
 
     /**
+     * Maximum estimated UTF-16 character weight across cached articles (~8 MiB).
+     */
+    public static final int MAX_TOTAL_CHARS = 4_000_000;
+
+    /**
      * Maximum number of negative-cached missing permalinks.
      */
     public static final int MAX_MISSING_PERMALINKS = 4096;
@@ -63,19 +68,19 @@ public class ArticleCache {
     private final Set<String> missingPermalinks = ConcurrentHashMap.newKeySet();
 
     /**
-     * Bounded LRU article id cache.
+     * Bounded LRU article id cache storing persisted DB article snapshots.
      */
-    private final Map<String, JSONObject> idCache = new LinkedHashMap<>(128, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(final Map.Entry<String, JSONObject> eldest) {
-            if (size() <= MAX_ENTRIES) {
-                return false;
-            }
-            final String evictedPermalink = eldest.getValue().optString(Article.ARTICLE_PERMALINK);
-            permalinkIndex.remove(evictedPermalink, eldest.getKey());
-            return true;
-        }
-    };
+    private final Map<String, JSONObject> idCache = new LinkedHashMap<>(128, 0.75f, true);
+
+    /**
+     * Exact per-entry character weights paired with {@link #idCache}.
+     */
+    private final Map<String, Integer> idWeights = new HashMap<>();
+
+    /**
+     * Current total character weight across {@link #idCache}.
+     */
+    private long totalChars = 0L;
 
     /**
      * Checks whether the specified permalink is known to be missing.
@@ -113,7 +118,7 @@ public class ArticleCache {
     }
 
     /**
-     * Gets an article by the specified article id.
+     * Gets an article by the specified article id with any pending write-behind view delta overlaid once.
      *
      * @param id the specified article id
      * @return article, returns {@code null} if not found
@@ -123,11 +128,30 @@ public class ArticleCache {
             return null;
         }
         final JSONObject article = idCache.get(id);
-        return null == article ? null : Solos.clone(article);
+        if (null == article) {
+            return null;
+        }
+        final JSONObject copy = JsonCloneHelper.deepCloneObject(article);
+        overlayPendingViewDelta(id, copy);
+        return copy;
     }
 
     /**
-     * Gets an article by the specified article permalink.
+     * Gets the persisted DB baseline snapshot of an article without overlaying un-flushed view deltas.
+     *
+     * @param id the specified article id
+     * @return persisted article clone, or {@code null} if not cached
+     */
+    public synchronized JSONObject getPersistedArticle(final String id) {
+        if (null == id) {
+            return null;
+        }
+        final JSONObject article = idCache.get(id);
+        return null == article ? null : JsonCloneHelper.deepCloneObject(article);
+    }
+
+    /**
+     * Gets an article by the specified article permalink with any pending write-behind view delta overlaid once.
      *
      * @param permalink the specified article permalink
      * @return article, returns {@code null} if not found
@@ -145,21 +169,53 @@ public class ArticleCache {
             permalinkIndex.remove(permalink, id);
             return null;
         }
-        return Solos.clone(article);
+        final JSONObject copy = JsonCloneHelper.deepCloneObject(article);
+        overlayPendingViewDelta(id, copy);
+        return copy;
+    }
+
+    private static void overlayPendingViewDelta(final String id, final JSONObject copy) {
+        if (null == copy || null == id || id.isEmpty()) {
+            return;
+        }
+        final long delta = ArticleMgmtService.peekPendingViewDelta(id);
+        if (delta > 0L) {
+            final int updated = (int) Math.min(
+                    Integer.MAX_VALUE,
+                    Math.max(0L, copy.optLong(Article.ARTICLE_VIEW_COUNT, 0L) + delta));
+            copy.put(Article.ARTICLE_VIEW_COUNT, updated);
+        }
     }
 
     /**
-     * Adds or updates the specified article.
+     * Adds or updates the specified persisted article snapshot.
      *
-     * @param article the specified article
+     * @param article the specified article (containing persisted {@code articleViewCount})
      */
     public synchronized void putArticle(final JSONObject article) {
         if (null == article) {
             return;
         }
         final String id = article.optString(Keys.OBJECT_ID);
+        if (id.isEmpty()) {
+            return;
+        }
         final String permalink = article.optString(Article.ARTICLE_PERMALINK);
-        final JSONObject previous = idCache.put(id, Solos.clone(article));
+        if (!permalink.isEmpty()) {
+            missingPermalinks.remove(permalink);
+        }
+        final JSONObject cloned = JsonCloneHelper.deepCloneObject(article);
+        final int weight = JsonCloneHelper.estimateChars(cloned);
+        if (weight > MAX_TOTAL_CHARS) {
+            evictSingleById(id);
+            return;
+        }
+        final JSONObject previous = idCache.put(id, cloned);
+        final Integer prevWeight = idWeights.put(id, weight);
+        if (null != prevWeight) {
+            totalChars = Math.max(0L, totalChars - prevWeight);
+        }
+        totalChars += weight;
         if (null != previous) {
             final String oldPermalink = previous.optString(Article.ARTICLE_PERMALINK);
             if (!oldPermalink.equals(permalink)) {
@@ -169,7 +225,38 @@ public class ArticleCache {
         }
         if (!permalink.isEmpty()) {
             permalinkIndex.put(permalink, id);
-            missingPermalinks.remove(permalink);
+        }
+        evictToBounds();
+    }
+
+    private void evictSingleById(final String id) {
+        final JSONObject removed = idCache.remove(id);
+        final Integer removedWeight = idWeights.remove(id);
+        if (null != removedWeight) {
+            totalChars = Math.max(0L, totalChars - removedWeight);
+        }
+        if (null != removed) {
+            final String oldPermalink = removed.optString(Article.ARTICLE_PERMALINK);
+            permalinkIndex.remove(oldPermalink, id);
+            if (!oldPermalink.isEmpty()) {
+                missingPermalinks.remove(oldPermalink);
+            }
+        }
+    }
+
+    private void evictToBounds() {
+        final Iterator<Map.Entry<String, JSONObject>> it = idCache.entrySet().iterator();
+        while (it.hasNext()
+                && (idCache.size() > MAX_ENTRIES || (totalChars > MAX_TOTAL_CHARS && idCache.size() > 1))) {
+            final Map.Entry<String, JSONObject> eldest = it.next();
+            final String evictedId = eldest.getKey();
+            final String evictedPermalink = eldest.getValue().optString(Article.ARTICLE_PERMALINK);
+            permalinkIndex.remove(evictedPermalink, evictedId);
+            final Integer w = idWeights.remove(evictedId);
+            if (null != w) {
+                totalChars = Math.max(0L, totalChars - w);
+            }
+            it.remove();
         }
     }
 
@@ -183,6 +270,10 @@ public class ArticleCache {
             return;
         }
         final JSONObject article = idCache.remove(id);
+        final Integer removedWeight = idWeights.remove(id);
+        if (null != removedWeight) {
+            totalChars = Math.max(0L, totalChars - removedWeight);
+        }
         if (null == article) {
             missingPermalinks.clear();
             return;
@@ -202,17 +293,46 @@ public class ArticleCache {
     }
 
     /**
-     * Increments cached article view count in place when present.
+     * Returns current estimated total UTF-16 character weight of cached articles.
      */
-    public synchronized void incrementViewCountInPlace(final String id, final long delta) {
+    public synchronized long getTotalChars() {
+        return totalChars;
+    }
+
+    /**
+     * Advances the persisted {@code articleViewCount} baseline in place when write-behind deltas flush to DB.
+     */
+    public synchronized void advancePersistedViewCount(final String id, final long delta) {
         if (null == id || 0L == delta) {
             return;
         }
         final JSONObject cached = idCache.get(id);
         if (null != cached) {
-            final int updated = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, cached.optLong(Article.ARTICLE_VIEW_COUNT) + delta));
+            final int updated = (int) Math.min(
+                    Integer.MAX_VALUE,
+                    Math.max(0L, cached.optLong(Article.ARTICLE_VIEW_COUNT, 0L) + delta));
             cached.put(Article.ARTICLE_VIEW_COUNT, updated);
         }
+    }
+
+    /**
+     * Sets the exact persisted {@code articleViewCount} baseline on a cached entry when present.
+     */
+    public synchronized void setPersistedViewCount(final String id, final int persistedCount) {
+        if (null == id) {
+            return;
+        }
+        final JSONObject cached = idCache.get(id);
+        if (null != cached) {
+            cached.put(Article.ARTICLE_VIEW_COUNT, Math.max(0, persistedCount));
+        }
+    }
+
+    /**
+     * Increments cached persisted article view count in place when present.
+     */
+    public synchronized void incrementViewCountInPlace(final String id, final long delta) {
+        advancePersistedViewCount(id, delta);
     }
 
     /**
@@ -220,6 +340,8 @@ public class ArticleCache {
      */
     public synchronized void clear() {
         idCache.clear();
+        idWeights.clear();
+        totalChars = 0L;
         permalinkIndex.clear();
         missingPermalinks.clear();
     }

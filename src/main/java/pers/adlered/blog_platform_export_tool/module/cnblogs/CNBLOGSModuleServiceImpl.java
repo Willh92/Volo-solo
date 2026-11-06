@@ -17,16 +17,21 @@
  */
 package pers.adlered.blog_platform_export_tool.module.cnblogs;
 
+import com.rometools.rome.feed.synd.SyndContent;
 import com.rometools.rome.feed.synd.SyndEntry;
 import com.rometools.rome.feed.synd.SyndFeed;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
+import org.apache.logging.log4j.Level;
+import org.b3log.solo.logging.Logger;
 import pers.adlered.blog_platform_export_tool.module.ModuleService;
 import pers.adlered.blog_platform_export_tool.module.TranslateResult;
+import pers.adlered.blog_platform_export_tool.util.Decompress;
 import pers.adlered.blog_platform_export_tool.util.XML;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -38,27 +43,50 @@ import java.util.List;
  **/
 public class CNBLOGSModuleServiceImpl implements ModuleService {
 
+    private static final Logger LOGGER = Logger.getLogger(CNBLOGSModuleServiceImpl.class);
+
     @Override
     public List<TranslateResult> analyze() {
-        List<TranslateResult> list = new ArrayList<>();
-        List<String> fileList = XML.getAvailableFiles();
-        for (String i : fileList) {
-            File file = new File(i);
-            try (XmlReader xmlReader = new XmlReader(file)) {
-                SyndFeedInput syndFeedInput = new SyndFeedInput();
-                SyndFeed syndFeed = syndFeedInput.build(xmlReader);
-                List<SyndEntry> entries = syndFeed.getEntries();
-                for (SyndEntry j : entries) {
-                    TranslateResult translateResult = new TranslateResult();
-                    translateResult.setAuthor(j.getAuthor());
-                    translateResult.setArticleContent(j.getDescription().getValue());
-                    translateResult.setLink(j.getLink());
-                    translateResult.setTitle(j.getTitle().trim());
-                    translateResult.setDate(j.getPublishedDate());
+        try {
+            return analyze(Decompress.currentPath());
+        } finally {
+            Decompress.clearCurrentPath();
+        }
+    }
+
+    public List<TranslateResult> analyze(final String xmlFolder) {
+        final List<TranslateResult> list = new ArrayList<>();
+        final List<String> fileList = XML.getAvailableFiles(xmlFolder);
+        for (final String path : fileList) {
+            final File file = new File(path);
+            try (final XmlReader xmlReader = new XmlReader(file)) {
+                final SyndFeedInput syndFeedInput = new SyndFeedInput();
+                syndFeedInput.setAllowDoctypes(false);
+                final SyndFeed syndFeed = syndFeedInput.build(xmlReader);
+                final List<SyndEntry> entries = syndFeed.getEntries();
+                if (entries == null) {
+                    continue;
+                }
+                for (final SyndEntry j : entries) {
+                    if (j == null) {
+                        continue;
+                    }
+                    final TranslateResult translateResult = new TranslateResult();
+                    translateResult.setAuthor(j.getAuthor() == null ? "" : j.getAuthor());
+                    final SyndContent desc = j.getDescription();
+                    final String body = (desc != null && desc.getValue() != null) ? desc.getValue() : "";
+                    translateResult.setArticleContent(body);
+                    translateResult.setLink(j.getLink() == null ? "" : j.getLink());
+                    final String rawTitle = j.getTitle();
+                    translateResult.setTitle(rawTitle != null && !rawTitle.isBlank() ? rawTitle.trim() : "Untitled");
+                    final Date pubDate = j.getPublishedDate() != null
+                            ? j.getPublishedDate()
+                            : (j.getUpdatedDate() != null ? j.getUpdatedDate() : new Date());
+                    translateResult.setDate(pubDate);
                     list.add(translateResult);
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
+            } catch (final Exception e) {
+                LOGGER.log(Level.WARN, "Failed to parse CNBlogs XML file [" + file.getName() + "]", e);
             }
         }
         return list;

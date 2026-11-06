@@ -223,30 +223,39 @@ $(document).ready(function () {
     });
 });
 
-// gallery
-document.addEventListener('DOMContentLoaded', function () {
-    if (typeof ($.fn.lightGallery) === 'function') {
-        $('.article').lightGallery({ selector: '.gallery-item' });
-    }
-    if (typeof ($.fn.justifiedGallery) === 'function') {
-        if ($('.justified-gallery > p > .gallery-item').length) {
-            $('.justified-gallery > p > .gallery-item').unwrap();
-        }
-        $('.justified-gallery').justifiedGallery();
-    }
-});
-
 // main
 (function ($) {
     $('.article img:not(".not-gallery-item")').each(function () {
         // wrap images with link and add caption if possible
         if ($(this).parent('a').length === 0 && !$(this).closest('.volo-bookshelf, .volo-lock-card').length) {
-            $(this).wrap('<a class="gallery-item" href="' + $(this).attr('src') + '"></a>');
-            if (this.alt) {
-                $(this).after('<div class="has-text-centered is-size-6 has-text-grey caption">' + this.alt + '</div>');
+            var src = $(this).attr('src') || '';
+            if (src && !/^\s*javascript:/i.test(src)) {
+                var $link = $('<a></a>').addClass('gallery-item').attr('href', src);
+                $(this).wrap($link);
+                if (this.alt) {
+                    $(this).after($('<div></div>').addClass('has-text-centered is-size-6 has-text-grey caption').text(this.alt));
+                }
             }
         }
     });
+
+    // gallery
+    function initGallery() {
+        if (typeof ($.fn.lightGallery) === 'function') {
+            $('.article').lightGallery({ selector: '.gallery-item' });
+        }
+        if (typeof ($.fn.justifiedGallery) === 'function') {
+            if ($('.justified-gallery > p > .gallery-item').length) {
+                $('.justified-gallery > p > .gallery-item').unwrap();
+            }
+            $('.justified-gallery').justifiedGallery();
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initGallery, { once: true });
+    } else {
+        initGallery();
+    }
 
     if (typeof (moment) === 'function') {
         $('.article-meta time').each(function () {
@@ -270,11 +279,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     adjustNavbar();
     $(window).on('resize.boloFantasticNav', adjustNavbar);
-    if (window.BoloNavigation) {
-        window.BoloNavigation.onLeave(function () {
-            $(window).off('.boloFantasticNav');
-        });
-    }
+    var clipboardInstance = null;
 
     $('figure.highlight table').wrap('<div class="highlight-body">');
     if (typeof (IcarusThemeSettings) !== 'undefined' &&
@@ -291,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     $(this).prepend('<figcaption>' + button + '</figcaption>');
                 }
             });
-            new ClipboardJS('.highlight .copy');
+            clipboardInstance = new ClipboardJS('.highlight .copy');
         }
         var fold = IcarusThemeSettings.article.highlight.fold;
         if (fold.trim()) {
@@ -339,6 +344,25 @@ document.addEventListener('DOMContentLoaded', function () {
         $mask.on('click', toggleToc);
         $('.navbar-main .catalogue').on('click', toggleToc);
     }
+
+    if (window.BoloNavigation) {
+        window.BoloNavigation.onLeave(function () {
+            $(window).off('.boloFantasticNav');
+            if (clipboardInstance && typeof clipboardInstance.destroy === 'function') {
+                clipboardInstance.destroy();
+                clipboardInstance = null;
+            }
+            $('.article').each(function () {
+                var lgData = $(this).data('lightGallery');
+                if (lgData && typeof lgData.destroy === 'function') {
+                    lgData.destroy(true);
+                }
+            });
+            if (typeof $.fn.justifiedGallery === 'function') {
+                try { $('.justified-gallery').justifiedGallery('destroy'); } catch (e) {}
+            }
+        });
+    }
 })(jQuery);
 
 // widget_pin
@@ -351,4 +375,11 @@ if (typeof Swiper === 'function' && document.querySelector('.blog-slider')) {
             clickable: true,
         }
     });
+    if (window.BoloNavigation) {
+        window.BoloNavigation.onLeave(function () {
+            if (swiper && typeof swiper.destroy === 'function') {
+                swiper.destroy(true, true);
+            }
+        });
+    }
 }

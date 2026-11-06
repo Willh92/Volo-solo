@@ -36,25 +36,21 @@ admin.pluginList = {
      */
     init: function(page) {
         this.tablePagination.buildTable([{
-                style: "padding-left: 12px;",
                 text: Label.pluginNameLabel,
                 index: "name",
-                width: 230
+                width: 210
             }, {
-                style: "padding-left: 12px;",
                 text: Label.statusLabel,
                 index: "status",
-                width: 100
+                width: 96
             }, {
-                style: "padding-left: 12px;",
                 text: Label.authorLabel,
                 index: "author",
-                minWidth: 240
+                minWidth: 220
             }, {
-                style: "padding-left: 12px;",
                 text: Label.versionLabel,
                 index: "version",
-                width: 80
+                width: 104
             }]);
 
         this.tablePagination.initPagination();

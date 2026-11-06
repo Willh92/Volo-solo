@@ -44,7 +44,6 @@
         charset="utf-8"></script>
 
 <button type="button" class="back-to-top" id="JELON__backToTop" title="返回顶部" aria-label="返回顶部"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></button>
-</body>
 
 <#include "../../common-template/label.ftl">
 

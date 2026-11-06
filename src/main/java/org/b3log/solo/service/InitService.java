@@ -193,7 +193,8 @@ public class InitService {
             LOGGER.log(Level.WARN, "No table to create: " + modelNames);
             return;
         }
-        final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
+        final String rawPrefix = Latkes.getLocalProperty("jdbc.tablePrefix");
+        final String tablePrefix = (rawPrefix == null || rawPrefix.isBlank()) ? "" : rawPrefix.trim() + "_";
         final List<String> tableNames = modelNames.stream()
                 .map(modelName -> tablePrefix + modelName)
                 .collect(Collectors.toList());
@@ -215,6 +216,9 @@ public class InitService {
             }
             if (ret.isEmpty()) {
                 LOGGER.log(Level.WARN, "No table to create: " + tableNames);
+                if (transaction.isActive()) {
+                    transaction.rollback();
+                }
                 return;
             }
             for (final CreateTableResult createTableResult : ret) {
@@ -240,7 +244,8 @@ public class InitService {
     public void initTables() {
         boolean tablesAlreadyExist = false;
         try {
-            final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
+            final String rawPrefix = Latkes.getLocalProperty("jdbc.tablePrefix");
+            final String tablePrefix = (rawPrefix == null || rawPrefix.isBlank()) ? "" : rawPrefix.trim() + "_";
             final boolean userTableExist = JdbcRepositories.existTable(tablePrefix + User.USER);
             final boolean optionTableExist = JdbcRepositories.existTable(tablePrefix + Option.OPTION);
             if (userTableExist && optionTableExist) {
@@ -427,7 +432,8 @@ public class InitService {
             archiveDate(article);
             articleRepository.add(article);
         } catch (final RepositoryException e) {
-            System.out.println("该文章导入失败，请手动导入！");
+            LOGGER.log(Level.WARN, "Imports article failed", e);
+            throw e;
         }
     }
 

@@ -20,8 +20,10 @@ package org.b3log.solo.bolo.prop;
 import org.b3log.solo.logging.Logger;
 import org.b3log.latke.ioc.Singleton;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 /**
  * <h3>bolo-solo</h3>
@@ -37,6 +39,9 @@ public class CommentMailService {
      */
     private static final Logger LOGGER = Logger.getLogger(CommentMailService.class);
 
+    private static final DateTimeFormatter MAIL_DATETIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
+
     public static void remindCommentedGuy(String originalId, String URL, String whoCommentHim, String blogTitle) {
         if (!MailService.isConfigured()) return;
         String emailAdd = MailService.getEmailAddressByCommentId(originalId);
@@ -45,7 +50,11 @@ public class CommentMailService {
         whoCommentHim = org.apache.commons.text.StringEscapeUtils.escapeHtml4(whoCommentHim);
         blogTitle = org.apache.commons.text.StringEscapeUtils.escapeHtml4(blogTitle);
 
-        String html = "<div style=\"background-color:#ECECEC; padding: 35px;\"><table cellpadding=\"0\" align=\"center\"style=\"width: 600px; margin: 0px auto; text-align: left; position: relative; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; font-size: 14px; font-family:微软雅黑, 黑体; line-height: 1.5; box-shadow: rgb(153, 153, 153) 0px 0px 5px; border-collapse: collapse; background-position: initial initial; background-repeat: initial initial;background:#fff;\"><tbody><tr><th valign=\"middle\"style=\"height: 25px; line-height: 25px; padding: 15px 35px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #42a3d3; background-color: #49bcff; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 0px; border-bottom-left-radius: 0px;\"><font face=\"微软雅黑\" size=\"5\" style=\"color: rgb(255, 255, 255); \">" + blogTitle + " - 新评论提醒</font></th></tr><tr><td><div style=\"padding:25px 35px 40px; background-color:#fff;\"><h2 style=\"margin: 5px 0px; \"><font color=\"#333333\" style=\"line-height: 20px; \"><font style=\"line-height: 22px; \" size=\"4\">你好，" + username + "</font></font></h2><p>你在 " + blogTitle + " 博客中的评论被 " + whoCommentHim + " 回复了！<br>请 <b><a href=\"" + URL + "\">轻点这里</a></b> 跳转至评论。<br><p align=\"right\">" + blogTitle + "</p><p align=\"right\">" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p><div style=\"width:700px;margin:0 auto;\"><div style=\"padding:10px 10px 0;border-top:1px solid #ccc;color:#747474;margin-bottom:20px;line-height:1.3em;font-size:12px;\"><p>此为系统邮件，请勿回复<br></p><p>©" + new SimpleDateFormat("yyyy").format(new Date()) + " <a href='https://github.com/Willh92/Volo-solo'>由 Volo 驱动</a></p></div></div></div></td></tr></tbody></table></div>";
+        final ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
+        final String formattedNow = MAIL_DATETIME_FORMATTER.format(now);
+        final String currentYear = Integer.toString(now.getYear());
+
+        String html = "<div style=\"background-color:#ECECEC; padding: 35px;\"><table cellpadding=\"0\" align=\"center\"style=\"width: 600px; margin: 0px auto; text-align: left; position: relative; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; font-size: 14px; font-family:微软雅黑, 黑体; line-height: 1.5; box-shadow: rgb(153, 153, 153) 0px 0px 5px; border-collapse: collapse; background-position: initial initial; background-repeat: initial initial;background:#fff;\"><tbody><tr><th valign=\"middle\"style=\"height: 25px; line-height: 25px; padding: 15px 35px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #42a3d3; background-color: #49bcff; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 0px; border-bottom-left-radius: 0px;\"><font face=\"微软雅黑\" size=\"5\" style=\"color: rgb(255, 255, 255); \">" + blogTitle + " - 新评论提醒</font></th></tr><tr><td><div style=\"padding:25px 35px 40px; background-color:#fff;\"><h2 style=\"margin: 5px 0px; \"><font color=\"#333333\" style=\"line-height: 20px; \"><font style=\"line-height: 22px; \" size=\"4\">你好，" + username + "</font></font></h2><p>你在 " + blogTitle + " 博客中的评论被 " + whoCommentHim + " 回复了！<br>请 <b><a href=\"" + URL + "\">轻点这里</a></b> 跳转至评论。<br><p align=\"right\">" + blogTitle + "</p><p align=\"right\">" + formattedNow + "</p><div style=\"width:700px;margin:0 auto;\"><div style=\"padding:10px 10px 0;border-top:1px solid #ccc;color:#747474;margin-bottom:20px;line-height:1.3em;font-size:12px;\"><p>此为系统邮件，请勿回复<br></p><p>©" + currentYear + " <a href='https://github.com/Willh92/Volo-solo'>由 Volo 驱动</a></p></div></div></div></td></tr></tbody></table></div>";
 
         MailProcessor.localSendMailMethod(
                 blogTitle + "→有人回复了你",
@@ -61,7 +70,12 @@ public class CommentMailService {
         user = org.apache.commons.text.StringEscapeUtils.escapeHtml4(user);
         comment = org.apache.commons.text.StringEscapeUtils.escapeHtml4(comment);
         blogTitle = org.apache.commons.text.StringEscapeUtils.escapeHtml4(blogTitle);
-        String html = "<div style=\"background-color:#ECECEC; padding: 35px;\"><table cellpadding=\"0\" align=\"center\"style=\"width: 600px; margin: 0px auto; text-align: left; position: relative; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; font-size: 14px; font-family:微软雅黑, 黑体; line-height: 1.5; box-shadow: rgb(153, 153, 153) 0px 0px 5px; border-collapse: collapse; background-position: initial initial; background-repeat: initial initial;background:#fff;\"><tbody><tr><th valign=\"middle\"style=\"height: 25px; line-height: 25px; padding: 15px 35px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #42a3d3; background-color: #49bcff; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 0px; border-bottom-left-radius: 0px;\"><font face=\"微软雅黑\" size=\"5\" style=\"color: rgb(255, 255, 255); \">您的博客新动态 - " + blogTitle + "</font></th></tr><tr><td><div style=\"padding:25px 35px 40px; background-color:#fff;\"><h2 style=\"margin: 5px 0px; \"><font color=\"#333333\" style=\"line-height: 20px; \"><font style=\"line-height: 22px; \" size=\"4\">您好，我是你的博客助理，Volo。</font></font></h2><br><p>您的 " + blogTitle + " 博客被用户 " + user + " 评论了！<br>内容：" + comment + "<br>请 <b><a href=\"" + blogSite + "\">轻点这里</a></b> 跳转至评论。<br><p align=\"right\">" + blogTitle + "</p><p align=\"right\">" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "</p><div style=\"width:700px;margin:0 auto;\"><div style=\"padding:10px 10px 0;border-top:1px solid #ccc;color:#747474;margin-bottom:20px;line-height:1.3em;font-size:12px;\"><p>此为系统邮件，请勿回复<br></p><p>©" + new SimpleDateFormat("yyyy").format(new Date()) + " <a href='https://github.com/Willh92/Volo-solo'>由 Volo 驱动</a></p></div></div></div></td></tr></tbody></table></div>";
+
+        final ZonedDateTime now = ZonedDateTime.now(ZoneId.systemDefault());
+        final String formattedNow = MAIL_DATETIME_FORMATTER.format(now);
+        final String currentYear = Integer.toString(now.getYear());
+
+        String html = "<div style=\"background-color:#ECECEC; padding: 35px;\"><table cellpadding=\"0\" align=\"center\"style=\"width: 600px; margin: 0px auto; text-align: left; position: relative; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; font-size: 14px; font-family:微软雅黑, 黑体; line-height: 1.5; box-shadow: rgb(153, 153, 153) 0px 0px 5px; border-collapse: collapse; background-position: initial initial; background-repeat: initial initial;background:#fff;\"><tbody><tr><th valign=\"middle\"style=\"height: 25px; line-height: 25px; padding: 15px 35px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #42a3d3; background-color: #49bcff; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 0px; border-bottom-left-radius: 0px;\"><font face=\"微软雅黑\" size=\"5\" style=\"color: rgb(255, 255, 255); \">您的博客新动态 - " + blogTitle + "</font></th></tr><tr><td><div style=\"padding:25px 35px 40px; background-color:#fff;\"><h2 style=\"margin: 5px 0px; \"><font color=\"#333333\" style=\"line-height: 20px; \"><font style=\"line-height: 22px; \" size=\"4\">您好，我是你的博客助理，Volo。</font></font></h2><br><p>您的 " + blogTitle + " 博客被用户 " + user + " 评论了！<br>内容：" + comment + "<br>请 <b><a href=\"" + blogSite + "\">轻点这里</a></b> 跳转至评论。<br><p align=\"right\">" + blogTitle + "</p><p align=\"right\">" + formattedNow + "</p><div style=\"width:700px;margin:0 auto;\"><div style=\"padding:10px 10px 0;border-top:1px solid #ccc;color:#747474;margin-bottom:20px;line-height:1.3em;font-size:12px;\"><p>此为系统邮件，请勿回复<br></p><p>©" + currentYear + " <a href='https://github.com/Willh92/Volo-solo'>由 Volo 驱动</a></p></div></div></div></td></tr></tbody></table></div>";
 
         MailProcessor.localSendMailMethod(
                 "你的 Volo 博客有新动态",

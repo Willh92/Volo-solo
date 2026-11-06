@@ -31,8 +31,8 @@ import org.b3log.latke.repository.*;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.util.Ids;
 import org.b3log.solo.cache.ArticleCache;
+import org.b3log.solo.cache.CommentCache;
 import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.event.B3ArticleSender;
 import org.b3log.solo.event.EventTypes;
@@ -41,6 +41,7 @@ import org.b3log.solo.model.*;
 import org.b3log.solo.repository.*;
 import org.b3log.solo.util.GitHubs;
 import org.b3log.solo.util.GitHubStats;
+import org.b3log.solo.util.MonotonicIds;
 import org.b3log.solo.util.PluginUtil;
 import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
@@ -50,9 +51,12 @@ import org.json.JSONObject;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -235,9 +239,20 @@ public class ArticleMgmtService {
     private ArticleCache articleCache;
 
     @Inject
+    private CommentCache commentCache;
+
+    @Inject
     private PublicViewCache publicViewCache;
 
+    private static final int MAX_DELETED_ARTICLE_IDS = 1024;
     private final ConcurrentHashMap<String, LongAdder> pendingArticleViewDeltas = new ConcurrentHashMap<>();
+    private final Set<String> deletedArticleIds = Collections.synchronizedSet(
+            Collections.newSetFromMap(new LinkedHashMap<>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, Boolean> eldest) {
+                    return size() > MAX_DELETED_ARTICLE_IDS;
+                }
+            }));
     private final Object viewFlushLock = new Object();
 
     public ArticleMgmtService() {
@@ -262,8 +277,11 @@ public class ArticleMgmtService {
         if (null != backlinkService) {
             backlinkService.invalidate();
         }
+        if (null != commentCache) {
+            commentCache.clear();
+        }
         if (null != publicViewCache) {
-            publicViewCache.invalidateAll();
+            publicViewCache.invalidateAllArticles();
         }
     }
 
@@ -402,7 +420,7 @@ public class ArticleMgmtService {
                 final long drainedDelta = drainPendingViewDelta(articleId);
                 final Transaction transaction = articleRepository.beginTransaction();
                 try {
-                    final JSONObject baseArticle = articleRepository.get(articleId);
+                    final JSONObject baseArticle = articleRepository.getPersisted(articleId);
                     if (null != baseArticle) {
                         article = baseArticle;
                     }
@@ -412,7 +430,8 @@ public class ArticleMgmtService {
                     article.put(Article.ARTICLE_CONTENT, content);
                     article.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(content));
                     article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(content));
-                    article.put(Article.ARTICLE_UPDATED, System.currentTimeMillis());
+                    article.put(Article.ARTICLE_UPDATED,
+                            Math.max(System.currentTimeMillis(), article.optLong(Article.ARTICLE_UPDATED, 0L) + 1L));
 
                     articleRepository.update(articleId, article);
                     transaction.commit();
@@ -433,6 +452,7 @@ public class ArticleMgmtService {
                 JSONObject page = pageRepository.getByPermalink(permalink);
                 if (null == page) {
                     page = new JSONObject();
+                    page.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
                     final int maxOrder = pageRepository.getMaxOrder();
                     page.put(Page.PAGE_ORDER, maxOrder + 1);
                     page.put(Page.PAGE_TITLE, "我的开源");
@@ -503,13 +523,13 @@ public class ArticleMgmtService {
      * @throws RepositoryException repository exception
      */
     public void incArticleCommentCount(final String articleId) throws JSONException, RepositoryException {
-        final JSONObject article = articleRepository.get(articleId);
+        final JSONObject article = articleRepository.getPersisted(articleId);
         final JSONObject newArticle = new JSONObject(article, JSONObject.getNames(article));
         final int commentCnt = article.getInt(Article.ARTICLE_COMMENT_COUNT);
         newArticle.put(Article.ARTICLE_COMMENT_COUNT, commentCnt + 1);
         articleRepository.update(articleId, newArticle, ARTICLE_COMMENT_COUNT);
         if (null != publicViewCache) {
-            publicViewCache.invalidateCommon();
+            publicViewCache.invalidateArticle(articleId);
         }
     }
 
@@ -523,9 +543,10 @@ public class ArticleMgmtService {
         final Transaction transaction = articleRepository.beginTransaction();
 
         try {
-            final JSONObject article = articleRepository.get(articleId);
+            final JSONObject article = articleRepository.getPersisted(articleId);
             article.put(ARTICLE_STATUS, ARTICLE_STATUS_C_DRAFT);
             articleRepository.update(articleId, article, ARTICLE_STATUS);
+            unArchiveDate(articleId);
 
             transaction.commit();
             invalidateContentCaches();
@@ -555,7 +576,7 @@ public class ArticleMgmtService {
         final Transaction transaction = articleRepository.beginTransaction();
 
         try {
-            final JSONObject topArticle = articleRepository.get(articleId);
+            final JSONObject topArticle = articleRepository.getPersisted(articleId);
             topArticle.put(ARTICLE_PUT_TOP, top);
             articleRepository.update(articleId, topArticle, ARTICLE_PUT_TOP);
 
@@ -612,7 +633,7 @@ public class ArticleMgmtService {
             articleId = article.getString(Keys.OBJECT_ID);
             drainedDelta = drainPendingViewDelta(articleId);
             // Set permalink
-            final JSONObject oldArticle = articleRepository.get(articleId);
+            final JSONObject oldArticle = articleRepository.getPersisted(articleId);
             final String permalink = getPermalinkForUpdateArticle(oldArticle, article, oldArticle.optLong(ARTICLE_CREATED));
             article.put(ARTICLE_PERMALINK, permalink);
 
@@ -625,7 +646,6 @@ public class ArticleMgmtService {
                         Integer.MAX_VALUE,
                         Math.max(0L, article.optLong(ARTICLE_VIEW_COUNT, 0L) + drainedDelta)));
             }
-            archiveDate(article);
 
             if (!oldArticle.getString(Article.ARTICLE_PERMALINK).equals(permalink)) { // The permalink has been updated
                 // Updates related comments' links
@@ -634,15 +654,26 @@ public class ArticleMgmtService {
 
             // Fill auto properties
             // Set date
-            article.put(ARTICLE_UPDATED, oldArticle.getLong(ARTICLE_UPDATED));
             final long now = System.currentTimeMillis();
+            final long oldUpdated = oldArticle.optLong(ARTICLE_UPDATED, 0L);
+            final long monotonicUpdated = Math.max(now, oldUpdated + 1L);
 
             // The article to update has no sign
             if (!article.has(Article.ARTICLE_SIGN_ID)) {
                 article.put(Article.ARTICLE_SIGN_ID, "0");
             }
 
-            article.put(ARTICLE_UPDATED, now);
+            if (!article.has(ARTICLE_UPDATED) || article.isNull(ARTICLE_UPDATED) || article.optString(ARTICLE_UPDATED).isBlank()) {
+                article.put(ARTICLE_UPDATED, monotonicUpdated);
+            } else {
+                try {
+                    final long explicitUpdated = article.getLong(ARTICLE_UPDATED);
+                    article.put(ARTICLE_UPDATED,
+                            explicitUpdated == oldUpdated || explicitUpdated <= 0L ? monotonicUpdated : explicitUpdated);
+                } catch (final JSONException invalidUpdated) {
+                    article.put(ARTICLE_UPDATED, monotonicUpdated);
+                }
+            }
 
             final String articleImg1URL = getArticleImg1URL(article);
             article.put(ARTICLE_IMG1_URL, articleImg1URL);
@@ -659,28 +690,38 @@ public class ArticleMgmtService {
             article.remove("_revisionNote");
 
             normalizeVoloArticleFields(oldArticle, article, now);
-            archiveDate(article);
 
             final boolean postToCommunity = article.optBoolean(Common.POST_TO_COMMUNITY);
             article.remove(Common.POST_TO_COMMUNITY);
 
             // Bolo category
-            try {
-                String category = String.valueOf(article.get(CATEGORY_REF));
-                final JSONObject categoryTag = new JSONObject();
-                categoryTag.put(Category.CATEGORY + "_" + Keys.OBJECT_ID, category);
-                categoryTag.put(Tag.TAG + "_" + Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
+            final boolean hasCategoryRef = article.has(CATEGORY_REF);
+            final String category = hasCategoryRef && !article.isNull(CATEGORY_REF)
+                    ? StringUtils.trimToEmpty(article.optString(CATEGORY_REF, ""))
+                    : "";
+            article.remove(CATEGORY_REF);
+            if (hasCategoryRef) {
                 try {
-                    categoryTagRepository.removeByTagId(article.optString(Keys.OBJECT_ID));
-                } catch (JSONException e) {
-                    e.printStackTrace();
+                    if (null != categoryTagRepository) {
+                        categoryTagRepository.removeByTagId(articleId);
+                    }
+                    if (StringUtils.isNotBlank(category) && !"null".equals(category) && null != categoryMgmtService) {
+                        final JSONObject categoryTag = new JSONObject();
+                        categoryTag.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
+                        categoryTag.put(Category.CATEGORY + "_" + Keys.OBJECT_ID, category);
+                        categoryTag.put(Tag.TAG + "_" + Keys.OBJECT_ID, articleId);
+                        categoryMgmtService.addCategoryTag(categoryTag);
+                    }
+                } catch (final Exception ignored) {
                 }
-                categoryMgmtService.addCategoryTag(categoryTag);
-                article.remove(CATEGORY_REF);
-            } catch (Exception ignored) {
             }
 
             articleRepository.update(articleId, article);
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
+                unArchiveDate(articleId);
+            } else {
+                archiveDate(article);
+            }
             article.put(Common.POST_TO_COMMUNITY, postToCommunity);
 
             final boolean publishNewArticle = Article.ARTICLE_STATUS_C_DRAFT == oldArticle.optInt(ARTICLE_STATUS) && Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(ARTICLE_STATUS);
@@ -760,8 +801,11 @@ public class ArticleMgmtService {
             final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
             String ret = article.optString(Keys.OBJECT_ID);
             if (StringUtils.isBlank(ret)) {
-                ret = Ids.genTimeMillisId();
+                ret = MonotonicIds.nextMillisId();
                 article.put(Keys.OBJECT_ID, ret);
+            }
+            synchronized (viewFlushLock) {
+                deletedArticleIds.remove(ret);
             }
 
             String tagsString = article.optString(Article.ARTICLE_TAGS_REF);
@@ -782,8 +826,6 @@ public class ArticleMgmtService {
             article.put(Article.ARTICLE_PUT_TOP, false);
 
             addTagArticleRelation(tags, article);
-
-            archiveDate(article);
 
             final String permalink = getPermalinkForAddArticle(article);
             article.put(Article.ARTICLE_PERMALINK, permalink);
@@ -808,27 +850,32 @@ public class ArticleMgmtService {
             article.remove("_revisionNote");
 
             normalizeVoloArticleFields(null, article, System.currentTimeMillis());
-            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
-                unArchiveDate(ret);
-            } else {
-                archiveDate(article);
-            }
 
             final boolean postToCommunity = article.optBoolean(Common.POST_TO_COMMUNITY);
             article.remove(Common.POST_TO_COMMUNITY);
 
             // Bolo category
-            try {
-                String category = String.valueOf(article.get(CATEGORY_REF));
-                final JSONObject categoryTag = new JSONObject();
-                categoryTag.put(Category.CATEGORY + "_" + Keys.OBJECT_ID, category);
-                categoryTag.put(Tag.TAG + "_" + Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
-                categoryMgmtService.addCategoryTag(categoryTag);
-                article.remove(CATEGORY_REF);
-            } catch (Exception ignored) {
+            final String category = article.has(CATEGORY_REF) && !article.isNull(CATEGORY_REF)
+                    ? StringUtils.trimToEmpty(article.optString(CATEGORY_REF, ""))
+                    : "";
+            article.remove(CATEGORY_REF);
+            if (StringUtils.isNotBlank(category) && !"null".equals(category) && null != categoryMgmtService) {
+                try {
+                    final JSONObject categoryTag = new JSONObject();
+                    categoryTag.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
+                    categoryTag.put(Category.CATEGORY + "_" + Keys.OBJECT_ID, category);
+                    categoryTag.put(Tag.TAG + "_" + Keys.OBJECT_ID, ret);
+                    categoryMgmtService.addCategoryTag(categoryTag);
+                } catch (final Exception ignored) {
+                }
             }
 
             articleRepository.add(article);
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
+                unArchiveDate(ret);
+            } else {
+                archiveDate(article);
+            }
             transaction.commit();
 
             if (null != articleRevisionService) {
@@ -871,11 +918,22 @@ public class ArticleMgmtService {
         try {
             unArchiveDate(articleId);
             removeTagArticleRelations(articleId);
+            if (null != categoryTagRepository) {
+                categoryTagRepository.removeByTagId(articleId);
+            }
             articleRepository.remove(articleId);
-            commentRepository.removeComments(articleId);
+            if (null != commentRepository) {
+                commentRepository.removeComments(articleId);
+            }
             transaction.commit();
-            if (null != articleId) {
-                pendingArticleViewDeltas.remove(articleId);
+            if (StringUtils.isNotBlank(articleId)) {
+                synchronized (viewFlushLock) {
+                    deletedArticleIds.add(articleId);
+                    pendingArticleViewDeltas.remove(articleId);
+                    if (null != articleCache) {
+                        articleCache.removeArticle(articleId);
+                    }
+                }
             }
             if (null != articleRevisionService) {
                 articleRevisionService.removeRevisions(articleId);
@@ -944,17 +1002,17 @@ public class ArticleMgmtService {
      * @throws ServiceException service exception
      */
     public void incViewCount(final String articleId) throws ServiceException {
-        if (StringUtils.isBlank(articleId)) {
+        if (StringUtils.isBlank(articleId) || deletedArticleIds.contains(articleId)) {
             return;
         }
         if (!pendingArticleViewDeltas.containsKey(articleId)
                 && pendingArticleViewDeltas.size() >= MAX_PENDING_VIEW_ARTICLES) {
             flushPendingViewCounts();
         }
-        pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).increment();
-        if (null != articleCache) {
-            articleCache.incrementViewCountInPlace(articleId, 1L);
+        if (deletedArticleIds.contains(articleId)) {
+            return;
         }
+        pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).increment();
     }
 
     /**
@@ -972,9 +1030,9 @@ public class ArticleMgmtService {
     }
 
     /**
-     * Atomically drains any un-flushed write-behind view delta for {@code articleId} under {@code viewFlushLock}
-     * and aligns any cached {@link ArticleCache} entry back to its persisted base count so callers can add
-     * the returned delta once without double-counting on either {@code idCache} hits or misses.
+     * Atomically drains any un-flushed write-behind view delta for {@code articleId} under {@code viewFlushLock}.
+     * Because {@link ArticleCache} stores only persisted DB {@code articleViewCount} values, callers can add
+     * the returned delta onto {@link ArticleRepository#getPersisted(String)} without double-counting.
      *
      * @param articleId article object ID
      * @return non-negative drained view delta
@@ -985,24 +1043,13 @@ public class ArticleMgmtService {
         }
         synchronized (viewFlushLock) {
             final LongAdder adder = pendingArticleViewDeltas.remove(articleId);
-            if (null == adder) {
-                return 0L;
-            }
-            final long delta = Math.max(0L, adder.sum());
-            if (delta > 0L && null != articleCache) {
-                final JSONObject cached = articleCache.getArticle(articleId);
-                if (null != cached) {
-                    final long baseCount = Math.max(0L, cached.optLong(ARTICLE_VIEW_COUNT, 0L) - delta);
-                    cached.put(ARTICLE_VIEW_COUNT, (int) Math.min(Integer.MAX_VALUE, baseCount));
-                    articleCache.putArticle(cached);
-                }
-            }
-            return delta;
+            return null == adder ? 0L : Math.max(0L, adder.sum());
         }
     }
 
     /**
-     * Restores a previously drained write-behind view delta if a full-article update transaction rolls back.
+     * Restores a previously drained write-behind view delta if a full-article update transaction rolls back,
+     * skipping any article ID removed concurrently by {@link #removeArticle(String)}.
      *
      * @param articleId article object ID
      * @param delta     positive delta to restore
@@ -1012,14 +1059,8 @@ public class ArticleMgmtService {
             return;
         }
         synchronized (viewFlushLock) {
-            pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).add(delta);
-            if (null != articleCache) {
-                final JSONObject cached = articleCache.getArticle(articleId);
-                if (null != cached) {
-                    final long restored = Math.max(0L, cached.optLong(ARTICLE_VIEW_COUNT, 0L) + delta);
-                    cached.put(ARTICLE_VIEW_COUNT, (int) Math.min(Integer.MAX_VALUE, restored));
-                    articleCache.putArticle(cached);
-                }
+            if (!deletedArticleIds.contains(articleId)) {
+                pendingArticleViewDeltas.computeIfAbsent(articleId, k -> new LongAdder()).add(delta);
             }
         }
     }
@@ -1030,12 +1071,14 @@ public class ArticleMgmtService {
     public void resetPendingViewDeltas() {
         synchronized (viewFlushLock) {
             pendingArticleViewDeltas.clear();
+            deletedArticleIds.clear();
         }
     }
 
     /**
-     * Atomically drains accumulated write-behind article view deltas and batch-updates
-     * {@code b3_solo_article} in a transaction, restoring drained deltas if rollback occurs.
+     * Atomically drains accumulated write-behind article view deltas, advances {@link ArticleCache}'s persisted
+     * baseline in lockstep, and batch-updates {@code b3_solo_article} in a transaction, restoring drained deltas
+     * cleanly (without resurrecting deleted articles) if rollback occurs.
      */
     public void flushPendingViewCounts() {
         if (null == articleRepository || pendingArticleViewDeltas.isEmpty()) {
@@ -1044,11 +1087,26 @@ public class ArticleMgmtService {
         synchronized (viewFlushLock) {
             final Map<String, Long> drained = new LinkedHashMap<>();
             for (final Map.Entry<String, LongAdder> entry : pendingArticleViewDeltas.entrySet()) {
-                final long delta = entry.getValue().sumThenReset();
-                if (delta > 0L) {
-                    drained.put(entry.getKey(), delta);
+                final String id = entry.getKey();
+                if (deletedArticleIds.contains(id)) {
+                    pendingArticleViewDeltas.remove(id, entry.getValue());
+                    continue;
+                }
+                final long delta;
+                if (null != articleCache) {
+                    synchronized (articleCache) {
+                        delta = entry.getValue().sumThenReset();
+                        if (delta > 0L) {
+                            articleCache.advancePersistedViewCount(id, delta);
+                        }
+                    }
                 } else {
-                    pendingArticleViewDeltas.remove(entry.getKey(), entry.getValue());
+                    delta = entry.getValue().sumThenReset();
+                }
+                if (delta > 0L) {
+                    drained.put(id, delta);
+                } else {
+                    pendingArticleViewDeltas.remove(id, entry.getValue());
                 }
             }
             if (drained.isEmpty()) {
@@ -1056,6 +1114,7 @@ public class ArticleMgmtService {
             }
             final Transaction transaction = articleRepository.beginTransaction();
             final List<String> ids = new ArrayList<>(drained.keySet());
+            final Set<String> seenInDb = new HashSet<>();
             int updated = 0;
             try {
                 for (int start = 0; start < ids.size(); start += VIEW_FLUSH_BATCH_SIZE) {
@@ -1071,6 +1130,10 @@ public class ArticleMgmtService {
                             continue;
                         }
                         final String id = row.optString(Keys.OBJECT_ID);
+                        if (id.isEmpty() || deletedArticleIds.contains(id)) {
+                            continue;
+                        }
+                        seenInDb.add(id);
                         final Long delta = drained.get(id);
                         if (null == delta || delta <= 0L) {
                             continue;
@@ -1082,11 +1145,17 @@ public class ArticleMgmtService {
                         patch.put(Keys.OBJECT_ID, id);
                         patch.put(ARTICLE_VIEW_COUNT, updatedCount);
                         articleRepository.update(id, patch, ARTICLE_VIEW_COUNT);
+                        if (null != articleCache) {
+                            articleCache.setPersistedViewCount(id, updatedCount);
+                        }
                         updated++;
                     }
                 }
                 transaction.commit();
                 for (final String id : ids) {
+                    if (!seenInDb.contains(id) && null != articleCache) {
+                        articleCache.removeArticle(id);
+                    }
                     final LongAdder adder = pendingArticleViewDeltas.get(id);
                     if (null != adder && adder.sum() <= 0L) {
                         pendingArticleViewDeltas.remove(id, adder);
@@ -1100,14 +1169,24 @@ public class ArticleMgmtService {
                     transaction.rollback();
                 }
                 if (null != articleCache) {
-                    for (final String id : ids) {
-                        if (null != articleCache.getArticle(id)) {
+                    synchronized (articleCache) {
+                        for (final Map.Entry<String, Long> entry : drained.entrySet()) {
+                            final String id = entry.getKey();
                             articleCache.removeArticle(id);
+                            if (!deletedArticleIds.contains(id)) {
+                                pendingArticleViewDeltas.computeIfAbsent(id, k -> new LongAdder())
+                                        .add(entry.getValue());
+                            }
                         }
                     }
-                }
-                for (final Map.Entry<String, Long> entry : drained.entrySet()) {
-                    pendingArticleViewDeltas.computeIfAbsent(entry.getKey(), k -> new LongAdder()).add(entry.getValue());
+                } else {
+                    for (final Map.Entry<String, Long> entry : drained.entrySet()) {
+                        final String id = entry.getKey();
+                        if (!deletedArticleIds.contains(id)) {
+                            pendingArticleViewDeltas.computeIfAbsent(id, k -> new LongAdder())
+                                    .add(entry.getValue());
+                        }
+                    }
                 }
                 LOGGER.log(Level.WARN, "Flushes pending article view counts failed", e);
             }
@@ -1121,6 +1200,9 @@ public class ArticleMgmtService {
      * @throws ServiceException service exception
      */
     private void unArchiveDate(final String articleId) throws ServiceException {
+        if (null == archiveDateArticleRepository || null == archiveDateRepository || StringUtils.isBlank(articleId)) {
+            return;
+        }
         try {
             final JSONObject archiveDateArticleRelation = archiveDateArticleRepository.getByArticleId(articleId);
             if (null == archiveDateArticleRelation) {
@@ -1129,16 +1211,23 @@ public class ArticleMgmtService {
             }
 
             final String archiveDateId = archiveDateArticleRelation.getString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID);
-            final int publishedArticleCount = archiveDateArticleRepository.getPublishedArticleCount(archiveDateId);
-            if (1 > publishedArticleCount) {
-                archiveDateRepository.remove(archiveDateId);
-            }
-
             archiveDateArticleRepository.remove(archiveDateArticleRelation.getString(Keys.OBJECT_ID));
+            pruneArchiveDateIfEmpty(archiveDateId);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Unarchive date for article[id=" + articleId + "] failed", e);
 
             throw new ServiceException(e);
+        }
+    }
+
+    private void pruneArchiveDateIfEmpty(final String archiveDateId) throws RepositoryException {
+        if (StringUtils.isBlank(archiveDateId)
+                || null == archiveDateArticleRepository
+                || null == archiveDateRepository) {
+            return;
+        }
+        if (archiveDateArticleRepository.getPublishedArticleCount(archiveDateId) <= 0) {
+            archiveDateRepository.remove(archiveDateId);
         }
     }
 
@@ -1295,6 +1384,7 @@ public class ArticleMgmtService {
             final JSONObject tag = tags.optJSONObject(i);
             final JSONObject tagArticleRelation = new JSONObject();
 
+            tagArticleRelation.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
             tagArticleRelation.put(Tag.TAG + "_" + Keys.OBJECT_ID, tag.optString(Keys.OBJECT_ID));
             tagArticleRelation.put(Article.ARTICLE + "_" + Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
 
@@ -1322,9 +1412,11 @@ public class ArticleMgmtService {
                 LOGGER.log(Level.TRACE, "Found a new tag[title={0}] in article[title={1}]",
                         tagTitle, article.optString(Article.ARTICLE_TITLE));
                 tag = new JSONObject();
+                final String generatedTagId = MonotonicIds.nextMillisId();
+                tag.put(Keys.OBJECT_ID, generatedTagId);
                 tag.put(Tag.TAG_TITLE, tagTitle);
                 tagId = tagRepository.add(tag);
-                tag.put(Keys.OBJECT_ID, tagId);
+                tag.put(Keys.OBJECT_ID, StringUtils.defaultIfBlank(tagId, generatedTagId));
             } else {
                 tagId = tag.optString(Keys.OBJECT_ID);
                 LOGGER.log(Level.TRACE, "Found a existing tag[title={0}, id={1}] in article[title={2}]",
@@ -1352,6 +1444,9 @@ public class ArticleMgmtService {
      * @throws RepositoryException repository exception
      */
     private void archiveDate(final JSONObject article) throws RepositoryException {
+        if (null == archiveDateRepository || null == archiveDateArticleRepository || null == article) {
+            return;
+        }
         if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
             // 草稿不生成存档
             return;
@@ -1362,25 +1457,34 @@ public class ArticleMgmtService {
         JSONObject archiveDate = archiveDateRepository.getByArchiveDate(createDateString);
         if (null == archiveDate) {
             archiveDate = new JSONObject();
+            final String generatedArchiveId = MonotonicIds.nextMillisId();
+            archiveDate.put(Keys.OBJECT_ID, generatedArchiveId);
             try {
                 archiveDate.put(ArchiveDate.ARCHIVE_TIME, DateUtils.parseDate(createDateString, new String[]{"yyyy/MM"}).getTime());
-                archiveDateRepository.add(archiveDate);
+                final String addedArchiveId = archiveDateRepository.add(archiveDate);
+                archiveDate.put(Keys.OBJECT_ID, StringUtils.defaultIfBlank(addedArchiveId, generatedArchiveId));
             } catch (final ParseException e) {
                 LOGGER.log(Level.ERROR, e.getMessage(), e);
                 throw new RepositoryException(e);
             }
         }
 
+        final String newArchiveDateId = archiveDate.optString(Keys.OBJECT_ID);
         final String articleId = article.optString(Keys.OBJECT_ID);
         final JSONObject existingRelation = archiveDateArticleRepository.getByArticleId(articleId);
         if (null == existingRelation) {
             final JSONObject archiveDateArticleRelation = new JSONObject();
-            archiveDateArticleRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.optString(Keys.OBJECT_ID));
+            archiveDateArticleRelation.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
+            archiveDateArticleRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, newArchiveDateId);
             archiveDateArticleRelation.put(Article.ARTICLE + "_" + Keys.OBJECT_ID, articleId);
             archiveDateArticleRepository.add(archiveDateArticleRelation);
-        } else if (!archiveDate.getString(Keys.OBJECT_ID).equals(existingRelation.optString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID))) {
-            existingRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.getString(Keys.OBJECT_ID));
-            archiveDateArticleRepository.update(existingRelation.getString(Keys.OBJECT_ID), existingRelation);
+        } else {
+            final String oldArchiveDateId = existingRelation.optString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID);
+            if (!newArchiveDateId.equals(oldArchiveDateId)) {
+                existingRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, newArchiveDateId);
+                archiveDateArticleRepository.update(existingRelation.getString(Keys.OBJECT_ID), existingRelation);
+                pruneArchiveDateIfEmpty(oldArchiveDateId);
+            }
         }
     }
 
@@ -1539,6 +1643,7 @@ public class ArticleMgmtService {
                             new PropertyFilter(ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_DRAFT),
                             new PropertyFilter(ARTICLE_SCHEDULE_TIME, FilterOperator.GREATER_THAN, 0L),
                             new PropertyFilter(ARTICLE_SCHEDULE_TIME, FilterOperator.LESS_THAN_OR_EQUAL, now)))
+                    .select(Keys.OBJECT_ID)
                     .setPage(1, 50)
                     .setPageCount(1);
             dueArticles = articleRepository.getList(query);
@@ -1556,7 +1661,7 @@ public class ArticleMgmtService {
             final long drainedDelta = drainPendingViewDelta(articleId);
             final Transaction tx = articleRepository.beginTransaction();
             try {
-                final JSONObject current = articleRepository.get(articleId);
+                final JSONObject current = articleRepository.getPersisted(articleId);
                 if (null == current || Article.ARTICLE_STATUS_C_DRAFT != current.optInt(ARTICLE_STATUS)) {
                     tx.commit();
                     restorePendingViewDelta(articleId, drainedDelta);
@@ -1573,7 +1678,7 @@ public class ArticleMgmtService {
                         Math.max(0L, current.optLong(ARTICLE_VIEW_COUNT, 0L) + drainedDelta)));
                 current.put(ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
                 current.put(ARTICLE_SCHEDULE_TIME, 0L);
-                current.put(ARTICLE_UPDATED, now);
+                current.put(ARTICLE_UPDATED, Math.max(now, current.optLong(ARTICLE_UPDATED, 0L) + 1L));
                 archiveDate(current);
                 articleRepository.update(articleId, current);
                 tx.commit();

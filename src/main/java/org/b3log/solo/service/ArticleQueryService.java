@@ -50,6 +50,8 @@ import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.Stopwatchs;
+import org.b3log.solo.cache.JsonCloneHelper;
+import org.b3log.solo.cache.UserCache;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Common;
@@ -64,6 +66,7 @@ import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.repository.TagArticleRepository;
 import org.b3log.solo.repository.TagRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.util.AdminListSearch;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
@@ -87,6 +90,17 @@ public class ArticleQueryService {
      * Logger.
      */
     private static final Logger LOGGER = Logger.getLogger(ArticleQueryService.class);
+
+    /**
+     * Request flag indicating the caller will run {@link DataModelService#setArticlesExProperties}
+     * and therefore {@link #getArticles(JSONObject)} must not pre-overlay write-behind view deltas.
+     */
+    public static final String SKIP_VIEW_OVERLAY = "_skipViewOverlay";
+
+    private record CachedSigns(String raw, List<JSONObject> parsed) {
+    }
+
+    private volatile CachedSigns cachedSigns;
 
     /**
      * All persisted columns of the {@code article} table defined in {@code repository.json}.
@@ -222,6 +236,12 @@ public class ArticleQueryService {
     @Inject
     private ShareTokenService shareTokenService;
 
+    @Inject
+    private UserCache userCache;
+
+    @Inject
+    private InstantSearchService instantSearchService;
+
     /**
      * Searches articles with the specified keyword.
      *
@@ -239,38 +259,182 @@ public class ArticleQueryService {
         pagination.put(Pagination.PAGINATION_PAGE_COUNT, 0);
         pagination.put(Pagination.PAGINATION_PAGE_NUMS, (Object) Collections.emptyList());
 
+        final String normalized = AdminListSearch.normalizeKeyword(keyword);
+        if (normalized.isEmpty()) {
+            return ret;
+        }
+
         try {
+            final JSONObject preference = null == optionQueryService ? null : optionQueryService.getPreference();
+            final boolean fullContentList = isFullContentListStyle(preference);
+            final String likePattern = buildSearchLikePattern(normalized);
             final Query query = new Query().setFilter(
                     CompositeFilterOperator.and(
                             new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL,
                                     Article.ARTICLE_STATUS_C_PUBLISHED),
                             CompositeFilterOperator.or(
-                                    new PropertyFilter(Article.ARTICLE_TITLE, FilterOperator.LIKE, "%" + keyword + "%"),
-                                    new PropertyFilter(Article.ARTICLE_TAGS_REF, FilterOperator.LIKE,
-                                            "%" + keyword + "%"),
+                                    new PropertyFilter(Article.ARTICLE_TITLE, FilterOperator.LIKE, likePattern),
+                                    new PropertyFilter(Article.ARTICLE_TAGS_REF, FilterOperator.LIKE, likePattern),
                                     CompositeFilterOperator.and(
                                             new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""),
-                                            new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE, "%" + keyword + "%")))))
-
-                    .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).setPage(currentPageNum, pageSize);
+                                            new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE, likePattern)))))
+                    .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                    .setPage(currentPageNum, pageSize);
+            if (!fullContentList) {
+                selectWithoutContent(query);
+            }
 
             final JSONObject result = articleRepository.get(query);
 
-            final int pageCount = result.optJSONObject(Pagination.PAGINATION).optInt(Pagination.PAGINATION_PAGE_COUNT);
-            final JSONObject preference = optionQueryService.getPreference();
-            final int windowSize = preference.optInt(Option.ID_C_ARTICLE_LIST_PAGINATION_WINDOW_SIZE);
+            final int pageCount = null == result.optJSONObject(Pagination.PAGINATION)
+                    ? 0
+                    : result.optJSONObject(Pagination.PAGINATION).optInt(Pagination.PAGINATION_PAGE_COUNT);
+            final int windowSize = null == preference
+                    ? 10
+                    : preference.optInt(Option.ID_C_ARTICLE_LIST_PAGINATION_WINDOW_SIZE, 10);
             final List<Integer> pageNums = Paginator.paginate(currentPageNum, pageSize, pageCount, windowSize);
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, (Object) pageNums);
 
             final List<JSONObject> articles = CollectionUtils.jsonArrayToList(org.b3log.solo.util.QueryResults.array(result));
-            articles.removeIf(article -> !HiddenContentService.matchesPublicSearch(article, keyword));
+            filterVerifiedPublicSearchMatches(articles, normalized);
+            if (1 == currentPageNum && articles.isEmpty()) {
+                pagination.put(Pagination.PAGINATION_PAGE_COUNT, 0);
+                pagination.put(Pagination.PAGINATION_PAGE_NUMS, (Object) Collections.emptyList());
+            }
             ret.put(Article.ARTICLES, (Object) articles);
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Searches articles error", e);
         }
 
         return ret;
+    }
+
+    private static String buildSearchLikePattern(final String normalized) {
+        if (!AdminListSearch.containsLikeMeta(normalized)) {
+            return "%" + normalized + "%";
+        }
+        if (org.b3log.latke.Latkes.RuntimeDatabase.H2 == org.b3log.latke.Latkes.getRuntimeDatabase()) {
+            // H2's default LIKE without ESCAPE treats '\' literally; pre-filter by longest literal token and post-verify.
+            String bestToken = "";
+            final StringBuilder cur = new StringBuilder();
+            for (int i = 0; i < normalized.length(); i++) {
+                final char c = normalized.charAt(i);
+                if ('%' == c || '_' == c) {
+                    if (cur.length() > bestToken.length()) {
+                        bestToken = cur.toString();
+                    }
+                    cur.setLength(0);
+                } else {
+                    cur.append(c);
+                }
+            }
+            if (cur.length() > bestToken.length()) {
+                bestToken = cur.toString();
+            }
+            return "%" + bestToken + "%";
+        }
+        return "%" + AdminListSearch.escapeLikeLiteral(normalized) + "%";
+    }
+
+    private void filterVerifiedPublicSearchMatches(final List<JSONObject> articles, final String normalized)
+            throws RepositoryException {
+        if (null == articles || articles.isEmpty()) {
+            return;
+        }
+        final String needle = normalized.toLowerCase(java.util.Locale.ROOT);
+        final List<String> needContentCheckIds = new ArrayList<>();
+        for (final JSONObject article : articles) {
+            if (null == article) {
+                continue;
+            }
+            final String title = article.optString(Article.ARTICLE_TITLE, "");
+            final String tags = article.optString(Article.ARTICLE_TAGS_REF, "");
+            if (StringUtils.containsIgnoreCase(title, needle) || StringUtils.containsIgnoreCase(tags, needle)) {
+                continue;
+            }
+            if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                continue;
+            }
+            if (article.has(Article.ARTICLE_CONTENT)) {
+                continue;
+            }
+            final String absText = article.optString(Article.ARTICLE_ABSTRACT_TEXT, "");
+            final String rawAbs = article.optString(Article.ARTICLE_ABSTRACT, "");
+            if (!HiddenContentService.containsLockSyntax(absText)
+                    && !HiddenContentService.containsLockSyntax(rawAbs)
+                    && StringUtils.containsIgnoreCase(absText, needle)) {
+                continue;
+            }
+            final String id = article.optString(Keys.OBJECT_ID);
+            if (!id.isEmpty()) {
+                needContentCheckIds.add(id);
+            }
+        }
+        final Map<String, JSONObject> loadedBodies = new HashMap<>();
+        if (!needContentCheckIds.isEmpty()) {
+            final List<String> uniqueIds = new ArrayList<>(new LinkedHashSet<>(needContentCheckIds));
+            for (int start = 0; start < uniqueIds.size(); start += 50) {
+                final List<String> batchIds = uniqueIds.subList(start, Math.min(start + 50, uniqueIds.size()));
+                final Query bodyQuery = new Query()
+                        .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, batchIds))
+                        .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_TAGS_REF,
+                                Article.ARTICLE_VIEW_PWD, Article.ARTICLE_ABSTRACT, Article.ARTICLE_CONTENT)
+                        .setPage(1, batchIds.size())
+                        .setPageCount(1);
+                for (final JSONObject row : articleRepository.getList(bodyQuery)) {
+                    if (null != row) {
+                        loadedBodies.put(row.optString(Keys.OBJECT_ID), row);
+                    }
+                }
+            }
+        }
+        articles.removeIf(article -> !matchesVerifiedPublicSearch(article, loadedBodies, needle));
+    }
+
+    private static boolean matchesVerifiedPublicSearch(final JSONObject article,
+                                                       final Map<String, JSONObject> loadedBodies,
+                                                       final String needle) {
+        if (null == article) {
+            return false;
+        }
+        final String title = article.optString(Article.ARTICLE_TITLE, "");
+        final String tags = article.optString(Article.ARTICLE_TAGS_REF, "");
+        if (StringUtils.containsIgnoreCase(title, needle) || StringUtils.containsIgnoreCase(tags, needle)) {
+            return true;
+        }
+        if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+            return false;
+        }
+        if (article.has(Article.ARTICLE_CONTENT)) {
+            final String publicAbstract = Article.sanitizePublicMarkdown(article.optString(Article.ARTICLE_ABSTRACT, ""));
+            if (StringUtils.containsIgnoreCase(publicAbstract, needle)) {
+                return true;
+            }
+            final String publicContent = Article.sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT, ""));
+            return StringUtils.containsIgnoreCase(publicContent, needle);
+        }
+        final String absText = article.optString(Article.ARTICLE_ABSTRACT_TEXT, "");
+        final String rawAbs = article.optString(Article.ARTICLE_ABSTRACT, "");
+        if (!HiddenContentService.containsLockSyntax(absText)
+                && !HiddenContentService.containsLockSyntax(rawAbs)
+                && StringUtils.containsIgnoreCase(absText, needle)) {
+            return true;
+        }
+        final JSONObject full = loadedBodies.get(article.optString(Keys.OBJECT_ID));
+        if (null == full || StringUtils.isNotBlank(full.optString(Article.ARTICLE_VIEW_PWD))) {
+            return false;
+        }
+        if (StringUtils.containsIgnoreCase(full.optString(Article.ARTICLE_TITLE, ""), needle)
+                || StringUtils.containsIgnoreCase(full.optString(Article.ARTICLE_TAGS_REF, ""), needle)) {
+            return true;
+        }
+        final String fullPublicAbs = Article.sanitizePublicMarkdown(full.optString(Article.ARTICLE_ABSTRACT, ""));
+        if (StringUtils.containsIgnoreCase(fullPublicAbs, needle)) {
+            return true;
+        }
+        final String fullPublicBody = Article.sanitizePublicMarkdown(full.optString(Article.ARTICLE_CONTENT, ""));
+        return StringUtils.containsIgnoreCase(fullPublicBody, needle);
     }
 
     /**
@@ -379,10 +543,13 @@ public class ArticleQueryService {
         }
 
         try {
-            final JSONObject article = articleRepository.get(articleId);
+            final JSONObject article = articleRepository.getBriefForAccessCheck(articleId);
+            if (null == article) {
+                return false;
+            }
             final String currentUserId = user.getString(Keys.OBJECT_ID);
 
-            return article.getString(Article.ARTICLE_AUTHOR_ID).equals(currentUserId);
+            return currentUserId.equals(article.optString(Article.ARTICLE_AUTHOR_ID));
         } catch (final Exception e) {
             throw new ServiceException(e);
         }
@@ -429,15 +596,11 @@ public class ArticleQueryService {
      */
     public JSONObject getAuthor(final JSONObject article) throws ServiceException {
         try {
-            final String userId = article.getString(Article.ARTICLE_AUTHOR_ID);
-            JSONObject ret = userRepository.get(userId);
+            final String userId = article.optString(Article.ARTICLE_AUTHOR_ID);
+            JSONObject ret = StringUtils.isBlank(userId) ? null : userRepository.get(userId);
             if (null == ret) {
-                // Bolo default userId
-                ret = userRepository.get("default");
-                if (null == ret) {
-                    // This author may be deleted by admin, use admin as the author of this article
-                    ret = userRepository.getAdmin();
-                }
+                // This author may be deleted by admin; fall back to admin (missing userId is negative-cached).
+                ret = userRepository.getAdmin();
             }
 
             return ret;
@@ -446,6 +609,121 @@ public class ArticleQueryService {
 
             throw new ServiceException(e);
         }
+    }
+
+    /**
+     * Batch-preloads uncached authors for a list of articles in a single {@code IN (...)} query,
+     * populating {@link UserCache} and its negative cache so subsequent {@link #getAuthor(JSONObject)}
+     * calls execute zero SQL.
+     */
+    public Map<String, JSONObject> preloadAuthors(final List<JSONObject> articles) {
+        if (null == articles || articles.isEmpty() || null == userRepository) {
+            return Collections.emptyMap();
+        }
+        final Set<String> authorIds = new LinkedHashSet<>();
+        for (final JSONObject article : articles) {
+            if (null != article) {
+                final String id = article.optString(Article.ARTICLE_AUTHOR_ID);
+                if (StringUtils.isNotBlank(id)) {
+                    authorIds.add(id);
+                }
+            }
+        }
+        return preloadAuthorsByIds(authorIds);
+    }
+
+    private Map<String, JSONObject> preloadAuthorsFromArray(final JSONArray articles) {
+        if (null == articles || 0 == articles.length() || null == userRepository) {
+            return Collections.emptyMap();
+        }
+        final Set<String> authorIds = new LinkedHashSet<>();
+        for (int i = 0; i < articles.length(); i++) {
+            final JSONObject article = articles.optJSONObject(i);
+            if (null != article) {
+                final String id = article.optString(Article.ARTICLE_AUTHOR_ID);
+                if (StringUtils.isNotBlank(id)) {
+                    authorIds.add(id);
+                }
+            }
+        }
+        return preloadAuthorsByIds(authorIds);
+    }
+
+    private Map<String, JSONObject> preloadAuthorsByIds(final Set<String> authorIds) {
+        if (null == authorIds || authorIds.isEmpty() || null == userRepository) {
+            return Collections.emptyMap();
+        }
+        final Map<String, JSONObject> resolved = new HashMap<>(authorIds.size());
+        final List<String> uncached = new ArrayList<>();
+        for (final String id : authorIds) {
+            if (null != userCache) {
+                final JSONObject cached = userCache.getUser(id);
+                if (null != cached) {
+                    resolved.put(id, cached);
+                    continue;
+                }
+                if (userCache.isMissingUser(id)) {
+                    continue;
+                }
+            }
+            uncached.add(id);
+        }
+        if (!uncached.isEmpty()) {
+            try {
+                final Query q = new Query()
+                        .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, uncached))
+                        .setPage(1, uncached.size())
+                        .setPageCount(1);
+                final List<JSONObject> rows = userRepository.getList(q);
+                final Set<String> foundIds = new HashSet<>();
+                if (null != rows) {
+                    for (final JSONObject user : rows) {
+                        if (null == user) {
+                            continue;
+                        }
+                        final String id = user.optString(Keys.OBJECT_ID);
+                        if (!id.isEmpty()) {
+                            foundIds.add(id);
+                            resolved.put(id, user);
+                            if (null != userCache) {
+                                userCache.putUser(user);
+                            }
+                        }
+                    }
+                }
+                if (null != userCache && userRepository.getClass() == UserRepository.class) {
+                    for (final String id : uncached) {
+                        if (!foundIds.contains(id)) {
+                            userCache.markMissingUser(id);
+                        }
+                    }
+                }
+            } catch (final Exception e) {
+                LOGGER.log(Level.DEBUG, "Batch author preload fell back to per-article lookup", e);
+            }
+        }
+        return resolved;
+    }
+
+    private List<JSONObject> parseSignsCached(final String rawSigns) throws JSONException {
+        if (StringUtils.isBlank(rawSigns)) {
+            return Collections.emptyList();
+        }
+        final CachedSigns snapshot = cachedSigns;
+        if (null != snapshot && rawSigns.equals(snapshot.raw())) {
+            return snapshot.parsed();
+        }
+        final JSONArray arr = new JSONArray(rawSigns);
+        final List<JSONObject> list = new ArrayList<>(arr.length());
+        for (int i = 0; i < arr.length(); i++) {
+            final JSONObject item = arr.optJSONObject(i);
+            if (null != item) {
+                list.add(JsonCloneHelper.deepCloneObject(item));
+            }
+        }
+        final List<JSONObject> frozen = Collections.unmodifiableList(list);
+        cachedSigns = new CachedSigns(rawSigns, frozen);
+        return frozen;
     }
 
     /**
@@ -458,13 +736,11 @@ public class ArticleQueryService {
      * @throws JSONException json exception
      */
     public JSONObject getSign(final String signId, final JSONObject preference) throws JSONException {
-        final JSONArray signs = new JSONArray(preference.getString(Option.ID_C_SIGNS));
+        final List<JSONObject> signs = parseSignsCached(preference.getString(Option.ID_C_SIGNS));
         JSONObject defaultSign = null;
-        for (int i = 0; i < signs.length(); i++) {
-            final JSONObject ret = signs.getJSONObject(i);
-
+        for (final JSONObject ret : signs) {
             if (signId.equals(ret.optString(Keys.OBJECT_ID))) {
-                return ret;
+                return Solos.clone(ret);
             }
 
             if ("1".equals(ret.optString(Keys.OBJECT_ID))) {
@@ -474,7 +750,7 @@ public class ArticleQueryService {
 
         LOGGER.log(Level.WARN, "Can not find the sign [id={0}], returns a default sign [id=1]", signId);
 
-        return defaultSign;
+        return Solos.clone(defaultSign);
     }
 
     /**
@@ -538,7 +814,12 @@ public class ArticleQueryService {
 
             // Signs
             final JSONObject preference = optionQueryService.getPreference();
-            article.put(Sign.SIGNS, new JSONArray(preference.getString(Option.ID_C_SIGNS)));
+            final List<JSONObject> parsedSigns = parseSignsCached(preference.getString(Option.ID_C_SIGNS));
+            final JSONArray signsArray = new JSONArray();
+            for (final JSONObject sign : parsedSigns) {
+                signsArray.put(Solos.clone(sign));
+            }
+            article.put(Sign.SIGNS, signsArray);
             // Remove unused properties
             article.remove(Article.ARTICLE_AUTHOR_ID);
             article.remove(Article.ARTICLE_COMMENT_COUNT);
@@ -586,43 +867,42 @@ public class ArticleQueryService {
             } else {
                 query.addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING);
             }
-            final String keyword = requestJSONObject.optString(Common.KEYWORD);
+            final boolean skipViewOverlay = requestJSONObject.optBoolean(SKIP_VIEW_OVERLAY);
+            final String keyword = AdminListSearch.normalizeKeyword(requestJSONObject.optString(Common.KEYWORD));
             final String filterAuthorId = requestJSONObject.optString(Article.ARTICLE_AUTHOR_ID);
             Filter filter = new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, articleStatus);
             if (StringUtils.isNotBlank(filterAuthorId)) {
                 filter = CompositeFilterOperator.and(filter,
                         new PropertyFilter(Article.ARTICLE_AUTHOR_ID, FilterOperator.EQUAL, filterAuthorId));
             }
-            if (StringUtils.isNotBlank(keyword)) {
+            if (!keyword.isEmpty()) {
                 filter = CompositeFilterOperator.and(filter,
-                        CompositeFilterOperator.or(
-                                new PropertyFilter(Article.ARTICLE_TITLE, FilterOperator.LIKE, "%" + keyword + "%"),
-                                new PropertyFilter(Article.ARTICLE_TAGS_REF, FilterOperator.LIKE, "%" + keyword + "%"),
-                                new PropertyFilter(Article.ARTICLE_CONTENT, FilterOperator.LIKE, "%" + keyword + "%")));
+                        AdminListSearch.likeAny(keyword,
+                                Article.ARTICLE_TITLE, Article.ARTICLE_TAGS_REF, Article.ARTICLE_CONTENT));
             }
             query.setFilter(filter);
 
             JSONArray excludes = requestJSONObject.optJSONArray(Keys.EXCLUDES);
             excludes = null == excludes ? new JSONArray() : excludes;
+            final Set<String> excludedSet = new HashSet<>();
             if (excludes.length() > 0) {
-                final Set<String> excludedSet = new HashSet<>();
                 for (int j = 0; j < excludes.length(); j++) {
                     final String ex = excludes.optString(j);
                     if (StringUtils.isNotBlank(ex)) {
                         excludedSet.add(ex);
                     }
                 }
-                if (excludedSet.contains(Article.ARTICLE_CONTENT)) {
-                    final List<String> selectedCols = new ArrayList<>(ALL_ARTICLE_DB_COLUMNS.size());
-                    for (final String col : ALL_ARTICLE_DB_COLUMNS) {
-                        if (!excludedSet.contains(col)
-                                || Keys.OBJECT_ID.equals(col)
-                                || Article.ARTICLE_AUTHOR_ID.equals(col)
-                                || Article.ARTICLE_CREATED.equals(col)
-                                || Article.ARTICLE_UPDATED.equals(col)) {
-                            selectedCols.add(col);
-                        }
+                final List<String> selectedCols = new ArrayList<>(ALL_ARTICLE_DB_COLUMNS.size());
+                for (final String col : ALL_ARTICLE_DB_COLUMNS) {
+                    if (!excludedSet.contains(col)
+                            || Keys.OBJECT_ID.equals(col)
+                            || Article.ARTICLE_AUTHOR_ID.equals(col)
+                            || Article.ARTICLE_CREATED.equals(col)
+                            || Article.ARTICLE_UPDATED.equals(col)) {
+                        selectedCols.add(col);
                     }
+                }
+                if (!selectedCols.isEmpty() && selectedCols.size() < ALL_ARTICLE_DB_COLUMNS.size()) {
                     query.select(selectedCols.get(0), selectedCols.subList(1, selectedCols.size()).toArray(new String[0]));
                 }
             }
@@ -636,37 +916,58 @@ public class ArticleQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
             final JSONArray articles = org.b3log.solo.util.QueryResults.array(result);
-            final Map<String, Object> batchCategoryTitles = preloadDirectCategoryTitles(articles);
+            final boolean needCategory = Article.ARTICLE_STATUS_C_PUBLISHED == articleStatus
+                    && !excludedSet.contains("articleCategory");
+            final Map<String, Object> batchCategoryTitles = needCategory
+                    ? preloadDirectCategoryTitles(articles)
+                    : Collections.emptyMap();
+            final Map<String, JSONObject> batchAuthors = preloadAuthorsFromArray(articles);
+            JSONObject fallbackAdmin = null;
+            boolean adminResolved = false;
 
             for (int i = 0; i < articles.length(); i++) {
                 final JSONObject article = articles.getJSONObject(i);
                 final String articleId = article.optString(Keys.OBJECT_ID);
-                if (article.has(Article.ARTICLE_VIEW_COUNT)) {
+                if (!skipViewOverlay && article.has(Article.ARTICLE_VIEW_COUNT)) {
                     final long pendingDelta = ArticleMgmtService.peekPendingViewDelta(articleId);
                     if (pendingDelta > 0L) {
                         article.put(Article.ARTICLE_VIEW_COUNT,
                                 (int) Math.min(Integer.MAX_VALUE, Math.max(0L, article.optLong(Article.ARTICLE_VIEW_COUNT) + pendingDelta)));
                     }
                 }
-                final JSONObject author = getAuthor(article);
-                final String authorName = author.getString(User.USER_NAME);
-                article.put(Common.AUTHOR_NAME, authorName);
+                final String authorId = article.optString(Article.ARTICLE_AUTHOR_ID);
+                JSONObject author = batchAuthors.get(authorId);
+                if (null == author) {
+                    if (!adminResolved) {
+                        fallbackAdmin = null == userRepository ? null : userRepository.getAdmin();
+                        adminResolved = true;
+                    }
+                    author = fallbackAdmin;
+                }
+                if (null == author) {
+                    author = getAuthor(article);
+                }
+                if (null != author) {
+                    article.put(Common.AUTHOR_NAME, author.optString(User.USER_NAME));
+                }
                 article.put(Article.ARTICLE_CREATE_TIME, article.getLong(Article.ARTICLE_CREATED));
                 article.put(Article.ARTICLE_UPDATE_TIME, article.getLong(Article.ARTICLE_UPDATED));
-                if (null != batchCategoryTitles) {
-                    final Object catTitle = batchCategoryTitles.get(articleId);
-                    if (null != catTitle) {
-                        article.put("articleCategory", catTitle);
-                    }
-                } else {
-                    try {
-                        JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
-                        int size = org.b3log.solo.util.QueryResults.array(cate).length();
-                        JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
-                        String categoryOId = cateS.optString("category_oId");
-                        cateS = categoryQueryService.getCategory(categoryOId);
-                        article.put("articleCategory", cateS.opt("categoryTitle"));
-                    } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
+                if (needCategory) {
+                    if (null != batchCategoryTitles) {
+                        final Object catTitle = batchCategoryTitles.get(articleId);
+                        if (null != catTitle) {
+                            article.put("articleCategory", catTitle);
+                        }
+                    } else {
+                        try {
+                            JSONObject cate = categoryTagRepository.getByTagId(articleId, 1, Integer.MAX_VALUE);
+                            int size = org.b3log.solo.util.QueryResults.array(cate).length();
+                            JSONObject cateS = (JSONObject) org.b3log.solo.util.QueryResults.array(cate).get(size - 1);
+                            String categoryOId = cateS.optString("category_oId");
+                            cateS = categoryQueryService.getCategory(categoryOId);
+                            article.put("articleCategory", cateS.opt("categoryTitle"));
+                        } catch (JSONException | NullPointerException | IndexOutOfBoundsException e) {
+                        }
                     }
                 }
                 // Remove unused properties

@@ -58,7 +58,7 @@
 <#macro head title description='' isErrorPage=false>
 <meta charset="utf-8"/>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#3b3e43">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -69,6 +69,7 @@
 <meta name="bolo-skin" content="${(skinDirName!'')?html}"/>
 <meta name="bolo-accent" content="${(appearanceAccent!'forest')?html}"/>
 <script data-bolo-navigation src="${staticServePath}/js/appearance${miniPostfix!''}.js?${staticResourceVersion}"></script>
+<script data-bolo-navigation src="${staticServePath}/js/lib/jquery/jquery.min.js?${staticResourceVersion}"></script>
 <script data-bolo-navigation defer src="${staticServePath}/js/toc-navigation${miniPostfix!''}.js?${staticResourceVersion}"></script>
 <link rel="stylesheet" href="${staticServePath}/js/lib/vditor/dist/index.css?${staticResourceVersion}"/>
     <#if description != ''>

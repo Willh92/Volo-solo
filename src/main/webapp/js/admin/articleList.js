@@ -35,33 +35,28 @@ admin.articleList = {
       {
         text: Label.titleLabel,
         index: 'title',
-        minWidth: 110,
-        style: 'padding-left: 12px;font-size:14px;',
+        minWidth: 180,
+        style: 'font-size: 14px;',
       }, {
         text: Label.categoryLabel,
         index: 'category',
-        width: 150,
-        style: 'padding-left: 12px;',
+        width: 108,
       }, {
         text: Label.authorLabel,
         index: 'author',
-        width: 150,
-        style: 'padding-left: 12px;',
+        width: 100,
       }, {
         text: Label.commentLabel,
         index: 'comments',
-        width: 80,
-        style: 'padding-left: 12px;',
+        width: 68,
       }, {
         text: Label.viewLabel,
-        width: 60,
+        width: 84,
         index: 'articleViewCount',
-        style: 'padding-left: 12px;',
       }, {
         text: Label.dateLabel,
         index: 'date',
-        width: 90,
-        style: 'padding-left: 12px;',
+        width: 112,
       }])
     this.tablePagination.initPagination()
     this.tablePagination.initCommentsDialog()

@@ -181,12 +181,12 @@ admin.security = {
         head.append(heading)
         result.rules.forEach(function (rule) {
           var row = document.createElement('tr'), button = document.createElement('button'), edit = document.createElement('button')
-          var date = new Date(rule.created)
+          var createdStr = rule.created ? that.formatDate(rule.created, 1) : '—'
           var reason = (rule.source === 'automatic' ? '自动风控' : '手动封禁') + '：' + (rule.reason || '未填写原因')
           if (rule.source === 'automatic') reason += '\n累计触发 ' + (rule.occurrences == null ? 1 : rule.occurrences) + ' 次'
           if (rule.note) reason += '\n备注：' + rule.note
-          var values = [rule.range, rule.region || '位置未知', reason, (rule.active === false ? '已到期 · ' : '') + (rule.expiresAt ? new Date(rule.expiresAt).toLocaleString() : '永久') + '\n添加于 ' + (Number.isFinite(date.getTime()) ? date.toLocaleString() : '—')]
-          if (rule.updated) values[3] += '\n更新于 ' + new Date(rule.updated).toLocaleString()
+          var values = [rule.range, rule.region || '位置未知', reason, (rule.active === false ? '已到期 · ' : '') + (rule.expiresAt ? that.formatDate(rule.expiresAt, 1) : '永久') + '\n添加于 ' + createdStr]
+          if (rule.updated) values[3] += '\n更新于 ' + that.formatDate(rule.updated, 1)
           values.forEach(function (value, index) { var cell = document.createElement('td'); cell.dataset.label = labels[index]; cell.textContent = value; row.append(cell) })
           var actions = document.createElement('td'); actions.dataset.label = labels[4]
           var group = document.createElement('div'); group.className = 'console-row-actions'
@@ -205,6 +205,20 @@ admin.security = {
         if (total) total.textContent = ''
       }
     })
+  },
+  formatDate: function (value, mode) {
+    if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+      return Util.formatDate(value, mode === undefined ? 1 : mode)
+    }
+    if (value === null || value === undefined || typeof value === 'boolean' || value === '') return '—'
+    var d = value instanceof Date ? value : new Date(typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value)
+    if (!Number.isFinite(d.getTime()) || d.getTime() < 0) return '—'
+    var pad = function (n) { return (n < 10 ? '0' : '') + n }
+    var ymd = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    var m = mode === undefined ? 1 : mode
+    if (m === 1) return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    if (m === 2) return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+    return ymd
   },
   addIpBan: function () {
     if (this.ipBanSaving) return
@@ -362,8 +376,8 @@ Object.assign(admin.security, {
     var summary = document.getElementById('totpSummary')
     if (summary) {
       if (totp.bound) {
-        var boundTime = totp.boundAt ? new Date(totp.boundAt) : null
-        var timeText = boundTime && Number.isFinite(boundTime.getTime()) ? ' · 绑定于 ' + boundTime.toLocaleString() : ''
+        var boundFmt = totp.boundAt ? this.formatDate(totp.boundAt, 1) : '—'
+        var timeText = boundFmt !== '—' ? ' · 绑定于 ' + boundFmt : ''
         summary.textContent = '绑定账号：' + (totp.boundUser || '管理员') + timeText + ' · 剩余应急恢复码：' + (totp.recoveryRemaining || 0) + ' / 8 组'
       } else {
         summary.textContent = '当前尚未绑定 2FA 密钥。请点击下方“生成绑定密钥”使用身份验证器应用扫码绑定。'
@@ -679,8 +693,7 @@ Object.assign(admin.security, {
   _formatPasskeyTime: function (ms) {
     var ts = Number(ms || 0)
     if (!ts || ts <= 0) return '尚未使用'
-    var d = new Date(ts)
-    return Number.isFinite(d.getTime()) ? d.toLocaleString() : '—'
+    return this.formatDate(ts, 1)
   },
   loadPasskeys: function () {
     if (!document || typeof document.getElementById !== 'function') return
@@ -729,8 +742,8 @@ Object.assign(admin.security, {
       nameTd.append(that.element('strong', item.name || '通行密钥'))
       var algName = Number(item.alg) === -7 ? 'ES256 (P-256)' : (Number(item.alg) === -257 ? 'RS256 (RSA)' : String(item.alg || 'FIDO2'))
       var algTd = that.element('td', algName)
-      var createdTd = that.element('td', that._formatPasskeyTime(item.createdAt))
-      var usedTd = that.element('td', item.lastUsedAt ? that._formatPasskeyTime(item.lastUsedAt) : '尚未使用')
+      var createdTd = that.element('td', Number(item.createdAt || 0) > 0 ? that.formatDate(item.createdAt, 1) : '—')
+      var usedTd = that.element('td', Number(item.lastUsedAt || 0) > 0 ? that._formatPasskeyTime(item.lastUsedAt) : '尚未使用')
       var actTd = that.element('td', null, 'is-right')
       var actGroup = that.element('div', null, 'console-row-actions is-right')
       var delBtn = that.element('button', '移除', 'is-danger')

@@ -24,6 +24,8 @@
     Label.searchLabel = "${searchLabel?js_string}";
     Label.editorMode = "${editorMode}"
     Label.setMobileLabel = "${setMobileLabel}"
+    Label.updateSuccLabel = "${(updateSuccLabel!'更新成功')?js_string}"
+    Label.followLabel = "${(followLabel!'关注')?js_string}"
     Label.pushSuccLabel = "${pushSuccLabel}"
     Label.pushToHacpaiLabel = "${pushToHacpaiLabel}"
     Label.uploadMsg = "${uploadMsg?js_string}"
@@ -57,7 +59,7 @@
     Label.commentLabel = "${commentLabel}"
     Label.titleLabel = "${titleLabel}"
     Label.authorLabel = "${authorLabel}"
-    Label.categoryLabel = "${category2Label}"
+
     Label.dateLabel = "${dateLabel}"
     Label.pageLabel = "${pageLabel}"
     Label.gotoLabel = "${gotoLabel}"

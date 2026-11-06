@@ -38,7 +38,7 @@ import java.util.*;
 /** Public static files only; application configuration and template sources stay private. */
 public final class PublicResourceHandler implements Handler {
     private static final Set<String> EXTENSIONS = Set.of("css","js","png","jpg","jpeg","gif","svg","ico","webp","avif","woff","woff2","ttf","eot","otf","json","mp3","mp4","webm","ogg","moc","mtn","txt");
-    private static final List<String> PUBLIC_PREFIXES = List.of("/scss/", "/js/", "/skins/", "/plugins/", "/images/");
+    private static final List<String> PUBLIC_PREFIXES = List.of("/scss/", "/css/", "/js/", "/skins/", "/plugins/", "/images/");
     private static final Set<String> PUBLIC_EXACT_PATHS = Set.of("/favicon.ico", "/robots.txt", "/sw.js", "/service-worker.js");
     private static final Set<String> PUBLIC_ASSET_EXACT_PATHS = Set.of("/favicon.ico", "/sw.js", "/service-worker.js");
     private static final Set<String> ALLOWED_METHODS = Set.of("GET", "HEAD");
@@ -298,11 +298,19 @@ public final class PublicResourceHandler implements Handler {
                 context.setHeader("Content-Length", sizeStr);
                 context.sendBytes(EMPTY_BYTES);
                 context.setHeader("Content-Length", sizeStr);
+            } else if (representationSize > MAX_CACHEABLE_FILE_BYTES) {
+                streamUncachedFile(context, representation, representationSize);
             } else {
                 context.sendBytes(Files.readAllBytes(representation));
             }
             context.abort();
         } catch (final Exception e) { context.sendError(404); context.abort(); }
+    }
+
+    private static void streamUncachedFile(final RequestContext context,
+                                           final Path file,
+                                           final long expectedSize) throws IOException {
+        NettyFileSender.sendFile(context, file, 0L, expectedSize, null);
     }
 
     private static CachedAsset lookupValidCachedAsset(final WebResources resources, final String uri) {
@@ -559,6 +567,26 @@ public final class PublicResourceHandler implements Handler {
         }
 
         final int requestedLength = (int) (end - start + 1L);
+        if (!headOnly && inMemoryBytes == null && requestedLength > MAX_CACHEABLE_FILE_BYTES) {
+            final long diskSize = Files.size(file);
+            if (start >= diskSize) {
+                sendRangeNotSatisfiable(context, diskSize);
+                return true;
+            }
+            final long actualEnd = Math.min(end, diskSize - 1L);
+            final long actualLength = actualEnd - start + 1L;
+            if (actualLength <= 0L) {
+                sendRangeNotSatisfiable(context, diskSize);
+                return true;
+            }
+            final String contentLengthStr = Long.toString(actualLength);
+            context.setStatus(206);
+            context.setHeader("Content-Range", "bytes " + start + "-" + actualEnd + "/" + totalSize);
+            context.setHeader("Content-Length", contentLengthStr);
+            NettyFileSender.sendFile(context, file, start, actualLength, null);
+            return true;
+        }
+
         final byte[] slice;
         if (headOnly) {
             slice = EMPTY_BYTES;

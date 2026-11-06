@@ -28,9 +28,12 @@ import org.b3log.solo.web.Routes;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.http.function.Handler;
+import org.b3log.latke.model.Role;
+import org.b3log.latke.model.User;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
+import org.b3log.solo.service.ArticleQueryService;
 import org.b3log.solo.service.InitService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.PermalinkQueryService;
@@ -55,6 +58,103 @@ public class PermalinkHandler implements Handler {
      * Whether initialization info reported.
      */
     private static boolean initReported;
+
+    private record CachedRef<T>(BeanManager owner, T instance) {
+    }
+
+    private static volatile CachedRef<InitService> cachedInitService;
+    private static volatile CachedRef<ArticleRepository> cachedArticleRepository;
+    private static volatile CachedRef<org.b3log.solo.service.ShareTokenService> cachedShareTokenService;
+    private static volatile CachedRef<OptionQueryService> cachedOptionQueryService;
+    private static volatile CachedRef<ArticleQueryService> cachedArticleQueryService;
+
+    private static InitService resolveInitService(final BeanManager beanManager) {
+        final CachedRef<InitService> cached = cachedInitService;
+        if (null != cached && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final InitService ref = beanManager.getReference(InitService.class);
+        if (null != ref) {
+            cachedInitService = new CachedRef<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static ArticleRepository resolveArticleRepository(final BeanManager beanManager) {
+        final CachedRef<ArticleRepository> cached = cachedArticleRepository;
+        if (null != cached && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final ArticleRepository ref = beanManager.getReference(ArticleRepository.class);
+        if (null != ref) {
+            cachedArticleRepository = new CachedRef<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static org.b3log.solo.service.ShareTokenService resolveShareTokenService(final BeanManager beanManager) {
+        final CachedRef<org.b3log.solo.service.ShareTokenService> cached = cachedShareTokenService;
+        if (null != cached && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final org.b3log.solo.service.ShareTokenService ref =
+                beanManager.getReference(org.b3log.solo.service.ShareTokenService.class);
+        if (null != ref) {
+            cachedShareTokenService = new CachedRef<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static OptionQueryService resolveOptionQueryService(final BeanManager beanManager) {
+        final CachedRef<OptionQueryService> cached = cachedOptionQueryService;
+        if (null != cached && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final OptionQueryService ref = beanManager.getReference(OptionQueryService.class);
+        if (null != ref) {
+            cachedOptionQueryService = new CachedRef<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static ArticleQueryService resolveArticleQueryService(final BeanManager beanManager) {
+        final CachedRef<ArticleQueryService> cached = cachedArticleQueryService;
+        if (null != cached && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        try {
+            final ArticleQueryService ref = beanManager.getReference(ArticleQueryService.class);
+            if (null != ref) {
+                cachedArticleQueryService = new CachedRef<>(beanManager, ref);
+            }
+            return ref;
+        } catch (final Exception ignored) {
+            return null;
+        }
+    }
+
+    private static boolean canAccessDraftArticle(final BeanManager beanManager,
+                                                 final RequestContext context,
+                                                 final JSONObject article) {
+        final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+        if (null == currentUser) {
+            return false;
+        }
+        final ArticleQueryService articleQueryService = resolveArticleQueryService(beanManager);
+        if (null != articleQueryService) {
+            try {
+                return articleQueryService.canAccessArticle(article.optString(Keys.OBJECT_ID), currentUser);
+            } catch (final Exception e) {
+                LOGGER.log(Level.WARN, "Checks draft article access failed", e);
+                return false;
+            }
+        }
+        if (Role.ADMIN_ROLE.equals(currentUser.optString(User.USER_ROLE))) {
+            return true;
+        }
+        final String currentUserId = currentUser.optString(Keys.OBJECT_ID);
+        return !currentUserId.isEmpty() && currentUserId.equals(article.optString(Article.ARTICLE_AUTHOR_ID));
+    }
 
     /**
      * Decodes percent-encoded UTF-8 octets in a request permalink without converting literal {@code '+'} into spaces.
@@ -91,7 +191,7 @@ public class PermalinkHandler implements Handler {
 
         JSONObject article;
         try {
-            final InitService initService = beanManager.getReference(InitService.class);
+            final InitService initService = resolveInitService(beanManager);
             if (!initService.isInited()) {
                 context.handle();
 
@@ -109,7 +209,7 @@ public class PermalinkHandler implements Handler {
                 return;
             }
 
-            final ArticleRepository articleRepository = beanManager.getReference(ArticleRepository.class);
+            final ArticleRepository articleRepository = resolveArticleRepository(beanManager);
             article = articleRepository.getByPermalink(decoded);
             if (null == article && !decoded.equals(permalink) && !PermalinkQueryService.invalidPermalinkFormat(permalink)) {
                 article = articleRepository.getByPermalink(permalink);
@@ -128,9 +228,21 @@ public class PermalinkHandler implements Handler {
             return;
         }
 
-        final org.b3log.solo.service.ShareTokenService shareTokenService =
-                beanManager.getReference(org.b3log.solo.service.ShareTokenService.class);
+        final org.b3log.solo.service.ShareTokenService shareTokenService = resolveShareTokenService(beanManager);
         final boolean validPreviewToken = null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article);
+
+        if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
+                && !validPreviewToken) {
+            final OptionQueryService optionQueryService = resolveOptionQueryService(beanManager);
+            final boolean allowVisitDraftViaPermalink = null != optionQueryService
+                    && Boolean.parseBoolean(optionQueryService.getPreferenceString(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK, "false"));
+            if (!allowVisitDraftViaPermalink && !canAccessDraftArticle(beanManager, context, article)) {
+                context.sendError(404);
+                context.abort();
+
+                return;
+            }
+        }
 
         // If requests an article and the article need view password, sends redirect to the password form
         if (!validPreviewToken && Solos.needViewPwd(context, article)) {
@@ -140,21 +252,6 @@ public class PermalinkHandler implements Handler {
 
                 return;
             } catch (final Exception e) {
-                context.sendError(404);
-                context.abort();
-
-                return;
-            }
-        }
-
-        if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
-                && !validPreviewToken
-                && !Solos.isAdminOrAuthorLoggedIn(context)) {
-            final OptionQueryService optionQueryService = beanManager.getReference(OptionQueryService.class);
-            final JSONObject preference = optionQueryService.getPreference();
-            final boolean allowVisitDraftViaPermalink = null != preference
-                    && preference.optBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
-            if (!allowVisitDraftViaPermalink) {
                 context.sendError(404);
                 context.abort();
 

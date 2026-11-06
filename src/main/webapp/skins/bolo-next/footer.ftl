@@ -43,7 +43,6 @@
 </footer>
 <div class="back-to-top" onclick="Util.goTop()"></div>
 
-<script type="text/javascript" src="${staticServePath}/js/lib/jquery/jquery.min.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <script type="text/javascript"

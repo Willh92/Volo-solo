@@ -10,7 +10,7 @@
     window.VoloKanban.destroy()
   }
   if (!host) return
-  var alive = true, started = false, ready = false
+  var alive = true, started = false, ready = false, tipsInitialized = false
   var messageTimer, closeTimer, loadTimer, chatTimer, drag
   var removers = []
   var requests = new AbortController()
@@ -89,20 +89,34 @@
       window.loadlive2d('soloKanbanniang', modelURL)
     }
   }
+  function viewportWidth () {
+    return typeof window.innerWidth === 'number' ? window.innerWidth : innerWidth
+  }
+  function ensureTipsInitialized () {
+    if (tipsInitialized || !alive) return
+    tipsInitialized = true
+    fetch(staticBase + '/assets/tips.json', {signal: requests.signal}).then(function (response) {
+      if (!response.ok) throw new Error('Local tips are unavailable')
+      return response.json()
+    }).then(function (data) { if (alive && data) tips = data }).catch(function () {})
+    chatTimer = setInterval(function () { if (!document.hidden) message(tips.chat, 4000) }, 30000)
+  }
   function restorePosition () {
+    var vw = viewportWidth()
     var x = Number(get('soloKanbanniangX')), y = Number(get('soloKanbanniangY'))
-    if (get('soloKanbanniangX') !== null && Number.isFinite(x)) host.style.left = Math.max(0, Math.min(x, innerWidth - 284)) + 'px'
+    if (get('soloKanbanniangX') !== null && Number.isFinite(x)) host.style.left = Math.max(0, Math.min(x, vw - 284)) + 'px'
     if (get('soloKanbanniangY') !== null && Number.isFinite(y)) {
       host.style.top = Math.max(0, Math.min(y, innerHeight - 254)) + 'px'
       host.style.bottom = 'auto'
     }
   }
   async function start () {
-    if (!alive || started || innerWidth <= 800 || get('soloKanbanniang') === 'close') return
+    if (!alive || started || viewportWidth() <= 800 || get('soloKanbanniang') === 'close') return
     started = true
+    ensureTipsInitialized()
     try {
       await sdk()
-      if (!alive || innerWidth <= 800 || !host.isConnected) { started = false; return }
+      if (!alive || viewportWidth() <= 800 || !host.isConnected) { started = false; return }
       // A context lost while hidden or after a full teardown needs a fresh canvas.
       var oldCanvas = host.querySelector('#soloKanbanniang')
       oldCanvas.replaceWith(oldCanvas.cloneNode(false))
@@ -132,7 +146,7 @@
     closeTimer = setTimeout(pause, 160)
   })
   listen(window, 'volo:kanban-ready', function (event) {
-    if (!alive || !started || innerWidth <= 800 || get('soloKanbanniang') === 'close') return
+    if (!alive || !started || viewportWidth() <= 800 || get('soloKanbanniang') === 'close') return
     ready = true
     clearTimeout(loadTimer)
     host.dataset.ready = 'true'
@@ -143,7 +157,7 @@
     message('欢迎来到这个文字空间。', 5000)
   })
   listen(window, 'resize', function () {
-    if (innerWidth <= 800) { if (started) pause() }
+    if (viewportWidth() <= 800) { if (started) pause() }
     else { restorePosition(); start() }
   })
   listen(document, 'copy', function () { message('如果转载，也请记得注明出处。') })
@@ -192,12 +206,8 @@
     isReady: function () { return ready },
     isAlive: function () { return alive }
   }
-  if (innerWidth <= 800 || get('soloKanbanniang') === 'close') { host.hidden = true; return }
-  fetch(staticBase + '/assets/tips.json', {signal: requests.signal}).then(function (response) {
-    if (!response.ok) throw new Error('Local tips are unavailable')
-    return response.json()
-  }).then(function (data) { if (alive) tips = data }).catch(function () {})
-  chatTimer = setInterval(function () { if (!document.hidden) message(tips.chat, 4000) }, 30000)
+  if (viewportWidth() <= 800 || get('soloKanbanniang') === 'close') { host.hidden = true; return }
+  ensureTipsInitialized()
   if (document.readyState === 'complete') start()
   else listen(window, 'load', start, {once: true})
 })()

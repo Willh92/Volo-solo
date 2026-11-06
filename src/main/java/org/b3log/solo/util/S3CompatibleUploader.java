@@ -167,6 +167,14 @@ public final class S3CompatibleUploader {
             throw new IOException("S3 Endpoint 不允许包含认证信息、查询参数或锚点。");
         }
         final String rawHost = uri.getHost();
+        validateHostAddresses(rawHost);
+        return normalizeBaseUri(uri);
+    }
+
+    /**
+     * Resolves {@code rawHost} and verifies every resolved address passes {@link #isAllowedS3EndpointAddress(InetAddress)}.
+     */
+    public static void validateHostAddresses(final String rawHost) throws IOException {
         if (rawHost == null || rawHost.isBlank()) {
             throw new IOException("S3 Endpoint 缺少有效主机名。");
         }
@@ -180,7 +188,6 @@ public final class S3CompatibleUploader {
                 throw new IOException("S3 Endpoint 目标地址受安全策略限制（禁止回环、链路本地及云元数据地址）。");
             }
         }
-        return normalizeBaseUri(uri);
     }
 
     /**
@@ -396,6 +403,7 @@ public final class S3CompatibleUploader {
             pathBuilder.append('/').append(awsUriEncode(bucket, true));
         } else {
             targetHost = bucket + '.' + host.toLowerCase(Locale.ROOT);
+            validateHostAddresses(targetHost);
         }
         if (!encodedKey.isEmpty()) {
             pathBuilder.append('/').append(encodedKey);
@@ -450,7 +458,7 @@ public final class S3CompatibleUploader {
                 .PUT(HttpRequest.BodyPublishers.ofFile(file));
         applyHttpClientHeaders(reqBuilder, signed.headers());
 
-        final HttpResponse<String> response = sendRequest(reqBuilder.build());
+        final BoundedHttpResponse response = sendRequest(reqBuilder.build());
         final int status = response.statusCode();
         if (status < 200 || status >= 300) {
             throw new IOException("S3 上传失败（HTTP " + status + "）。");
@@ -492,7 +500,7 @@ public final class S3CompatibleUploader {
                 .PUT(HttpRequest.BodyPublishers.ofByteArray(payload));
         applyHttpClientHeaders(reqBuilder, signed.headers());
 
-        final HttpResponse<String> response = sendRequest(reqBuilder.build());
+        final BoundedHttpResponse response = sendRequest(reqBuilder.build());
         final int status = response.statusCode();
         if (status < 200 || status >= 300) {
             throw new IOException("S3 写入对象失败（HTTP " + status + "）。");
@@ -522,7 +530,7 @@ public final class S3CompatibleUploader {
                 .GET();
         applyHttpClientHeaders(listBuilder, signedList.headers());
 
-        final HttpResponse<String> response = sendRequest(listBuilder.build());
+        final BoundedHttpResponse response = sendRequest(listBuilder.build());
         final int status = response.statusCode();
         if (status >= 200 && status < 300) {
             return;
@@ -542,7 +550,7 @@ public final class S3CompatibleUploader {
                     .timeout(CONNECT_TIMEOUT)
                     .method("HEAD", HttpRequest.BodyPublishers.noBody());
             applyHttpClientHeaders(headBuilder, signedHead.headers());
-            final HttpResponse<String> headResp = sendRequest(headBuilder.build());
+            final BoundedHttpResponse headResp = sendRequest(headBuilder.build());
             final int headStatus = headResp.statusCode();
             if (headStatus == 200 || headStatus == 204 || headStatus == 404) {
                 return;
@@ -591,9 +599,23 @@ public final class S3CompatibleUploader {
         return requestUri.toString();
     }
 
-    private static HttpResponse<String> sendRequest(final HttpRequest request) throws IOException {
+    private record BoundedHttpResponse(int statusCode, String bodyPreview) {
+    }
+
+    private static BoundedHttpResponse sendRequest(final HttpRequest request) throws IOException {
+        validateHostAddresses(request.uri().getHost());
         try {
-            return HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            final HttpResponse<InputStream> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            final String preview;
+            try (final InputStream in = response.body()) {
+                if (in != null) {
+                    final byte[] buf = in.readNBytes(8192);
+                    preview = new String(buf, StandardCharsets.UTF_8);
+                } else {
+                    preview = "";
+                }
+            }
+            return new BoundedHttpResponse(response.statusCode(), preview);
         } catch (final InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("S3 请求被中断。", e);

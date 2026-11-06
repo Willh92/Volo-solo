@@ -21,10 +21,18 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
-import org.b3log.latke.repository.*;
+import org.b3log.latke.repository.AbstractRepository;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
+import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.cache.UserCache;
+import org.b3log.solo.model.UserExt;
+import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
+
+import java.util.Locale;
 
 /**
  * User repository.
@@ -52,47 +60,75 @@ public class UserRepository extends AbstractRepository {
     @Override
     public String add(final JSONObject user) throws RepositoryException {
         if (user != null) {
-            if (!user.has(org.b3log.solo.model.UserExt.USER_STATUS)) {
-                user.put(org.b3log.solo.model.UserExt.USER_STATUS, org.b3log.solo.model.UserExt.USER_STATUS_C_VALID);
+            if (!user.has(UserExt.USER_STATUS)) {
+                user.put(UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID);
             }
-            if (!user.has(org.b3log.solo.model.UserExt.USER_EMAIL_VERIFIED)) {
-                user.put(org.b3log.solo.model.UserExt.USER_EMAIL_VERIFIED, false);
+            if (!user.has(UserExt.USER_EMAIL_VERIFIED)) {
+                user.put(UserExt.USER_EMAIL_VERIFIED, false);
             }
-            if (!user.has(org.b3log.solo.model.UserExt.USER_EMAIL)) {
-                user.put(org.b3log.solo.model.UserExt.USER_EMAIL, "");
+            if (!user.has(UserExt.USER_EMAIL)) {
+                user.put(UserExt.USER_EMAIL, "");
             }
-            if (!user.has(org.b3log.solo.model.UserExt.USER_PASSWORD_HASH)) {
-                user.put(org.b3log.solo.model.UserExt.USER_PASSWORD_HASH, "");
+            if (!user.has(UserExt.USER_PASSWORD_HASH)) {
+                user.put(UserExt.USER_PASSWORD_HASH, "");
             }
-            if (!user.has(org.b3log.solo.model.UserExt.USER_CREATED)) {
-                user.put(org.b3log.solo.model.UserExt.USER_CREATED, System.currentTimeMillis());
+            if (!user.has(UserExt.USER_CREATED)) {
+                user.put(UserExt.USER_CREATED, System.currentTimeMillis());
             }
         }
-        return super.add(user);
+        final String ret = super.add(user);
+        if (null != userCache && null != ret) {
+            if (null != user) {
+                final JSONObject cached = Solos.clone(user);
+                cached.put(Keys.OBJECT_ID, ret);
+                userCache.putUser(cached);
+                if (Role.ADMIN_ROLE.equals(cached.optString(User.USER_ROLE))) {
+                    userCache.putAdmin(cached);
+                }
+            } else {
+                userCache.clearMissingUser(ret);
+            }
+        }
+        return ret;
     }
 
     @Override
     public void remove(final String id) throws RepositoryException {
         super.remove(id);
 
-        userCache.removeUser(id);
+        if (null != userCache) {
+            userCache.removeUser(id);
+        }
     }
 
     @Override
     public JSONObject get(final String id) throws RepositoryException {
-        JSONObject ret = userCache.getUser(id);
-        if (null != ret) {
-            return ret;
+        if (null == id || id.isEmpty()) {
+            return null;
+        }
+        if (null != userCache) {
+            final JSONObject cached = userCache.getUser(id);
+            if (null != cached) {
+                return cached;
+            }
+            if (userCache.isMissingUser(id)) {
+                return null;
+            }
         }
 
-        ret = super.get(id);
+        final JSONObject ret = super.get(id);
         if (null == ret) {
+            if (null != userCache) {
+                userCache.markMissingUser(id);
+            }
             return null;
         }
 
-        userCache.putUser(ret);
+        if (null != userCache) {
+            userCache.putUser(ret);
+        }
 
-        return ret;
+        return Solos.clone(ret);
     }
 
     @Override
@@ -100,10 +136,12 @@ public class UserRepository extends AbstractRepository {
         super.update(id, user, propertyNames);
 
         user.put(Keys.OBJECT_ID, id);
-        userCache.putUser(user);
+        if (null != userCache) {
+            userCache.putUser(user);
 
-        if (Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))) {
-            userCache.putAdmin(user);
+            if (Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))) {
+                userCache.putAdmin(user);
+            }
         }
     }
 
@@ -115,7 +153,10 @@ public class UserRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByUserName(final String userName) throws RepositoryException {
-        return getFirst(new Query().setFilter(new PropertyFilter(User.USER_NAME, FilterOperator.EQUAL, userName)));
+        return getFirst(new Query()
+                .setFilter(new PropertyFilter(User.USER_NAME, FilterOperator.EQUAL, userName))
+                .setPage(1, 1)
+                .setPageCount(1));
     }
 
     /**
@@ -125,9 +166,11 @@ public class UserRepository extends AbstractRepository {
         if (email == null || email.isBlank()) {
             return null;
         }
-        final String normalized = email.strip().toLowerCase(java.util.Locale.ROOT);
-        return getFirst(new Query().setFilter(new PropertyFilter(
-                org.b3log.solo.model.UserExt.USER_EMAIL, FilterOperator.EQUAL, normalized)));
+        final String normalized = email.strip().toLowerCase(Locale.ROOT);
+        return getFirst(new Query()
+                .setFilter(new PropertyFilter(UserExt.USER_EMAIL, FilterOperator.EQUAL, normalized))
+                .setPage(1, 1)
+                .setPageCount(1));
     }
 
     /**
@@ -137,18 +180,25 @@ public class UserRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getAdmin() throws RepositoryException {
-        JSONObject ret = userCache.getAdmin();
-        if (null != ret) {
-            return ret;
+        if (null != userCache) {
+            final JSONObject cached = userCache.getAdmin();
+            if (null != cached) {
+                return cached;
+            }
         }
 
-        ret = getFirst(new Query().setFilter(new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, Role.ADMIN_ROLE)));
+        final JSONObject ret = getFirst(new Query()
+                .setFilter(new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, Role.ADMIN_ROLE))
+                .setPage(1, 1)
+                .setPageCount(1));
         if (null == ret) {
             return null;
         }
 
-        userCache.putAdmin(ret);
+        if (null != userCache) {
+            userCache.putAdmin(ret);
+        }
 
-        return org.b3log.solo.util.Solos.clone(ret);
+        return Solos.clone(ret);
     }
 }

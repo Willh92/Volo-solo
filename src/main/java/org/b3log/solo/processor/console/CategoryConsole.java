@@ -41,8 +41,10 @@ import org.b3log.solo.model.Tag;
 import org.b3log.solo.service.CategoryMgmtService;
 import org.b3log.solo.service.CategoryQueryService;
 import org.b3log.solo.service.TagQueryService;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -118,14 +120,24 @@ public class CategoryConsole {
         final JSONObject ret = new JSONObject();
         try {
             final JSONObject requestJSON = context.requestJSON();
-            final String categoryId = requestJSON.getString(Keys.OBJECT_ID);
-            final String direction = requestJSON.getString(Common.DIRECTION);
+            if (null == requestJSON) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final String categoryId = requestJSON.optString(Keys.OBJECT_ID);
+            final String direction = requestJSON.optString(Common.DIRECTION);
+            if (categoryId.isBlank() || (!"up".equals(direction) && !"down".equals(direction))) {
+                AdminRequests.reject(context, 400, "排序参数不正确。");
+                return;
+            }
 
             categoryMgmtService.changeOrder(categoryId, direction);
 
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -171,11 +183,13 @@ public class CategoryConsole {
 
             final StringBuilder tagBuilder = new StringBuilder();
             final List<JSONObject> tags = (List<JSONObject>) result.opt(Category.CATEGORY_T_TAGS);
-            for (final JSONObject tag : tags) {
-                if (null == tag || !tag.has(Tag.TAG_TITLE)) { // 修复修改分类时空指针错误 https://github.com/b3log/solo/pull/12876
-                    continue;
+            if (null != tags) {
+                for (final JSONObject tag : tags) {
+                    if (null == tag || !tag.has(Tag.TAG_TITLE)) { // 修复修改分类时空指针错误 https://github.com/b3log/solo/pull/12876
+                        continue;
+                    }
+                    tagBuilder.append(tag.optString(Tag.TAG_TITLE)).append(",");
                 }
-                tagBuilder.append(tag.optString(Tag.TAG_TITLE)).append(",");
             }
             if (tagBuilder.length() != 0) {
                 tagBuilder.deleteCharAt(tagBuilder.length() - 1);
@@ -264,11 +278,24 @@ public class CategoryConsole {
 
         try {
             final JSONObject requestJSON = context.requestJSON();
+            if (null == requestJSON) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
 
             final String categoryId = requestJSON.optString(Keys.OBJECT_ID);
+            if (StringUtils.isBlank(categoryId)) {
+                AdminRequests.reject(context, 400, "分类编号不能为空。");
+                return;
+            }
+            final JSONObject targetCategory = categoryQueryService.getCategory(categoryId);
+            if (null == targetCategory) {
+                AdminRequests.reject(context, 400, langPropsService.get("updateFailLabel"));
+                return;
+            }
+
             final String title = requestJSON.optString(Category.CATEGORY_TITLE, "Category");
             String uri = requestJSON.optString(Category.CATEGORY_URI);
-            final JSONObject targetCategory = categoryQueryService.getCategory(categoryId);
             JSONObject mayExist = categoryQueryService.getByTitle(title);
             if (null != mayExist && !mayExist.optString(Keys.OBJECT_ID).equals(categoryId)) {
                 final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
@@ -312,6 +339,8 @@ public class CategoryConsole {
             ret.put(Keys.OBJECT_ID, categoryId);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -357,6 +386,10 @@ public class CategoryConsole {
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
+            if (null == requestJSONObject) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
 
             final String title = requestJSONObject.optString(Category.CATEGORY_TITLE, "Category");
             JSONObject mayExist = categoryQueryService.getByTitle(title);
@@ -401,6 +434,8 @@ public class CategoryConsole {
             ret.put(Keys.OBJECT_ID, categoryId);
             ret.put(Keys.MSG, langPropsService.get("addSuccLabel"));
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -454,11 +489,16 @@ public class CategoryConsole {
             renderer.setJSONObject(result);
 
             final JSONArray categories = result.optJSONArray(Category.CATEGORIES);
-            for (int i = 0; i < categories.length(); i++) {
-                final JSONObject category = categories.optJSONObject(i);
-                String title = category.optString(Category.CATEGORY_TITLE);
-                title = StringEscapeUtils.escapeXml11(title);
-                category.put(Category.CATEGORY_TITLE, title);
+            if (null != categories) {
+                for (int i = 0; i < categories.length(); i++) {
+                    final JSONObject category = categories.optJSONObject(i);
+                    if (null == category) {
+                        continue;
+                    }
+                    String title = category.optString(Category.CATEGORY_TITLE);
+                    title = StringEscapeUtils.escapeXml11(title);
+                    category.put(Category.CATEGORY_TITLE, title);
+                }
             }
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);

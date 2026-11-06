@@ -15,9 +15,14 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-$("table")
-    .has("img")
-    .addClass("nexmoe-album");
+$("table").each(function () {
+    var $table = $(this);
+    if ($table.find("th, thead").length) return;
+    var $cells = $table.find("td");
+    if ($cells.length && $cells.filter(function () { return $(this).find("img").length > 0; }).length === $cells.length) {
+        $table.addClass("nexmoe-album");
+    }
+});
 
 $("#nexmoe-content img").each(function () {
     if (!this.closest('.nexmoe-post-cover')) this.loading = 'lazy';
@@ -26,4 +31,6 @@ $("#nexmoe-content img").each(function () {
 
 
 $("#nexmoe-sidebar a").addClass("mdui-ripple");
-mdui.mutation();
+if (window.mdui && typeof window.mdui.mutation === "function") {
+    window.mdui.mutation();
+}

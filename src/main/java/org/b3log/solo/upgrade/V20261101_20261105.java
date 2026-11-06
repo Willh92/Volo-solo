@@ -34,7 +34,7 @@ public final class V20261101_20261105 {
 
     public static void perform() throws Exception {
         final String prefix = Latkes.getLocalProperty("jdbc.tablePrefix");
-        final String p = (prefix == null || prefix.isBlank()) ? "" : prefix + "_";
+        final String p = (prefix == null || prefix.isBlank()) ? "" : prefix.trim() + "_";
         try (Connection connection = Connections.getConnection()) {
             ensureUserColumns(connection, p + "user");
             ensureCommentColumns(connection, p + "comment");
@@ -161,18 +161,18 @@ public final class V20261101_20261105 {
             }
             if (!meta.columns.contains("useremailverified")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN userEmailVerified BOOLEAN DEFAULT FALSE");
+                st.executeUpdate("UPDATE " + meta.quotedTable + " SET userEmailVerified = FALSE WHERE userEmailVerified IS NULL");
             }
             if (!meta.columns.contains("userpasswordhash")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN userPasswordHash VARCHAR(255) DEFAULT ''");
             }
             if (!meta.columns.contains("userstatus")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN userStatus INT DEFAULT 0");
+                st.executeUpdate("UPDATE " + meta.quotedTable + " SET userStatus = 0 WHERE userStatus IS NULL");
             }
             if (!meta.columns.contains("usercreated")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN userCreated BIGINT DEFAULT 0");
             }
-            st.executeUpdate("UPDATE " + meta.quotedTable + " SET userStatus = 0 WHERE userStatus IS NULL");
-            st.executeUpdate("UPDATE " + meta.quotedTable + " SET userEmailVerified = FALSE WHERE userEmailVerified IS NULL");
         }
     }
 
@@ -182,11 +182,11 @@ public final class V20261101_20261105 {
             normalizeCaseIfNeeded(connection, st, meta, "commentStatus", "commentUserId");
             if (!meta.columns.contains("commentstatus")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN commentStatus INT DEFAULT 0");
+                st.executeUpdate("UPDATE " + meta.quotedTable + " SET commentStatus = 0 WHERE commentStatus IS NULL");
             }
             if (!meta.columns.contains("commentuserid")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN commentUserId VARCHAR(19) DEFAULT ''");
             }
-            st.executeUpdate("UPDATE " + meta.quotedTable + " SET commentStatus = 0 WHERE commentStatus IS NULL");
         }
     }
 
@@ -197,6 +197,7 @@ public final class V20261101_20261105 {
                     "articleScheduleTime", "articleAudioURL", "articleAudioDuration", "articleAudioSize");
             if (!meta.columns.contains("articlescheduletime")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN articleScheduleTime BIGINT DEFAULT 0");
+                st.executeUpdate("UPDATE " + meta.quotedTable + " SET articleScheduleTime = 0 WHERE articleScheduleTime IS NULL");
             }
             if (!meta.columns.contains("articleaudiourl")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN articleAudioURL VARCHAR(512) DEFAULT ''");
@@ -207,7 +208,6 @@ public final class V20261101_20261105 {
             if (!meta.columns.contains("articleaudiosize")) {
                 st.executeUpdate("ALTER TABLE " + meta.quotedTable + " ADD COLUMN articleAudioSize BIGINT DEFAULT 0");
             }
-            st.executeUpdate("UPDATE " + meta.quotedTable + " SET articleScheduleTime = 0 WHERE articleScheduleTime IS NULL");
         }
     }
 
@@ -218,17 +218,12 @@ public final class V20261101_20261105 {
             throw new IllegalStateException("Invalid revision table name: " + configuredTable);
         }
         if (existing.actualTable != null) {
-            try (Statement st = connection.createStatement()) {
-                st.executeUpdate("CREATE INDEX idx_" + tableDdlName + "_article ON " + existing.quotedTable + " (articleOId, revisionCreated)");
-            } catch (Exception ignoredIndexAlreadyExists) {
-                // Index creation is best-effort and idempotent across restarts.
-            }
             return;
         }
         final String product = String.valueOf(connection.getMetaData().getDatabaseProductName()).toLowerCase(Locale.ROOT);
         final boolean mysqlFamily = product.contains("mysql") || product.contains("mariadb");
         final String largeTextType = mysqlFamily ? "MEDIUMTEXT" : "CLOB";
-        final String abstractType = mysqlFamily ? "TEXT" : "VARCHAR(2048)";
+        final String abstractType = mysqlFamily ? "TEXT" : "CLOB";
         try (Statement st = connection.createStatement()) {
             st.executeUpdate("CREATE TABLE IF NOT EXISTS " + tableDdlName + " ("
                     + "oId VARCHAR(19) NOT NULL PRIMARY KEY, "

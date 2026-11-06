@@ -23,16 +23,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.b3log.latke.http.Response;
-
 import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.model.User;
-import org.b3log.latke.repository.CompositeFilterOperator;
 import org.b3log.latke.repository.FilterOperator;
 import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
@@ -40,17 +40,12 @@ import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.http.HttpMethod;
-import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.RequestProcessing;
-import org.b3log.latke.ioc.Singleton;
-import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.bolo.Global;
 import org.b3log.solo.bolo.prop.CommentMailService;
-import org.b3log.solo.bolo.prop.MailService;
 import org.b3log.solo.bolo.prop.Options;
 import org.b3log.solo.bolo.prop.ServerJiangService;
 import org.b3log.solo.bolo.tool.AntiXSS;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Comment;
 import org.b3log.solo.model.Common;
@@ -67,9 +62,12 @@ import org.b3log.solo.service.OptionMgmtService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.UserMgmtService;
 import org.b3log.solo.service.UserQueryService;
-import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.AdminRequests;
+import org.b3log.solo.util.CommentThrottle;
+import org.b3log.solo.util.LoginThrottle;
+import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -78,8 +76,6 @@ import freemarker.template.Template;
 import jodd.http.Cookie;
 import jodd.http.HttpRequest;
 import jodd.http.HttpResponse;
-import org.b3log.solo.util.CommentThrottle;
-import org.b3log.solo.util.LoginThrottle;
 
 /**
  * Comment processor.
@@ -174,7 +170,7 @@ public class CommentProcessor {
      *
      * <p>
      * Request json:
-     * 
+     *
      * <pre>
      * {
      *     "captcha": "",
@@ -188,7 +184,7 @@ public class CommentProcessor {
      * </p>
      * <p>
      * Renders the response with a json object, for example,
-     * 
+     *
      * <pre>
      * {
      *     "oId": generatedCommentId,
@@ -259,6 +255,23 @@ public class CommentProcessor {
                 return;
             }
         }
+        final String targetArticleId = requestJSONObject.optString(Keys.OBJECT_ID).trim();
+        if (null != articleRepository) {
+            final JSONObject targetArticle;
+            try {
+                targetArticle = articleRepository.getBriefForAccessCheck(targetArticleId);
+            } catch (final RepositoryException e) {
+                LOGGER.log(Level.ERROR, "Loads article brief for comment check failed", e);
+                AdminRequests.reject(context, 503, langPropsService.get("addFailLabel"));
+                return;
+            }
+            if (null != targetArticle
+                    && Article.ARTICLE_STATUS_C_PUBLISHED == targetArticle.optInt(Article.ARTICLE_STATUS)
+                    && Solos.needViewPwd(context, targetArticle)) {
+                AdminRequests.reject(context, 403, "该文章需要访问密码，解锁后方可发表评论。");
+                return;
+            }
+        }
         if (!checkCommentCaptcha(context, requestJSONObject, adminLoggedIn)) return;
         String site = currentUser == null ? requestJSONObject.optString("boloSite") : currentUser.optString(User.USER_URL);
         // XSS 处理
@@ -323,13 +336,13 @@ public class CommentProcessor {
         }
 
         // 禁止冒用管理员评论
-        JSONObject admin = new JSONObject();
+        JSONObject admin = null;
         try {
             admin = userRepository.getAdmin();
         } catch (RepositoryException RE) {
             RE.printStackTrace();
         }
-        if (admin.optString(User.USER_NAME).equals(username)) {
+        if (null != admin && admin.optString(User.USER_NAME).equals(username)) {
             if (!adminLoggedIn) {
                 jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 jsonObject.put(Keys.MSG, "你输入了管理员的昵称，但并没有登录！");
@@ -506,10 +519,11 @@ public class CommentProcessor {
             return;
         }
 
-        final Query query = new Query().setFilter(CompositeFilterOperator.and(
-                new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED),
-                new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)))
-                .setPageCount(1).addSort(Keys.OBJECT_ID, SortDirection.DESCENDING);
+        final Query query = new Query()
+                .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE)
+                .setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))
+                .setPageCount(1)
+                .addSort(Keys.OBJECT_ID, SortDirection.DESCENDING);
         List<JSONObject> articlesList = new ArrayList<>();
         try {
             final List<JSONObject> articles = articleRepository.getList(query);
@@ -539,7 +553,7 @@ public class CommentProcessor {
     }
 
     /**
-     * Sync comment from HacPai to article
+     * Sync comment from FishPI to article
      *
      * @param context
      */
@@ -556,6 +570,9 @@ public class CommentProcessor {
         final String symphony;
         try {
             payload = context.requestJSON();
+            if (null == payload) {
+                throw new IllegalArgumentException();
+            }
             localId = Long.parseLong(payload.optString("localArticleId"));
             remoteId = Long.parseLong(payload.optString("remoteArticleId"));
             symphony = payload.optString("symphony");
@@ -566,90 +583,146 @@ public class CommentProcessor {
             AdminRequests.reject(context, 400, "请输入有效的文章编号和 Cookie。");
             return;
         }
-        if (articleQueryService.getArticleById(String.valueOf(localId)) == null) {
+        final JSONObject article = articleQueryService.getArticleById(String.valueOf(localId));
+        if (article == null) {
             AdminRequests.reject(context, 404, "本地文章不存在，请重新选择。");
             return;
         }
-        final Transaction transaction = commentRepository.beginTransaction();
         try {
             final int pageCount = fishpi ? commentMgmtService.syncCommentFromFishPI(localId, remoteId, 1)
-                    : syncComment(localId, remoteId, symphony, 1);
+                    : syncComment(article, remoteId, symphony, 1);
             if (pageCount < 0 || pageCount > 1000) {
                 AdminRequests.reject(context, 502, "评论同步失败，请检查远端服务和凭据。");
                 return;
             }
             for (int page = 2; page <= pageCount; page++) {
                 final int result = fishpi ? commentMgmtService.syncCommentFromFishPI(localId, remoteId, page)
-                        : syncComment(localId, remoteId, symphony, page);
+                        : syncComment(article, remoteId, symphony, page);
                 if (result < 0) {
                     AdminRequests.reject(context, 502, "评论同步中断，请稍后重试。");
                     return;
                 }
             }
             if (fishpi) {
-                final String id = "article_" + localId;
-                final JSONObject reference = new JSONObject().put(Keys.OBJECT_ID, id)
-                        .put(Option.OPTION_CATEGORY, "fishPiArticleRef").put(Option.OPTION_VALUE, String.valueOf(remoteId));
-                if (optionRepository.get(id) == null) optionRepository.add(reference);
-                else optionRepository.update(id, reference);
+                final Transaction optTx = optionRepository.beginTransaction();
+                try {
+                    final String id = "article_" + localId;
+                    final JSONObject reference = new JSONObject().put(Keys.OBJECT_ID, id)
+                            .put(Option.OPTION_CATEGORY, "fishPiArticleRef").put(Option.OPTION_VALUE, String.valueOf(remoteId));
+                    if (optionRepository.get(id) == null) {
+                        optionRepository.add(reference);
+                    } else {
+                        optionRepository.update(id, reference);
+                    }
+                    optTx.commit();
+                } catch (final Exception ex) {
+                    if (optTx.isActive()) {
+                        optTx.rollback();
+                    }
+                    throw ex;
+                }
             }
-            transaction.commit();
             context.renderJSON(new JSONObject().put("sc", true).put("msg", pageCount == 0 ? "远端文章暂无评论。" : "评论同步成功。"));
         } catch (Exception exception) {
             // Do not log upstream errors that may contain credentials or private comment data.
             LOGGER.log(Level.WARN, "Comment sync failed");
             AdminRequests.reject(context, 502, "评论同步失败，请检查远端服务和凭据。");
-        } finally {
-            if (transaction.isActive()) transaction.rollback();
         }
     }
 
-    private int syncComment(long localaid, long remoteaid, String symphony, int page) throws RepositoryException {
-        // 获取本地文章信息
-        final JSONObject article = articleQueryService.getArticleById(String.valueOf(localaid));
-        String fetchURL = "https://" + Global.HACPAI_DOMAIN + "/api/v2/article/" + remoteaid + "?p=" + page;
-        // 从远程拉取评论列表
-        final HttpResponse res = HttpRequest.get(fetchURL).connectionTimeout(3000).timeout(7000)
-                .header("User-Agent", Solos.USER_AGENT).cookies(new Cookie("symphony=" + symphony)).send();
-        if (200 != res.statusCode()) {
+    private int syncComment(final JSONObject article, final long remoteaid, final String symphony, final int page) {
+        if (null == article) {
             return -1;
         }
-        res.charset("UTF-8");
-        final JSONObject result = new JSONObject(res.bodyText());
-        JSONArray rslt;
+        final String fetchURL = "https://" + Global.HACPAI_DOMAIN + "/api/v2/article/" + remoteaid + "?p=" + page;
+        final JSONObject result;
         try {
-            rslt = result.optJSONObject("data").optJSONObject("article").optJSONArray("articleComments");
-        } catch (Exception e) {
+            final HttpResponse res = HttpRequest.get(fetchURL).connectionTimeout(3000).timeout(7000)
+                    .header("User-Agent", Solos.USER_AGENT).cookies(new Cookie("symphony=" + symphony)).send();
+            if (200 != res.statusCode()) {
+                return -1;
+            }
+            res.charset("UTF-8");
+            result = new JSONObject(res.bodyText());
+        } catch (final Exception e) {
             return -1;
         }
-        if (rslt == null) return -1;
-        if (rslt.isEmpty()) return 0;
-        for (Object o : rslt) {
-                JSONObject object = (JSONObject) o;
-                String link = object.optString("commentArticlePermalink");
-                String avatar = object.optString("commentAuthorThumbnailURL");
-                String comment = object.optString("commentContent");
-                String author = object.optString("commentAuthorName");
-                String id = object.optString("oId");
-                if (commentRepository.get(id) != null) continue;
+        final JSONObject data = result.optJSONObject("data");
+        if (null == data) {
+            return -1;
+        }
+        final JSONObject remoteArticle = data.optJSONObject("article");
+        if (null == remoteArticle) {
+            return -1;
+        }
+        final JSONArray rslt = remoteArticle.optJSONArray("articleComments");
+        if (null == rslt) {
+            return -1;
+        }
+        if (rslt.isEmpty()) {
+            return 0;
+        }
+        final JSONObject pagination = data.optJSONObject("pagination");
+        final int pageCount = null == pagination ? 1 : Math.max(0, pagination.optInt("paginationPageCount", 1));
+
+        final String canonicalArticleId = article.optString(Keys.OBJECT_ID);
+        if (canonicalArticleId.isEmpty()) {
+            return -1;
+        }
+        final Transaction tx = commentRepository.beginTransaction();
+        boolean changed = false;
+        try {
+            for (int i = 0; i < rslt.length(); i++) {
+                final JSONObject object = rslt.optJSONObject(i);
+                if (null == object) {
+                    continue;
+                }
+                final String id = object.optString("oId").trim();
+                if (id.isEmpty() || commentRepository.get(id) != null) {
+                    continue;
+                }
+                final long createdMillis;
+                try {
+                    createdMillis = Long.parseLong(id);
+                } catch (final NumberFormatException ignored) {
+                    continue;
+                }
+                final String link = object.optString("commentArticlePermalink");
+                final String avatar = object.optString("commentAuthorThumbnailURL");
+                final String comment = object.optString("commentContent");
+                final String author = object.optString("commentAuthorName");
                 final JSONObject commentObject = new JSONObject();
                 commentObject.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, "");
                 commentObject.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, "");
                 commentObject.put(Comment.COMMENT_NAME, author);
                 commentObject.put(Comment.COMMENT_URL, link);
                 commentObject.put(Comment.COMMENT_CONTENT, comment);
-                commentObject.put(Comment.COMMENT_CREATED, Long.parseLong(id));
+                commentObject.put(Comment.COMMENT_CREATED, createdMillis);
                 commentObject.put(Comment.COMMENT_THUMBNAIL_URL, avatar);
-                commentObject.put(Comment.COMMENT_ON_ID, localaid);
+                commentObject.put(Comment.COMMENT_ON_ID, canonicalArticleId);
+                commentObject.put(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
+                commentObject.put("commentDeleted", false);
                 commentObject.put(Keys.OBJECT_ID, id);
                 final long date = article.optLong(Article.ARTICLE_CREATED);
                 commentObject.put(Comment.COMMENT_SHARP_URL, "/articles/" + DateFormatUtils.format(date, "yyyy/MM/dd")
-                        + "/" + article.optString(Keys.OBJECT_ID) + ".html#" + Long.parseLong(id));
+                        + "/" + canonicalArticleId + ".html#" + createdMillis);
                 commentRepository.add(commentObject);
-                articleMgmtService.incArticleCommentCount(article.optString(Keys.OBJECT_ID));
+                changed = true;
+            }
+            if (changed) {
+                commentMgmtService.recomputeArticleCommentCount(canonicalArticleId);
+            }
+            tx.commit();
+        } catch (final Exception e) {
+            if (tx.isActive()) {
+                tx.rollback();
+            }
+            return -1;
         }
-        return Integer
-                .parseInt(result.optJSONObject("data").optJSONObject("pagination").optString("paginationPageCount"));
+        if (changed) {
+            commentMgmtService.invalidateCommentAndPublicCaches(canonicalArticleId);
+        }
+        return pageCount;
     }
 
 }

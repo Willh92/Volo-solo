@@ -35,9 +35,11 @@ import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
+import org.b3log.latke.repository.CompositeFilterOperator;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.SortDirection;
-import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Paginator;
@@ -48,6 +50,7 @@ import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -120,14 +123,14 @@ public class CommentQueryService {
         }
 
         final String onId = comment.optString(Comment.COMMENT_ON_ID);
-        final JSONObject article = articleRepository.get(onId);
+        final JSONObject article = articleRepository.getBriefForAccessCheck(onId);
         if (null == article) {
             return false;
         }
 
-        final String currentUserId = user.getString(Keys.OBJECT_ID);
+        final String currentUserId = user.optString(Keys.OBJECT_ID);
 
-        return article.getString(Article.ARTICLE_AUTHOR_ID).equals(currentUserId);
+        return !currentUserId.isEmpty() && currentUserId.equals(article.optString(Article.ARTICLE_AUTHOR_ID));
     }
 
     /**
@@ -139,16 +142,41 @@ public class CommentQueryService {
      * @see Pagination
      */
     public JSONObject getComments(final JSONObject requestJSONObject) throws ServiceException {
-        return getComments(requestJSONObject, false);
+        return getComments(requestJSONObject, false, null);
     }
 
     public JSONObject getComments(final JSONObject requestJSONObject, final boolean administrator) throws ServiceException {
+        return getComments(requestJSONObject, administrator, null);
+    }
+
+    public JSONObject getComments(final JSONObject requestJSONObject,
+                                  final boolean administrator,
+                                  final String currentUserId) throws ServiceException {
+        if (null == requestJSONObject) {
+            throw new ServiceException("Invalid comment query request");
+        }
         try {
             final JSONObject ret = new JSONObject();
 
             final int currentPageNum = requestJSONObject.getInt(Pagination.PAGINATION_CURRENT_PAGE_NUM);
             final int pageSize = requestJSONObject.getInt(Pagination.PAGINATION_PAGE_SIZE);
             final int windowSize = requestJSONObject.getInt(Pagination.PAGINATION_WINDOW_SIZE);
+
+            final List<String> authorArticleIds;
+            if (!administrator && StringUtils.isNotBlank(currentUserId)) {
+                authorArticleIds = resolveAuthorArticleIds(currentUserId);
+                if (authorArticleIds.isEmpty()) {
+                    final JSONObject pagination = new JSONObject();
+                    pagination.put(Pagination.PAGINATION_PAGE_COUNT, 0);
+                    pagination.put(Pagination.PAGINATION_PAGE_NUMS, Paginator.paginate(currentPageNum, pageSize, 0, windowSize));
+                    ret.put(Comment.COMMENTS, new JSONArray());
+                    ret.put(Pagination.PAGINATION, pagination);
+                    ret.put("pendingCount", 0L);
+                    return ret;
+                }
+            } else {
+                authorArticleIds = null;
+            }
 
             final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Comment.COMMENT_CREATED,
                     SortDirection.DESCENDING);
@@ -160,8 +188,13 @@ public class CommentQueryService {
                 final var legacyIds = org.b3log.solo.bolo.prop.MailService.getUserMailContext().stream()
                         .filter(binding -> binding.getCommentEmail() != null && binding.getCommentEmail().toLowerCase(java.util.Locale.ROOT).contains(keyword))
                         .map(binding -> binding.getCommentId()).distinct().toList();
-                if (!legacyIds.isEmpty()) query.setFilter(org.b3log.latke.repository.CompositeFilterOperator.or(query.getFilter(),
-                        new org.b3log.latke.repository.PropertyFilter(Keys.OBJECT_ID, org.b3log.latke.repository.FilterOperator.IN, legacyIds)));
+                if (!legacyIds.isEmpty()) query.setFilter(CompositeFilterOperator.or(query.getFilter(),
+                        new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, legacyIds)));
+            }
+            if (null != authorArticleIds) {
+                final var authorFilter = new PropertyFilter(Comment.COMMENT_ON_ID, FilterOperator.IN, authorArticleIds);
+                query.setFilter(query.getFilter() == null ? authorFilter
+                        : CompositeFilterOperator.and(query.getFilter(), authorFilter));
             }
             final String statusFilter = requestJSONObject.optString("status", "all").trim().toLowerCase(java.util.Locale.ROOT);
             final Integer statusCode = switch (statusFilter) {
@@ -171,41 +204,42 @@ public class CommentQueryService {
                 default -> null;
             };
             if (statusCode != null) {
-                final var pf = new org.b3log.latke.repository.PropertyFilter(Comment.COMMENT_STATUS,
-                        org.b3log.latke.repository.FilterOperator.EQUAL, statusCode);
+                final var pf = new PropertyFilter(Comment.COMMENT_STATUS,
+                        FilterOperator.EQUAL, statusCode);
                 query.setFilter(query.getFilter() == null ? pf
-                        : org.b3log.latke.repository.CompositeFilterOperator.and(query.getFilter(), pf));
+                        : CompositeFilterOperator.and(query.getFilter(), pf));
             }
             final JSONObject result = commentRepository.get(query);
-            final JSONArray comments = org.b3log.solo.util.QueryResults.array(result);
+            final JSONArray comments = QueryResults.array(result);
             final Map<String, JSONObject> preloadedArticles = preloadCommentArticles(comments);
             final JSONArray validComments = new JSONArray();
 
-            // Sets comment title and content escaping
+            // Sets comment title and content escaping (never mutate/delete DB rows inside a read query)
             for (int i = 0; i < comments.length(); i++) {
                 final JSONObject comment = comments.getJSONObject(i);
-                final String onId = comment.getString(Comment.COMMENT_ON_ID);
-                final JSONObject article = null != preloadedArticles
-                        ? preloadedArticles.get(onId)
-                        : articleRepository.get(onId);
-                if (null == article) {
-                    // 某种情况下导致的数据不一致：文章已经被删除了，但是评论还在
-                    // 为了保持数据一致性，需要删除该条评论 https://ld246.com/article/1556060195022
-                    final Transaction transaction = commentRepository.beginTransaction();
-                    final String commentId = comment.optString(Keys.OBJECT_ID);
-                    commentRepository.remove(commentId);
-                    transaction.commit();
-                    if (null != commentCache) {
-                        commentCache.invalidateArticleComments(onId);
+                final String onId = comment.optString(Comment.COMMENT_ON_ID);
+                JSONObject article = null != preloadedArticles ? preloadedArticles.get(onId) : null;
+                if (null == article && null != articleRepository && !onId.isEmpty()) {
+                    article = articleRepository.getBriefForAccessCheck(onId);
+                }
+                if (!administrator && StringUtils.isNotBlank(currentUserId)) {
+                    final String articleAuthorId = null == article
+                            ? ""
+                            : QueryResults.optStringIgnoreCase(article, Article.ARTICLE_AUTHOR_ID);
+                    if (!currentUserId.equals(articleAuthorId)) {
+                        continue;
                     }
-
-                    continue;
                 }
 
-                final String title = article.getString(Article.ARTICLE_TITLE);
+                final String title = null == article
+                        ? "[已删除文章]"
+                        : StringUtils.defaultIfBlank(
+                                QueryResults.optStringIgnoreCase(article, Article.ARTICLE_TITLE), "[已删除文章]");
                 comment.put(Common.TYPE, Common.ARTICLE_COMMENT_TYPE);
                 comment.put(Common.COMMENT_TITLE, title);
-                final String permalink = article.optString(Article.ARTICLE_PERMALINK);
+                final String permalink = null == article
+                        ? ""
+                        : QueryResults.optStringIgnoreCase(article, Article.ARTICLE_PERMALINK);
                 if (!permalink.isEmpty() && !comment.has(Comment.COMMENT_SHARP_URL)) {
                     comment.put(Comment.COMMENT_SHARP_URL, permalink + "#" + comment.optString(Keys.OBJECT_ID));
                 }
@@ -232,9 +266,18 @@ public class CommentQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
+            final long pendingCount;
+            if (administrator) {
+                pendingCount = commentRepository.countPendingComments();
+            } else if (StringUtils.isNotBlank(currentUserId)) {
+                pendingCount = commentRepository.countPendingCommentsByAuthor(currentUserId, authorArticleIds);
+            } else {
+                pendingCount = 0L;
+            }
+
             ret.put(Comment.COMMENTS, validComments);
             ret.put(Pagination.PAGINATION, pagination);
-            ret.put("pendingCount", commentRepository.countPendingComments());
+            ret.put("pendingCount", pendingCount);
 
             return ret;
         } catch (final Exception e) {
@@ -244,11 +287,41 @@ public class CommentQueryService {
         }
     }
 
+    private List<String> resolveAuthorArticleIds(final String authorId) throws org.b3log.latke.repository.RepositoryException {
+        if (null == articleRepository || StringUtils.isBlank(authorId)) {
+            return Collections.emptyList();
+        }
+        final List<JSONObject> rows;
+        if (articleRepository.getClass() == ArticleRepository.class
+                && org.b3log.latke.Latkes.RuntimeDatabase.NONE != org.b3log.latke.Latkes.getRuntimeDatabase()) {
+            rows = articleRepository.select(
+                    "SELECT oId FROM " + articleRepository.getName() + " WHERE articleAuthorId = ?",
+                    authorId);
+        } else {
+            rows = articleRepository.getList(new Query()
+                    .select(Keys.OBJECT_ID)
+                    .setFilter(new PropertyFilter(Article.ARTICLE_AUTHOR_ID, FilterOperator.EQUAL, authorId))
+                    .setPageCount(1));
+        }
+        if (null == rows || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        final List<String> ids = new ArrayList<>(rows.size());
+        for (final JSONObject row : rows) {
+            final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+            if (!id.isEmpty()) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
     private Map<String, JSONObject> preloadCommentArticles(final JSONArray comments) {
         if (null == comments || 0 == comments.length()) {
             return Collections.emptyMap();
         }
         if (null == articleRepository
+                || articleRepository.getClass() != ArticleRepository.class
                 || org.b3log.latke.Latkes.RuntimeDatabase.NONE == org.b3log.latke.Latkes.getRuntimeDatabase()) {
             return null;
         }
@@ -268,7 +341,7 @@ public class CommentQueryService {
             }
             final String placeholders = String.join(",", Collections.nCopies(onIds.size(), "?"));
             final List<JSONObject> rows = articleRepository.select(
-                    "SELECT oId, articleTitle, articlePermalink FROM " + articleRepository.getName()
+                    "SELECT oId, articleTitle, articlePermalink, articleAuthorId FROM " + articleRepository.getName()
                             + " WHERE oId IN (" + placeholders + ")",
                     onIds.toArray());
             if (null == rows) {
@@ -276,8 +349,22 @@ public class CommentQueryService {
             }
             final Map<String, JSONObject> map = new HashMap<>(rows.size() * 2);
             for (final JSONObject row : rows) {
-                final String id = row.optString(Keys.OBJECT_ID);
+                if (null == row) {
+                    continue;
+                }
+                final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
                 if (!id.isEmpty()) {
+                    final String title = QueryResults.optStringIgnoreCase(row, Article.ARTICLE_TITLE);
+                    final String permalink = QueryResults.optStringIgnoreCase(row, Article.ARTICLE_PERMALINK);
+                    final String authorId = QueryResults.optStringIgnoreCase(row, Article.ARTICLE_AUTHOR_ID);
+                    QueryResults.removeIgnoreCase(row, Keys.OBJECT_ID);
+                    QueryResults.removeIgnoreCase(row, Article.ARTICLE_TITLE);
+                    QueryResults.removeIgnoreCase(row, Article.ARTICLE_PERMALINK);
+                    QueryResults.removeIgnoreCase(row, Article.ARTICLE_AUTHOR_ID);
+                    row.put(Keys.OBJECT_ID, id);
+                    row.put(Article.ARTICLE_TITLE, title);
+                    row.put(Article.ARTICLE_PERMALINK, permalink);
+                    row.put(Article.ARTICLE_AUTHOR_ID, authorId);
                     map.put(id, row);
                 }
             }

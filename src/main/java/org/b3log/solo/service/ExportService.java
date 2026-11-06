@@ -17,10 +17,11 @@
  */
 package org.b3log.solo.service;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +44,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
@@ -100,7 +100,6 @@ import org.yaml.snakeyaml.Yaml;
 
 import jodd.http.HttpRequest;
 import jodd.http.HttpResponse;
-import jodd.io.ZipUtil;
 
 /**
  * Export service.
@@ -233,11 +232,38 @@ public class ExportService {
      * @return data bytes, returns {@code null} if occurs exception
      */
     public byte[] exportSQL() {
+        Path tempDir = null;
+        try {
+            tempDir = Files.createTempDirectory("volo-export-sql-bytes-");
+            final Path zipPath = tempDir.resolve("solo-sql.zip");
+            if (!exportSQLToZipFile(zipPath)) {
+                return null;
+            }
+            return readBytesInChunks(zipPath);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Export failed", e);
+            return null;
+        } finally {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+        }
+    }
+
+    /**
+     * Exports SQL dump directly into {@code targetZip} on disk without buffering the archive in heap.
+     *
+     * @param targetZip destination zip path
+     * @return {@code true} if the SQL zip archive was written successfully; {@code false} otherwise
+     */
+    public boolean exportSQLToZipFile(final Path targetZip) {
+        if (targetZip == null) {
+            return false;
+        }
         final Latkes.RuntimeDatabase runtimeDatabase = Latkes.getRuntimeDatabase();
         if (Latkes.RuntimeDatabase.H2 != runtimeDatabase && Latkes.RuntimeDatabase.MYSQL != runtimeDatabase) {
             LOGGER.log(Level.ERROR, "Just support MySQL/H2 export now");
-
-            return null;
+            return false;
         }
 
         final String dbUser = Latkes.getLocalProperty("jdbc.username");
@@ -288,22 +314,21 @@ public class ExportService {
                     if (!process.waitFor(5, java.util.concurrent.TimeUnit.MINUTES)) {
                         process.destroyForcibly();
                         LOGGER.log(Level.ERROR, "Export failed, mysqldump timed out after 5 minutes");
-                        return null;
+                        return false;
                     }
                     outReader.join(5000L);
                     errReader.join(2000L);
                     if (process.exitValue() != 0) {
                         LOGGER.log(Level.ERROR, "Export failed, mysqldump exited with code "
                                 + process.exitValue() + ": " + stderrHolder.get());
-                        return null;
+                        return false;
                     }
                     if (stdoutErrHolder.get() != null) {
                         throw stdoutErrHolder.get();
                     }
                 } catch (final Exception e) {
                     LOGGER.log(Level.ERROR, "Export failed, please check command \"mysqldump\" is on your system", e);
-
-                    return null;
+                    return false;
                 }
             } else if (Latkes.RuntimeDatabase.H2 == runtimeDatabase) {
                 try (final Connection connection = Connections.getConnection();
@@ -319,25 +344,33 @@ public class ExportService {
                     }
                 } catch (final Exception e) {
                     LOGGER.log(Level.ERROR, "Export failed", e);
-
-                    return null;
+                    return false;
                 }
             }
 
             if (!localFile.isFile() || localFile.length() == 0L) {
                 LOGGER.log(Level.ERROR, "Export failed, executing export script returns empty");
-
-                return null;
+                return false;
             }
 
-            final File zipFile = ZipUtil.zip(localFile);
-            try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                return IOUtils.toByteArray(inputStream);
+            final Path parent = targetZip.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
             }
+            try (final OutputStream fos = new BufferedOutputStream(Files.newOutputStream(targetZip));
+                 final ZipOutputStream zos = new ZipOutputStream(fos, StandardCharsets.UTF_8)) {
+                zos.putNextEntry(new ZipEntry(localFile.getName()));
+                Files.copy(sqlPath, zos);
+                zos.closeEntry();
+            }
+            return true;
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
-
-            return null;
+            try {
+                Files.deleteIfExists(targetZip);
+            } catch (final IOException ignored) {
+            }
+            return false;
         } finally {
             if (tempDir != null) {
                 FileUtils.deleteQuietly(tempDir.toFile());
@@ -365,18 +398,14 @@ public class ExportService {
         if (null == gitHubUser) {
             return false;
         }
-        final Filter published = new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL,
-                Article.ARTICLE_STATUS_C_PUBLISHED);
         List<JSONObject> recentArticles;
         try {
-            recentArticles = articleRepository.getList(new Query().setFilter(published)
-                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK)
-                    .addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).setPage(1, 20));
-        } catch (RepositoryException e) {
+            recentArticles = queryTopPublicArticles(Article.ARTICLE_CREATED, 20, null);
+        } catch (final RepositoryException e) {
             LOGGER.error(String.format("export blog article error: %s", e.getMessage()));
             return false;
         }
-        if (null == recentArticles || recentArticles.size() == 0) {
+        if (recentArticles.isEmpty()) {
             return false;
         }
         final boolean backup = exportGitHubBlog(recentArticles, preference, gitHubUser);
@@ -392,29 +421,22 @@ public class ExportService {
     private boolean exportGitHubBlog(final List<JSONObject> recentArticles, final JSONObject preference,
             final JSONObject gitHubUser) {
         try {
-            String pat = preference.optString(Option.ID_C_GITHUB_PAT);
-            final JSONObject mds = exportHexoMDs(true);
-            JdbcRepository.dispose();
-            final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
-
-            File localFile = null;
-            File zipFile = null;
-            byte[] zipData;
+            final String pat = preference.optString(Option.ID_C_GITHUB_PAT);
+            Path tempDir = null;
+            final byte[] zipData;
             try {
-                localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
-                final File postDir = new File(localFile, "posts");
-                exportHexoMd(posts, postDir.getPath());
+                tempDir = Files.createTempDirectory("solo-blog-repo-");
+                final Path repoRoot = tempDir.resolve("repo");
+                final Path postDir = repoRoot.resolve("posts");
+                writePublicHexoMdsToDir(postDir);
+                JdbcRepository.dispose();
 
-                zipFile = ZipUtil.zip(localFile);
-                try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                    zipData = IOUtils.toByteArray(inputStream);
-                }
+                final Path zipPath = tempDir.resolve("backup.zip");
+                packDirectoryToZip(repoRoot, zipPath);
+                zipData = readBytesInChunks(zipPath);
             } finally {
-                if (localFile != null) {
-                    FileUtils.deleteQuietly(localFile);
-                }
-                if (zipFile != null) {
-                    FileUtils.deleteQuietly(zipFile);
+                if (tempDir != null) {
+                    FileUtils.deleteQuietly(tempDir.toFile());
                 }
             }
 
@@ -533,27 +555,20 @@ public class ExportService {
                 }
             }
 
-            final JSONObject mds = exportHexoMDs(true);
-            final List<JSONObject> posts = (List<JSONObject>) mds.opt("posts");
-
-            File localFile = null;
-            File zipFile = null;
-            byte[] zipData;
+            Path tempDir = null;
+            final byte[] zipData;
             try {
-                localFile = Files.createTempDirectory("solo-blog-repo-").toFile();
-                final File postDir = new File(localFile, "posts");
-                exportHexoMd(posts, postDir.getPath());
+                tempDir = Files.createTempDirectory("solo-blog-repo-");
+                final Path repoRoot = tempDir.resolve("repo");
+                final Path postDir = repoRoot.resolve("posts");
+                writePublicHexoMdsToDir(postDir);
 
-                zipFile = ZipUtil.zip(localFile);
-                try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                    zipData = IOUtils.toByteArray(inputStream);
-                }
+                final Path zipPath = tempDir.resolve("backup.zip");
+                packDirectoryToZip(repoRoot, zipPath);
+                zipData = readBytesInChunks(zipPath);
             } finally {
-                if (localFile != null) {
-                    FileUtils.deleteQuietly(localFile);
-                }
-                if (zipFile != null) {
-                    FileUtils.deleteQuietly(zipFile);
+                if (tempDir != null) {
+                    FileUtils.deleteQuietly(tempDir.toFile());
                 }
             }
 
@@ -572,13 +587,8 @@ public class ExportService {
             final String clientSubtitle = preference.optString(Option.ID_C_BLOG_SUBTITLE);
 
             final Set<String> articleIds = new HashSet<>();
-            final Filter published = new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL,
-                    Article.ARTICLE_STATUS_C_PUBLISHED);
-
             final StringBuilder bodyBuilder = new StringBuilder("### 最新\n");
-            final List<JSONObject> recentArticles = articleRepository.getList(new Query().setFilter(published)
-                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK)
-                    .addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).setPage(1, 20));
+            final List<JSONObject> recentArticles = queryTopPublicArticles(Article.ARTICLE_CREATED, 20, null);
             for (final JSONObject article : recentArticles) {
                 final String title = article.optString(Article.ARTICLE_TITLE);
                 final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
@@ -588,44 +598,26 @@ public class ExportService {
             bodyBuilder.append("\n\n");
 
             final StringBuilder mostViewBuilder = new StringBuilder();
-            final List<JSONObject> mostViewArticles = articleRepository.getList(new Query().setFilter(published)
-                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK)
-                    .addSort(Article.ARTICLE_VIEW_COUNT, SortDirection.DESCENDING).setPage(1, 40));
-            int count = 0;
+            final List<JSONObject> mostViewArticles = queryTopPublicArticles(Article.ARTICLE_VIEW_COUNT, 20, articleIds);
             for (final JSONObject article : mostViewArticles) {
                 final String articleId = article.optString(Keys.OBJECT_ID);
-                if (!articleIds.contains(articleId)) {
-                    final String title = article.optString(Article.ARTICLE_TITLE);
-                    final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
-                    mostViewBuilder.append("\n* [").append(title).append("](").append(link).append(")");
-                    articleIds.add(articleId);
-                    count++;
-                }
-                if (20 <= count) {
-                    break;
-                }
+                final String title = article.optString(Article.ARTICLE_TITLE);
+                final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
+                mostViewBuilder.append("\n* [").append(title).append("](").append(link).append(")");
+                articleIds.add(articleId);
             }
             if (0 < mostViewBuilder.length()) {
                 bodyBuilder.append("### 热门\n").append(mostViewBuilder).append("\n\n");
             }
 
             final StringBuilder mostCmtBuilder = new StringBuilder();
-            final List<JSONObject> mostCmtArticles = articleRepository.getList(new Query().setFilter(published)
-                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK)
-                    .addSort(Article.ARTICLE_COMMENT_COUNT, SortDirection.DESCENDING).setPage(1, 60));
-            count = 0;
+            final List<JSONObject> mostCmtArticles = queryTopPublicArticles(Article.ARTICLE_COMMENT_COUNT, 20, articleIds);
             for (final JSONObject article : mostCmtArticles) {
                 final String articleId = article.optString(Keys.OBJECT_ID);
-                if (!articleIds.contains(articleId)) {
-                    final String title = article.optString(Article.ARTICLE_TITLE);
-                    final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
-                    mostCmtBuilder.append("\n* [").append(title).append("](").append(link).append(")");
-                    articleIds.add(articleId);
-                    count++;
-                }
-                if (20 <= count) {
-                    break;
-                }
+                final String title = article.optString(Article.ARTICLE_TITLE);
+                final String link = Latkes.getServePath() + article.optString(Article.ARTICLE_PERMALINK);
+                mostCmtBuilder.append("\n* [").append(title).append("](").append(link).append(")");
+                articleIds.add(articleId);
             }
             if (0 < mostCmtBuilder.length()) {
                 bodyBuilder.append("### 热议\n").append(mostCmtBuilder);
@@ -778,7 +770,7 @@ public class ExportService {
         return exportHexoMDs(false);
     }
 
-    public JSONObject exportHexoMDs(final boolean stripLockedContent) {
+    public JSONObject exportHexoMDs(final boolean publishedOnly) {
         final JSONObject ret = new JSONObject();
         final List<JSONObject> posts = new ArrayList<>();
         ret.put("posts", (Object) posts);
@@ -788,31 +780,129 @@ public class ExportService {
         ret.put("drafts", (Object) drafts);
 
         final Yaml yaml = new Yaml();
-        final JSONArray articles = getJSONs(articleRepository);
-        for (int i = 0; i < articles.length(); i++) {
-            final JSONObject article = articles.optJSONObject(i);
-            if (article == null) {
-                continue;
-            }
-            final String title = article.optString(Article.ARTICLE_TITLE);
-            final Map<String, Object> front = buildHexoFrontMatter(article, title);
-            final JSONObject one = new JSONObject();
-            one.put("front", yaml.dump(front));
-            one.put("title", title);
-            final String rawContent = article.optString(Article.ARTICLE_CONTENT);
-            one.put("content", stripLockedContent ? HiddenContentService.stripForFeed(rawContent) : rawContent);
-            one.put("created", article.optLong(Article.ARTICLE_CREATED));
+        final Filter filter = publishedOnly
+                ? new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)
+                : null;
+        try {
+            streamRepositoryRows(articleRepository, filter, article -> {
+                final boolean hasViewPwd = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD));
+                final boolean isPublished = Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS);
+                if (publishedOnly && (!isPublished || hasViewPwd)) {
+                    return;
+                }
+                final String title = article.optString(Article.ARTICLE_TITLE);
+                final Map<String, Object> front = buildHexoFrontMatter(article, title);
+                final JSONObject one = new JSONObject();
+                one.put("front", yaml.dump(front));
+                one.put("title", title);
+                final String rawContent = article.optString(Article.ARTICLE_CONTENT);
+                one.put("content", publishedOnly ? HiddenContentService.stripForFeed(rawContent) : rawContent);
+                one.put("created", article.optLong(Article.ARTICLE_CREATED));
 
-            if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
-                passwords.add(one);
-            } else if (Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS)) {
-                posts.add(one);
-            } else {
-                drafts.add(one);
-            }
+                if (hasViewPwd) {
+                    passwords.add(one);
+                } else if (isPublished) {
+                    posts.add(one);
+                } else {
+                    drafts.add(one);
+                }
+            });
+        } catch (final IOException ignored) {
         }
 
         return ret;
+    }
+
+    private void writePublicHexoMdsToDir(final Path dirPath) throws IOException {
+        if (articleRepository == null || dirPath == null) {
+            return;
+        }
+        final Yaml yaml = new Yaml();
+        final Filter publishedFilter = new PropertyFilter(
+                Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED);
+        streamRepositoryRows(articleRepository, publishedFilter, article -> {
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)
+                    || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                return;
+            }
+            final String title = article.optString(Article.ARTICLE_TITLE);
+            final Map<String, Object> front = buildHexoFrontMatter(article, title);
+            final String strippedContent = HiddenContentService.stripForFeed(article.optString(Article.ARTICLE_CONTENT));
+            final String filename = Solos.sanitizeFilename(title) + ".md";
+            final String text = yaml.dump(front) + "---" + Strings.LINE_SEPARATOR + strippedContent;
+            try {
+                final String date = DateFormatUtils.format(article.optLong(Article.ARTICLE_CREATED), "yyyyMM");
+                final Path monthDir = dirPath.resolve(date);
+                Files.createDirectories(monthDir);
+                Files.writeString(monthDir.resolve(filename), text, StandardCharsets.UTF_8);
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Write markdown file failed", e);
+            }
+        });
+    }
+
+    private List<JSONObject> queryTopPublicArticles(final String sortField,
+                                                    final int limit,
+                                                    final Set<String> excludeIds) throws RepositoryException {
+        if (articleRepository == null || limit <= 0) {
+            return List.of();
+        }
+        final Filter published = new PropertyFilter(
+                Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED);
+        final int pageSize = Math.max(40, limit * 2);
+        final List<JSONObject> collected = new ArrayList<>(limit);
+        final Set<String> seenIds = new HashSet<>();
+        String page1FirstSig = null;
+        for (int page = 1; collected.size() < limit; page++) {
+            final Query query = new Query()
+                    .setFilter(published)
+                    .select(Keys.OBJECT_ID, Article.ARTICLE_TITLE, Article.ARTICLE_PERMALINK,
+                            Article.ARTICLE_VIEW_PWD, Article.ARTICLE_STATUS)
+                    .addSort(sortField, SortDirection.DESCENDING)
+                    .setPage(page, pageSize)
+                    .setPageCount(1);
+            final JSONArray rows = org.b3log.solo.util.QueryResults.array(articleRepository.get(query));
+            if (rows.isEmpty()) {
+                break;
+            }
+            final JSONObject firstRow = rows.optJSONObject(0);
+            final String firstSig = firstRow == null ? "" : firstRow.optString(Keys.OBJECT_ID, firstRow.toString());
+            if (page == 1) {
+                page1FirstSig = firstSig;
+            } else if (!firstSig.isEmpty() && firstSig.equals(page1FirstSig)) {
+                break;
+            }
+            int newRowsInPage = 0;
+            for (int i = 0; i < rows.length() && collected.size() < limit; i++) {
+                final JSONObject row = rows.optJSONObject(i);
+                if (row == null) {
+                    continue;
+                }
+                final String oid = row.optString(Keys.OBJECT_ID);
+                if (!oid.isEmpty() && !seenIds.add(oid)) {
+                    continue;
+                }
+                newRowsInPage++;
+                if (row.has(Article.ARTICLE_STATUS)
+                        && Article.ARTICLE_STATUS_C_PUBLISHED != row.optInt(Article.ARTICLE_STATUS)) {
+                    continue;
+                }
+                if (StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
+                    continue;
+                }
+                if (excludeIds != null && !oid.isEmpty() && excludeIds.contains(oid)) {
+                    continue;
+                }
+                collected.add(new JSONObject()
+                        .put(Keys.OBJECT_ID, oid)
+                        .put(Article.ARTICLE_TITLE, row.optString(Article.ARTICLE_TITLE))
+                        .put(Article.ARTICLE_PERMALINK, row.optString(Article.ARTICLE_PERMALINK)));
+            }
+            if (rows.length() < pageSize || newRowsInPage == 0) {
+                break;
+            }
+        }
+        return collected;
     }
 
     /**
@@ -1024,6 +1114,13 @@ public class ExportService {
 
     private void streamRepositoryRows(final Repository repository, final IOConsumer<JSONObject> consumer)
             throws IOException {
+        streamRepositoryRows(repository, null, consumer);
+    }
+
+    private void streamRepositoryRows(final Repository repository,
+                                      final Filter filter,
+                                      final IOConsumer<JSONObject> consumer)
+            throws IOException {
         if (repository == null) {
             return;
         }
@@ -1036,6 +1133,9 @@ public class ExportService {
                         .addSort(Keys.OBJECT_ID, SortDirection.ASCENDING)
                         .setPage(page, EXPORT_PAGE_SIZE)
                         .setPageCount(1);
+                if (filter != null) {
+                    query.setFilter(filter);
+                }
                 rows = org.b3log.solo.util.QueryResults.array(repository.get(query));
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Gets data from repository [" + safeRepoName(repository) + "] failed", e);
@@ -1077,6 +1177,46 @@ public class ExportService {
         } catch (final IOException ignored) {
         }
         return result;
+    }
+
+    private static void packDirectoryToZip(final Path sourceRoot, final Path zipPath) throws IOException {
+        try (final OutputStream fos = new BufferedOutputStream(Files.newOutputStream(zipPath));
+             final ZipOutputStream zos = new ZipOutputStream(fos, StandardCharsets.UTF_8)) {
+            if (!Files.isDirectory(sourceRoot)) {
+                return;
+            }
+            try (var stream = Files.walk(sourceRoot)) {
+                for (final Path p : (Iterable<Path>) stream::iterator) {
+                    if (Files.isRegularFile(p)) {
+                        final String rel = sourceRoot.relativize(p).toString().replace('\\', '/');
+                        zos.putNextEntry(new ZipEntry(rel));
+                        Files.copy(p, zos);
+                        zos.closeEntry();
+                    }
+                }
+            }
+        }
+    }
+
+    private static byte[] readBytesInChunks(final Path path) throws IOException {
+        final long size = Files.size(path);
+        if (size < 0L || size > 512L * 1024L * 1024L) {
+            throw new IOException("Export archive size out of supported range: " + size);
+        }
+        try (final InputStream in = Files.newInputStream(path)) {
+            final byte[] out = new byte[(int) size];
+            int offset = 0;
+            final byte[] buf = new byte[16384];
+            int n;
+            while (offset < out.length && (n = in.read(buf, 0, Math.min(buf.length, out.length - offset))) != -1) {
+                System.arraycopy(buf, 0, out, offset, n);
+                offset += n;
+            }
+            if (offset == out.length) {
+                return out;
+            }
+            return Arrays.copyOf(out, offset);
+        }
     }
 
     private static String safeRepoName(final Repository repository) {

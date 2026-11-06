@@ -27,8 +27,8 @@
               rel="stylesheet"/>
         <link rel="stylesheet" href="${staticServePath}/js/lib/font-awesome/css/font-awesome.min.css?${staticResourceVersion}"/>
         <style type="text/css">
-            tr th, tr td {
-                border: 1px solid #1d1f21;
+            .entry-content tr th, .entry-content tr td {
+                border: 1px solid rgba(127, 140, 154, 0.3);
             }
 
             .site-top .lower nav {

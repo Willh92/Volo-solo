@@ -34,28 +34,24 @@ admin.draftList = {
         this.tablePagination.buildTable([{
             text: Label.titleLabel,
             index: "title",
-            minWidth: 110,
-            style: "padding-left: 12px;font-size:14px;"
+            minWidth: 180,
+            style: "font-size: 14px;"
         }, {
             text: Label.authorLabel,
             index: "author",
-            width: 150,
-            style: "padding-left: 12px;"
+            width: 108
         }, {
             text: Label.commentLabel,
             index: "comments",
-            width: 80,
-            style: "padding-left: 12px;"
+            width: 68
         }, {
             text: Label.viewLabel,
-            width: 60,
-            index: "articleViewCount",
-            style: "padding-left: 12px;"
+            width: 84,
+            index: "articleViewCount"
         }, {
             text: Label.dateLabel,
             index: "date",
-            width: 90,
-            style: "padding-left: 12px;"
+            width: 112
         }]);
         this.tablePagination.initPagination();
         this.tablePagination.initCommentsDialog();

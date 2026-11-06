@@ -17,9 +17,10 @@
  */
 package org.b3log.solo.bolo.tool;
 
-import java.util.HashMap;
-import java.util.Iterator;
-
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * 判断文件的类型  视频 音频  图片
@@ -66,98 +67,109 @@ public class MediaFileUtil {
     private static final int LAST_IMAGE_FILE_TYPE = FILE_TYPE_AVIF;
     private static final int FIRST_PLAYLIST_FILE_TYPE = FILE_TYPE_M3U;
     private static final int LAST_PLAYLIST_FILE_TYPE = FILE_TYPE_WPL;
-    private static final HashMap<String, MediaFileType> sFileTypeMap
-            = new HashMap<String, MediaFileType>();
-    private static final HashMap<String, Integer> sMimeTypeMap
-            = new HashMap<String, Integer>();
-    public static String sFileExtensions;
+    private static final Map<String, MediaFileType> sFileTypeMap;
+    private static final Map<String, Integer> sMimeTypeMap;
+    public static final String sFileExtensions;
 
     static {
-        addFileType("MP3", FILE_TYPE_MP3, "audio/mpeg");
-        addFileType("M4A", FILE_TYPE_M4A, "audio/mp4");
-        addFileType("WAV", FILE_TYPE_WAV, "audio/x-wav");
-        addFileType("AMR", FILE_TYPE_AMR, "audio/amr");
-        addFileType("AWB", FILE_TYPE_AWB, "audio/amr-wb");
-        addFileType("WMA", FILE_TYPE_WMA, "audio/x-ms-wma");
-        addFileType("OGG", FILE_TYPE_OGG, "application/ogg");
+        final Map<String, MediaFileType> fileTypes = new LinkedHashMap<>();
+        final Map<String, Integer> mimeTypes = new LinkedHashMap<>();
 
-        addFileType("MID", FILE_TYPE_MID, "audio/midi");
-        addFileType("XMF", FILE_TYPE_MID, "audio/midi");
-        addFileType("RTTTL", FILE_TYPE_MID, "audio/midi");
-        addFileType("SMF", FILE_TYPE_SMF, "audio/sp-midi");
-        addFileType("IMY", FILE_TYPE_IMY, "audio/imelody");
+        addFileType(fileTypes, mimeTypes, "MP3", FILE_TYPE_MP3, "audio/mpeg");
+        addFileType(fileTypes, mimeTypes, "M4A", FILE_TYPE_M4A, "audio/mp4");
+        addFileType(fileTypes, mimeTypes, "WAV", FILE_TYPE_WAV, "audio/x-wav");
+        addFileType(fileTypes, mimeTypes, "AMR", FILE_TYPE_AMR, "audio/amr");
+        addFileType(fileTypes, mimeTypes, "AWB", FILE_TYPE_AWB, "audio/amr-wb");
+        addFileType(fileTypes, mimeTypes, "WMA", FILE_TYPE_WMA, "audio/x-ms-wma");
+        addFileType(fileTypes, mimeTypes, "OGG", FILE_TYPE_OGG, "application/ogg");
 
-        addFileType("MP4", FILE_TYPE_MP4, "video/mp4");
-        addFileType("M4V", FILE_TYPE_M4V, "video/mp4");
-        addFileType("3GP", FILE_TYPE_3GPP, "video/3gpp");
-        addFileType("3GPP", FILE_TYPE_3GPP, "video/3gpp");
-        addFileType("3G2", FILE_TYPE_3GPP2, "video/3gpp2");
-        addFileType("3GPP2", FILE_TYPE_3GPP2, "video/3gpp2");
-        addFileType("WMV", FILE_TYPE_WMV, "video/x-ms-wmv");
+        addFileType(fileTypes, mimeTypes, "MID", FILE_TYPE_MID, "audio/midi");
+        addFileType(fileTypes, mimeTypes, "XMF", FILE_TYPE_MID, "audio/midi");
+        addFileType(fileTypes, mimeTypes, "RTTTL", FILE_TYPE_MID, "audio/midi");
+        addFileType(fileTypes, mimeTypes, "SMF", FILE_TYPE_SMF, "audio/sp-midi");
+        addFileType(fileTypes, mimeTypes, "IMY", FILE_TYPE_IMY, "audio/imelody");
 
-        addFileType("JPG", FILE_TYPE_JPEG, "image/jpeg");
-        addFileType("JPEG", FILE_TYPE_JPEG, "image/jpeg");
-        addFileType("GIF", FILE_TYPE_GIF, "image/gif");
-        addFileType("PNG", FILE_TYPE_PNG, "image/png");
-        addFileType("BMP", FILE_TYPE_BMP, "image/x-ms-bmp");
-        addFileType("WBMP", FILE_TYPE_WBMP, "image/vnd.wap.wbmp");
-        addFileType("WEBP", FILE_TYPE_WEBP, "image/webp");
-        addFileType("AVIF", FILE_TYPE_AVIF, "image/avif");
+        addFileType(fileTypes, mimeTypes, "MP4", FILE_TYPE_MP4, "video/mp4");
+        addFileType(fileTypes, mimeTypes, "M4V", FILE_TYPE_M4V, "video/mp4");
+        addFileType(fileTypes, mimeTypes, "3GP", FILE_TYPE_3GPP, "video/3gpp");
+        addFileType(fileTypes, mimeTypes, "3GPP", FILE_TYPE_3GPP, "video/3gpp");
+        addFileType(fileTypes, mimeTypes, "3G2", FILE_TYPE_3GPP2, "video/3gpp2");
+        addFileType(fileTypes, mimeTypes, "3GPP2", FILE_TYPE_3GPP2, "video/3gpp2");
+        addFileType(fileTypes, mimeTypes, "WMV", FILE_TYPE_WMV, "video/x-ms-wmv");
 
-        addFileType("M3U", FILE_TYPE_M3U, "audio/x-mpegurl");
-        addFileType("PLS", FILE_TYPE_PLS, "audio/x-scpls");
-        addFileType("WPL", FILE_TYPE_WPL, "application/vnd.ms-wpl");
+        addFileType(fileTypes, mimeTypes, "JPG", FILE_TYPE_JPEG, "image/jpeg");
+        addFileType(fileTypes, mimeTypes, "JPEG", FILE_TYPE_JPEG, "image/jpeg");
+        addFileType(fileTypes, mimeTypes, "GIF", FILE_TYPE_GIF, "image/gif");
+        addFileType(fileTypes, mimeTypes, "PNG", FILE_TYPE_PNG, "image/png");
+        addFileType(fileTypes, mimeTypes, "BMP", FILE_TYPE_BMP, "image/x-ms-bmp");
+        addFileType(fileTypes, mimeTypes, "WBMP", FILE_TYPE_WBMP, "image/vnd.wap.wbmp");
+        addFileType(fileTypes, mimeTypes, "WEBP", FILE_TYPE_WEBP, "image/webp");
+        addFileType(fileTypes, mimeTypes, "AVIF", FILE_TYPE_AVIF, "image/avif");
 
-        // compute file extensions list for native Media Scanner
-        StringBuilder builder = new StringBuilder();
-        Iterator<String> iterator = sFileTypeMap.keySet().iterator();
+        addFileType(fileTypes, mimeTypes, "M3U", FILE_TYPE_M3U, "audio/x-mpegurl");
+        addFileType(fileTypes, mimeTypes, "PLS", FILE_TYPE_PLS, "audio/x-scpls");
+        addFileType(fileTypes, mimeTypes, "WPL", FILE_TYPE_WPL, "application/vnd.ms-wpl");
 
-        while (iterator.hasNext()) {
-            if (builder.length() > 0) {
-                builder.append(',');
-            }
-            builder.append(iterator.next());
-        }
-        sFileExtensions = builder.toString();
+        sFileTypeMap = Collections.unmodifiableMap(fileTypes);
+        sMimeTypeMap = Collections.unmodifiableMap(mimeTypes);
+        sFileExtensions = String.join(",", sFileTypeMap.keySet());
     }
 
-    static void addFileType(String extension, int fileType, String mimeType) {
-        sFileTypeMap.put(extension, new MediaFileType(fileType, mimeType));
-        sMimeTypeMap.put(mimeType, Integer.valueOf(fileType));
+    private static void addFileType(final Map<String, MediaFileType> fileTypes,
+                                    final Map<String, Integer> mimeTypes,
+                                    final String extension,
+                                    final int fileType,
+                                    final String mimeType) {
+        fileTypes.put(extension, new MediaFileType(fileType, mimeType));
+        mimeTypes.put(mimeType, Integer.valueOf(fileType));
     }
 
-    public static boolean isAudioFileType(int fileType) {
+    public static boolean isAudioFileType(final int fileType) {
         return ((fileType >= FIRST_AUDIO_FILE_TYPE &&
                 fileType <= LAST_AUDIO_FILE_TYPE) ||
                 (fileType >= FIRST_MIDI_FILE_TYPE &&
                         fileType <= LAST_MIDI_FILE_TYPE));
     }
 
-    public static boolean isVideoFileType(int fileType) {
+    public static boolean isVideoFileType(final int fileType) {
         return (fileType >= FIRST_VIDEO_FILE_TYPE &&
                 fileType <= LAST_VIDEO_FILE_TYPE);
     }
 
-    public static boolean isImageFileType(int fileType) {
+    public static boolean isImageFileType(final int fileType) {
         return (fileType >= FIRST_IMAGE_FILE_TYPE &&
                 fileType <= LAST_IMAGE_FILE_TYPE);
     }
 
-    public static boolean isPlayListFileType(int fileType) {
+    public static boolean isPlayListFileType(final int fileType) {
         return (fileType >= FIRST_PLAYLIST_FILE_TYPE &&
                 fileType <= LAST_PLAYLIST_FILE_TYPE);
     }
 
-    public static MediaFileType getFileType(String path) {
-        int lastDot = path.lastIndexOf(".");
-        if (lastDot < 0)
+    public static MediaFileType getFileType(final String path) {
+        if (path == null || path.isEmpty()) {
             return null;
-        return sFileTypeMap.get(path.substring(lastDot + 1).toUpperCase());
+        }
+        String clean = path;
+        final int queryIdx = clean.indexOf('?');
+        if (queryIdx >= 0) {
+            clean = clean.substring(0, queryIdx);
+        }
+        final int fragmentIdx = clean.indexOf('#');
+        if (fragmentIdx >= 0) {
+            clean = clean.substring(0, fragmentIdx);
+        }
+        final int lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'));
+        final int lastDot = clean.lastIndexOf('.');
+        if (lastDot < 0 || lastDot < lastSlash || lastDot == clean.length() - 1) {
+            return null;
+        }
+        return sFileTypeMap.get(clean.substring(lastDot + 1).toUpperCase(Locale.ROOT));
     }
 
     //根据视频文件路径判断文件类型
-    public static boolean isVideoFileType(String path) {
-        MediaFileType type = getFileType(path);
+    public static boolean isVideoFileType(final String path) {
+        final MediaFileType type = getFileType(path);
         if (null != type) {
             return isVideoFileType(type.fileType);
         }
@@ -165,8 +177,8 @@ public class MediaFileUtil {
     }
 
     //根据音频文件路径判断文件类型
-    public static boolean isAudioFileType(String path) {
-        MediaFileType type = getFileType(path);
+    public static boolean isAudioFileType(final String path) {
+        final MediaFileType type = getFileType(path);
         if (null != type) {
             return isAudioFileType(type.fileType);
         }
@@ -174,24 +186,32 @@ public class MediaFileUtil {
     }
 
     //根据mime类型查看文件类型
-    public static int getFileTypeForMimeType(String mimeType) {
-        Integer value = sMimeTypeMap.get(mimeType);
+    public static int getFileTypeForMimeType(final String mimeType) {
+        if (mimeType == null || mimeType.isBlank()) {
+            return 0;
+        }
+        final int semi = mimeType.indexOf(';');
+        final String normalized = (semi >= 0 ? mimeType.substring(0, semi) : mimeType).strip().toLowerCase(Locale.ROOT);
+        final Integer value = sMimeTypeMap.get(normalized);
         return (value == null ? 0 : value.intValue());
     }
 
     //根据图片文件路径判断文件类型
-    public static boolean isImageFileType(String path) {
-        MediaFileType type = getFileType(path);
+    public static boolean isImageFileType(final String path) {
+        final MediaFileType type = getFileType(path);
         if (null != type) {
             return isImageFileType(type.fileType);
         }
         return false;
     }
 
-    public static String getSuffixByFileType(MediaFileType mediaFileType) {
-        for (String key : sFileTypeMap.keySet()) {
-            if (sFileTypeMap.get(key) == mediaFileType) {
-                return key.toLowerCase();
+    public static String getSuffixByFileType(final MediaFileType mediaFileType) {
+        if (mediaFileType == null) {
+            return "png";
+        }
+        for (final Map.Entry<String, MediaFileType> entry : sFileTypeMap.entrySet()) {
+            if (entry.getValue() == mediaFileType) {
+                return entry.getKey().toLowerCase(Locale.ROOT);
             }
         }
         return "png";
@@ -203,7 +223,7 @@ public class MediaFileUtil {
         public int fileType;
         public String mimeType;
 
-        public MediaFileType(int fileType, String mimeType) {
+        public MediaFileType(final int fileType, final String mimeType) {
             this.fileType = fileType;
             this.mimeType = mimeType;
         }

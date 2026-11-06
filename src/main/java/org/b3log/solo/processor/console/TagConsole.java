@@ -17,19 +17,18 @@
  */
 package org.b3log.solo.processor.console;
 
-import org.b3log.latke.Keys;
-import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
-import org.b3log.latke.service.LangPropsService;
+import org.b3log.latke.Keys;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.Before;
-import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.JsonRenderer;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Tag;
-import org.b3log.solo.service.TagMgmtService;
+import org.b3log.solo.repository.TagRepository;
 import org.b3log.solo.service.TagQueryService;
+import org.b3log.solo.web.annotation.Before;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -55,6 +54,12 @@ public class TagConsole {
      */
     @Inject
     private TagQueryService tagQueryService;
+
+    /**
+     * Tag repository.
+     */
+    @Inject
+    private TagRepository tagRepository;
 
     /**
      * Gets all tags.
@@ -114,25 +119,26 @@ public class TagConsole {
         final JSONObject jsonObject = new JSONObject();
         renderer.setJSONObject(jsonObject);
 
-        final List<JSONObject> unusedTags = new ArrayList<>();
-
         try {
-            jsonObject.put(Common.UNUSED_TAGS, unusedTags);
-
-            final List<JSONObject> tags = tagQueryService.getTags();
-            for (int i = 0; i < tags.size(); i++) {
-                final JSONObject tag = tags.get(i);
-                final String tagId = tag.optString(Keys.OBJECT_ID);
-                final int articleCount = tagQueryService.getArticleCount(tagId);
-                if (1 > articleCount) {
-                    unusedTags.add(tag);
+            final List<JSONObject> unusedTags;
+            if (null != tagRepository) {
+                unusedTags = tagRepository.getUnusedTags();
+            } else {
+                unusedTags = new ArrayList<>();
+                final List<JSONObject> tags = tagQueryService.getTags();
+                for (final JSONObject tag : tags) {
+                    final String tagId = tag.optString(Keys.OBJECT_ID);
+                    if (1 > tagQueryService.getArticleCount(tagId)) {
+                        unusedTags.add(tag);
+                    }
                 }
             }
-
+            jsonObject.put(Common.UNUSED_TAGS, unusedTags);
             jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, true);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets unused tags failed", e);
 
+            jsonObject.put(Common.UNUSED_TAGS, new ArrayList<>());
             jsonObject.put(org.b3log.solo.model.Common.STATUS_CODE, false);
         }
     }

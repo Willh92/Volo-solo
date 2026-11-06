@@ -25,6 +25,7 @@ import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -76,10 +77,14 @@ public class ArchiveDateArticleRepository extends AbstractRepository {
                         + " AS a ON a.oId = r.article_oId WHERE a.articleStatus = ? GROUP BY r.archiveDate_oId",
                 Article.ARTICLE_STATUS_C_PUBLISHED);
         if (rows != null) {
+            final String archiveDateCol = ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID;
             for (final JSONObject row : rows) {
-                final String archiveDateId = row.optString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID);
+                if (null == row) {
+                    continue;
+                }
+                final String archiveDateId = QueryResults.optStringIgnoreCase(row, archiveDateCol);
                 if (!archiveDateId.isEmpty()) {
-                    counts.put(archiveDateId, row.optInt("C"));
+                    counts.put(archiveDateId, QueryResults.optIntIgnoreCase(row, "C"));
                 }
             }
         }
@@ -88,7 +93,7 @@ public class ArchiveDateArticleRepository extends AbstractRepository {
 
     /** Counts each published article once across duplicate records for the same month. */
     public int getPublishedArticleCount(final List<String> archiveDateIds) {
-        if (archiveDateIds.isEmpty()) return 0;
+        if (null == archiveDateIds || archiveDateIds.isEmpty()) return 0;
         try {
             final List<Object> params = new ArrayList<>();
             params.add(Article.ARTICLE_STATUS_C_PUBLISHED);
@@ -97,7 +102,10 @@ public class ArchiveDateArticleRepository extends AbstractRepository {
                     + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + getName()
                     + " AS r WHERE r.article_oId = a.oId AND r.archiveDate_oId IN ("
                     + String.join(",", Collections.nCopies(archiveDateIds.size(), "?")) + "))", params.toArray());
-            return articlesCountResult == null ? 0 : articlesCountResult.get(0).optInt("C");
+            if (null == articlesCountResult || articlesCountResult.isEmpty()) {
+                return 0;
+            }
+            return QueryResults.optIntIgnoreCase(articlesCountResult.get(0), "C");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets archivedates' published article count failed", e);
 
@@ -119,13 +127,36 @@ public class ArchiveDateArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByArticleId(final String articleId) throws RepositoryException {
-        final Query query = new Query().setFilter(new PropertyFilter(Article.ARTICLE + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, articleId));
+        if (null == articleId || articleId.isBlank()) {
+            return null;
+        }
+        final String articleCol = Article.ARTICLE + "_" + Keys.OBJECT_ID;
+        final String archiveDateCol = ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID;
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(articleCol, FilterOperator.EQUAL, articleId))
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
-        final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
+        final JSONArray array = QueryResults.array(result);
         if (0 == array.length()) {
             return null;
         }
 
-        return array.optJSONObject(0);
+        final JSONObject row = array.optJSONObject(0);
+        if (null == row) {
+            return null;
+        }
+        final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+        final String archiveDateId = QueryResults.optStringIgnoreCase(row, archiveDateCol);
+        final String resolvedArticleId = QueryResults.optStringIgnoreCase(row, articleCol, articleId);
+        QueryResults.removeIgnoreCase(row, Keys.OBJECT_ID);
+        QueryResults.removeIgnoreCase(row, archiveDateCol);
+        QueryResults.removeIgnoreCase(row, articleCol);
+        if (!id.isEmpty()) {
+            row.put(Keys.OBJECT_ID, id);
+        }
+        row.put(archiveDateCol, archiveDateId);
+        row.put(articleCol, resolvedArticleId);
+        return row;
     }
 }

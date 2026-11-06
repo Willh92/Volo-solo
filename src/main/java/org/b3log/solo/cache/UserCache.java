@@ -20,12 +20,12 @@ package org.b3log.solo.cache;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.model.Role;
-import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -44,6 +44,11 @@ public class UserCache {
     public static final int MAX_ENTRIES = 512;
 
     /**
+     * Maximum number of negative-cached missing user IDs.
+     */
+    public static final int MAX_MISSING_IDS = 512;
+
+    /**
      * Bounded LRU Id -> User cache.
      */
     private final Map<String, JSONObject> idCache = Collections.synchronizedMap(
@@ -55,9 +60,46 @@ public class UserCache {
             });
 
     /**
+     * Bounded LRU negative cache for missing/deleted user IDs.
+     */
+    private final Set<String> missingIds = Collections.synchronizedSet(
+            Collections.newSetFromMap(new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, Boolean> eldest) {
+                    return size() > MAX_MISSING_IDS;
+                }
+            }));
+
+    /**
      * Admin user.
      */
     private final Map<String, JSONObject> adminCache = new ConcurrentHashMap<>();
+
+    /**
+     * Checks whether {@code userId} is negative-cached as missing.
+     */
+    public boolean isMissingUser(final String userId) {
+        return null != userId && !userId.isEmpty() && missingIds.contains(userId);
+    }
+
+    /**
+     * Records a missing user ID in the bounded negative cache.
+     */
+    public void markMissingUser(final String userId) {
+        if (null == userId || userId.isEmpty() || userId.length() > 128) {
+            return;
+        }
+        missingIds.add(userId);
+    }
+
+    /**
+     * Clears any negative-cache entry for {@code userId}.
+     */
+    public void clearMissingUser(final String userId) {
+        if (null != userId && !userId.isEmpty()) {
+            missingIds.remove(userId);
+        }
+    }
 
     /**
      * Gets the admin user.
@@ -66,7 +108,7 @@ public class UserCache {
      */
     public JSONObject getAdmin() {
         final JSONObject admin = adminCache.get(Role.ADMIN_ROLE);
-        return null == admin ? null : Solos.clone(admin);
+        return null == admin ? null : JsonCloneHelper.deepCloneObject(admin);
     }
 
     /**
@@ -78,7 +120,11 @@ public class UserCache {
         if (null == admin) {
             return;
         }
-        adminCache.put(Role.ADMIN_ROLE, Solos.clone(admin));
+        final String id = admin.optString(Keys.OBJECT_ID);
+        if (!id.isEmpty()) {
+            missingIds.remove(id);
+        }
+        adminCache.put(Role.ADMIN_ROLE, JsonCloneHelper.deepCloneObject(admin));
     }
 
     /**
@@ -96,7 +142,7 @@ public class UserCache {
             return null;
         }
 
-        return Solos.clone(user);
+        return JsonCloneHelper.deepCloneObject(user);
     }
 
     /**
@@ -110,7 +156,8 @@ public class UserCache {
         }
         final String id = user.optString(Keys.OBJECT_ID);
         if (!id.isEmpty()) {
-            idCache.put(id, Solos.clone(user));
+            missingIds.remove(id);
+            idCache.put(id, JsonCloneHelper.deepCloneObject(user));
         }
     }
 
@@ -124,6 +171,7 @@ public class UserCache {
             return;
         }
         final JSONObject user = idCache.remove(id);
+        markMissingUser(id);
         final JSONObject admin = adminCache.get(Role.ADMIN_ROLE);
         if ((null != user && Role.ADMIN_ROLE.equals(user.optString(org.b3log.latke.model.User.USER_ROLE)))
                 || (null != admin && id.equals(admin.optString(Keys.OBJECT_ID)))) {
@@ -143,6 +191,7 @@ public class UserCache {
      */
     public void clear() {
         idCache.clear();
+        missingIds.clear();
         adminCache.clear();
     }
 }

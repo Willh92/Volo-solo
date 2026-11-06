@@ -59,7 +59,11 @@ public final class BackgroundEvents {
         } catch (final Exception failure) {
             LOGGER.log(Level.ERROR, "Background event failed", failure);
         } finally {
-            JdbcRepository.dispose();
+            try {
+                JdbcRepository.dispose();
+            } finally {
+                org.b3log.latke.util.Stopwatchs.release();
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Latke 3 reads this definition from the classpath root. Access control stays in PublicResourceHandler. -->
 <static-files>
+    <include path="/css/**"/>
     <include path="/scss/**"/>
     <include path="/js/**"/>
     <include path="/skins/**"/>

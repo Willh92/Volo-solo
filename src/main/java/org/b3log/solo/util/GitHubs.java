@@ -19,18 +19,20 @@ package org.b3log.solo.util;
 
 import jodd.http.HttpRequest;
 import jodd.http.HttpResponse;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import org.b3log.latke.http.Response;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.TimeZone;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * GitHub utilities.
@@ -46,10 +48,24 @@ public final class GitHubs {
      */
     private static final Logger LOGGER = Logger.getLogger(GitHubs.class);
 
+    private static final Pattern GITHUB_USER_ID_PATTERN =
+            Pattern.compile("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?");
+    private static final Pattern SLASH_SPLIT_PATTERN = Pattern.compile("/");
+    private static final DateTimeFormatter GITHUB_UTC_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT);
+
     /**
      * Private constructor.
      */
     private GitHubs() {
+    }
+
+    private static long parseGitHubTimestampMillis(final String rawTimestamp) {
+        try {
+            return Instant.parse(rawTimestamp).toEpochMilli();
+        } catch (final Exception ignored) {
+            return LocalDateTime.parse(rawTimestamp, GITHUB_UTC_FORMATTER).toInstant(ZoneOffset.UTC).toEpochMilli();
+        }
     }
 
     /**
@@ -63,12 +79,8 @@ public final class GitHubs {
     }
 
     static JSONArray getGitHubReposAt(final String apiBase, final String githubUserId) {
-        if (githubUserId == null || !githubUserId.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")) return null;
+        if (githubUserId == null || !GITHUB_USER_ID_PATTERN.matcher(githubUserId).matches()) return null;
         int page = 1;
-        String pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'";
-        SimpleDateFormat simpleDateFormat =
-                new SimpleDateFormat(pattern);
-        simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
         JSONArray compatibleResult = new JSONArray();
         try {
             while (page <= 100) {
@@ -90,7 +102,8 @@ public final class GitHubs {
                     if (resultObject.optBoolean("private") || resultObject.optBoolean("disabled")) {
                         continue;
                     }
-                    if (!githubUserId.equalsIgnoreCase(resultObject.getJSONObject("owner").optString("login"))) {
+                    final JSONObject ownerObj = resultObject.getJSONObject("owner");
+                    if (!githubUserId.equalsIgnoreCase(ownerObj.optString("login"))) {
                         continue;
                     }
 
@@ -101,13 +114,13 @@ public final class GitHubs {
                     compatibleObject.put("githubrepoDescription", resultObject.optString("description"));
                     compatibleObject.put("githubrepoHomepage", resultObject.optString("homepage"));
                     compatibleObject.put("githubrepoForksCount", resultObject.optLong("forks_count"));
-                    compatibleObject.put("githubrepoOwnerId", resultObject.optJSONObject("owner").optString("id"));
+                    compatibleObject.put("githubrepoOwnerId", ownerObj.optString("id"));
                     compatibleObject.put("githubrepoStargazersCount", resultObject.optLong("stargazers_count"));
                     compatibleObject.put("githubrepoWatchersCount", resultObject.optLong("watchers_count"));
-                    compatibleObject.put("githubrepoOwnerLogin", resultObject.optJSONObject("owner").optString("login"));
+                    compatibleObject.put("githubrepoOwnerLogin", ownerObj.optString("login"));
                     compatibleObject.put("githubrepoHTMLURL", resultObject.optString("html_url"));
                     compatibleObject.put("githubrepoLanguage", resultObject.optString("language"));
-                    compatibleObject.put("githubrepoUpdated", simpleDateFormat.parse(resultObject.optString("updated_at")).getTime());
+                    compatibleObject.put("githubrepoUpdated", parseGitHubTimestampMillis(resultObject.optString("updated_at")));
                     compatibleObject.put("githubrepoName", resultObject.optString("name"));
                     compatibleObject.put("githubrepoFullName", resultObject.optString("full_name"));
 
@@ -161,7 +174,7 @@ public final class GitHubs {
     static boolean updateFileAt(final String api, final String pat, final String loginName, final String repoName,
                                 final String filePath, final byte[] content) {
         final String fullRepoName = encodeSegment(loginName) + "/" + encodeSegment(repoName);
-        final String path = java.util.Arrays.stream(filePath.split("/", -1)).map(GitHubs::encodeSegment)
+        final String path = java.util.Arrays.stream(SLASH_SPLIT_PATTERN.split(filePath, -1)).map(GitHubs::encodeSegment)
                 .collect(java.util.stream.Collectors.joining("/"));
         final String url = api + "/repos/" + fullRepoName + "/contents/" + path;
         try {

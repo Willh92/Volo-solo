@@ -104,11 +104,30 @@ public class CronMgmtService {
     @Inject
     private LocalRollingBackupService localRollingBackupService;
 
+    private static final java.util.concurrent.atomic.AtomicInteger SLOW_THREAD_SEQ =
+            new java.util.concurrent.atomic.AtomicInteger(1);
+
+    private final java.util.concurrent.atomic.AtomicBoolean githubSyncInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean fishpiSyncInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean followSyncInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean hacpaiExportInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean backupInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicBoolean linkHealthInFlight =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     @Inject
     private AnalyticsTrendService analyticsTrendService;
 
     @Inject
     private PasskeyService passkeyService;
+
+    @Inject
+    private LinkHealthService linkHealthService;
 
     private static ScheduledExecutorService newFastScheduler() {
         return Executors.newScheduledThreadPool(1, r -> {
@@ -120,10 +139,10 @@ public class CronMgmtService {
 
     private static ThreadPoolExecutor newSlowExecutor() {
         final ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                1, 1, 60L, TimeUnit.SECONDS,
+                1, 2, 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(16),
                 r -> {
-                    final Thread t = new Thread(r, "volo-cron-slow");
+                    final Thread t = new Thread(r, "volo-cron-slow-" + SLOW_THREAD_SEQ.getAndIncrement());
                     t.setDaemon(true);
                     return t;
                 },
@@ -132,24 +151,34 @@ public class CronMgmtService {
         return executor;
     }
 
-    private static void submitSlowJob(final Runnable job) {
-        final ThreadPoolExecutor pool = SLOW_CRON_EXECUTOR;
-        if (null == pool || pool.isShutdown()) {
+    private static void submitSlowJob(final java.util.concurrent.atomic.AtomicBoolean inFlightGuard,
+                                      final Runnable job) {
+        if (!inFlightGuard.compareAndSet(false, true)) {
             return;
         }
-        pool.execute(() -> {
-            try {
-                job.run();
-            } catch (final Throwable e) {
-                LOGGER.log(Level.ERROR, "Executes slow cron failed", e);
-            } finally {
+        final ThreadPoolExecutor pool = SLOW_CRON_EXECUTOR;
+        if (null == pool || pool.isShutdown()) {
+            inFlightGuard.set(false);
+            return;
+        }
+        try {
+            pool.execute(() -> {
                 try {
-                    JdbcRepository.dispose();
+                    job.run();
+                } catch (final Throwable e) {
+                    LOGGER.log(Level.ERROR, "Executes slow cron failed", e);
                 } finally {
-                    Stopwatchs.release();
+                    inFlightGuard.set(false);
+                    try {
+                        JdbcRepository.dispose();
+                    } finally {
+                        Stopwatchs.release();
+                    }
                 }
-            }
-        });
+            });
+        } catch (final Throwable rejected) {
+            inFlightGuard.set(false);
+        }
     }
 
     /**
@@ -230,11 +259,11 @@ public class CronMgmtService {
         }, delay, 1000 * 60, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(this::synchronizeGitHub),
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(githubSyncInFlight, this::synchronizeGitHub),
                 delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(fishpiSyncInFlight, () -> {
             if (!org.b3log.solo.util.PluginUtil.fishpiPluginEnabled()) {
                 return;
             }
@@ -246,22 +275,28 @@ public class CronMgmtService {
         }), delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> followService.syncAllFollowArticles()),
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(followSyncInFlight, () -> followService.syncAllFollowArticles()),
                 delay, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
         delay += 2000;
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(hacpaiExportInFlight, () -> {
             if (!org.b3log.solo.util.PluginUtil.b3logPluginEnabled()) {
                 return;
             }
             exportService.exportHacPai(false);
         }), delay + 1000L * 60 * 10, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
 
-        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(() -> {
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(backupInFlight, () -> {
             if (null != localRollingBackupService) {
                 localRollingBackupService.runScheduledBackupIfEnabled();
             }
         }), delay + 1000L * 60 * 15, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+
+        SCHEDULED_EXECUTOR_SERVICE.scheduleAtFixedRate(() -> submitSlowJob(linkHealthInFlight, () -> {
+            if (null != linkHealthService) {
+                linkHealthService.checkAllLinks();
+            }
+        }), delay + 1000L * 60 * 20, 1000L * 60 * 60 * 24, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -279,8 +314,8 @@ public class CronMgmtService {
         exportService.exportGitHub(current.optBoolean(Option.ID_C_ENABLE_AUTO_FLUSH_BLOG_TO_GITHUB_PROFILE));
     }
 
-    /** Stop all cron tasks. */
-    public synchronized void stop() {
+    /** Stop all cron tasks and shut down fast/slow executors cleanly. */
+    public synchronized void shutdown() {
         started = false;
         if (null != SCHEDULED_EXECUTOR_SERVICE) {
             SCHEDULED_EXECUTOR_SERVICE.shutdown();
@@ -288,6 +323,11 @@ public class CronMgmtService {
         if (null != SLOW_CRON_EXECUTOR) {
             SLOW_CRON_EXECUTOR.shutdown();
         }
+    }
+
+    /** Stop all cron tasks. */
+    public synchronized void stop() {
+        shutdown();
     }
 
     /**

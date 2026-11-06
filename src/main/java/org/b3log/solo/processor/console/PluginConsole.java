@@ -30,7 +30,9 @@ import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.solo.service.PluginMgmtService;
 import org.b3log.solo.service.PluginQueryService;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Solos;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Map;
@@ -88,12 +90,24 @@ public class PluginConsole {
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
 
-        final JSONObject requestJSONObject = context.requestJSON();
-        final String pluginId = requestJSONObject.getString(Keys.OBJECT_ID);
-        final String status = requestJSONObject.getString(Plugin.PLUGIN_STATUS);
-        final JSONObject result = pluginMgmtService.setPluginStatus(pluginId, status);
+        try {
+            final JSONObject requestJSONObject = context.requestJSON();
+            if (null == requestJSONObject) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final String pluginId = requestJSONObject.optString(Keys.OBJECT_ID);
+            final String status = requestJSONObject.optString(Plugin.PLUGIN_STATUS);
+            if (pluginId.isBlank() || status.isBlank()) {
+                AdminRequests.reject(context, 400, "插件参数不正确。");
+                return;
+            }
+            final JSONObject result = pluginMgmtService.setPluginStatus(pluginId, status);
 
-        renderer.setJSONObject(result);
+            renderer.setJSONObject(result);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
+        }
     }
 
     /**
@@ -157,18 +171,25 @@ public class PluginConsole {
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
-            final String pluginId = requestJSONObject.getString(Keys.OBJECT_ID);
+            if (null == requestJSONObject || requestJSONObject.optString(Keys.OBJECT_ID).isBlank()) {
+                AdminRequests.reject(context, 400, "插件参数不正确。");
+                return;
+            }
+            final String pluginId = requestJSONObject.optString(Keys.OBJECT_ID);
             final String setting = pluginQueryService.getPluginSetting(pluginId);
             Keys.fillRuntime(dataModel);
             dataModel.put(Plugin.PLUGIN_SETTING, setting);
             dataModel.put(Keys.OBJECT_ID, pluginId);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
-            final JsonRenderer JsonRenderer = new JsonRenderer();
-            JsonRenderer.setJSONObject(jsonObject);
+            final JsonRenderer jsonRenderer = new JsonRenderer();
+            jsonRenderer.setJSONObject(jsonObject);
             jsonObject.put(Keys.MSG, langPropsService.get("getFailLabel"));
+            context.setRenderer(jsonRenderer);
         }
     }
 
@@ -181,11 +202,19 @@ public class PluginConsole {
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
 
-        final JSONObject requestJSONObject = context.requestJSON();
-        final String pluginoId = requestJSONObject.optString(Keys.OBJECT_ID);
-        final String settings = requestJSONObject.optString(Plugin.PLUGIN_SETTING);
-        final JSONObject ret = pluginMgmtService.updatePluginSetting(pluginoId, settings);
+        try {
+            final JSONObject requestJSONObject = context.requestJSON();
+            if (null == requestJSONObject || requestJSONObject.optString(Keys.OBJECT_ID).isBlank()) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final String pluginoId = requestJSONObject.optString(Keys.OBJECT_ID);
+            final String settings = requestJSONObject.optString(Plugin.PLUGIN_SETTING);
+            final JSONObject ret = pluginMgmtService.updatePluginSetting(pluginoId, settings);
 
-        renderer.setJSONObject(ret);
+            renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
+        }
     }
 }

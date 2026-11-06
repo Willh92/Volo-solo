@@ -111,9 +111,9 @@
                 var type = chip.getAttribute('data-search-filter-type');
                 var val = chip.getAttribute('data-search-filter-val') || '';
                 if (type === 'tag') {
-                    activeTag = activeTag === val ? '' : val;
+                    activeTag = activeTag.toLowerCase() === val.toLowerCase() ? '' : val;
                 } else if (type === 'category') {
-                    activeCategory = activeCategory === val ? '' : val;
+                    activeCategory = activeCategory.toLowerCase() === val.toLowerCase() ? '' : val;
                 }
                 performSearch();
                 return;
@@ -250,18 +250,26 @@
 
     function renderSearchFilters(categories, tags) {
         if (!searchFiltersEl) return;
-        if ((!categories || !categories.length) && (!tags || !tags.length)) {
+        var cats = Array.isArray(categories) ? categories.slice() : [];
+        var tgs = Array.isArray(tags) ? tags.slice() : [];
+        if (activeCategory && !cats.some(function (c) { return String(c).toLowerCase() === activeCategory.toLowerCase(); })) {
+            cats.unshift(activeCategory);
+        }
+        if (activeTag && !tgs.some(function (t) { return String(t).toLowerCase() === activeTag.toLowerCase(); })) {
+            tgs.unshift(activeTag);
+        }
+        if (!cats.length && !tgs.length) {
             searchFiltersEl.hidden = true;
             return;
         }
         var html = '';
-        for (var i = 0; i < Math.min(6, categories.length); i++) {
-            var c = categories[i];
+        for (var i = 0; i < Math.min(6, cats.length); i++) {
+            var c = cats[i];
             var isCatActive = activeCategory && activeCategory.toLowerCase() === String(c).toLowerCase();
             html += '<button type="button" class="volo-filter-pill' + (isCatActive ? ' is-active' : '') + '" data-search-filter-type="category" data-search-filter-val="' + escapeHtml(c) + '">📁 ' + escapeHtml(c) + '</button>';
         }
-        for (var j = 0; j < Math.min(8, tags.length); j++) {
-            var tg = tags[j];
+        for (var j = 0; j < Math.min(8, tgs.length); j++) {
+            var tg = tgs[j];
             var isTagActive = activeTag && activeTag.toLowerCase() === String(tg).toLowerCase();
             html += '<button type="button" class="volo-filter-pill' + (isTagActive ? ' is-active' : '') + '" data-search-filter-type="tag" data-search-filter-val="' + escapeHtml(tg) + '">#' + escapeHtml(tg) + '</button>';
         }
@@ -325,6 +333,12 @@
 
         var captchaId = '';
         var cooldownTimer = null;
+        if (window.BoloNavigation && typeof window.BoloNavigation.onLeave === 'function') {
+            window.BoloNavigation.onLeave(function () {
+                clearInterval(cooldownTimer);
+                cooldownTimer = null;
+            });
+        }
         var captchaImg = container.querySelector('[data-reader-captcha-img]');
         var captchaBtn = container.querySelector('[data-reader-captcha-refresh]');
         var sendCodeBtn = container.querySelector('[data-reader-send-code]');
@@ -1063,9 +1077,21 @@
         if (standaloneAuth) {
             bindReaderAuthContainer(standaloneAuth, function () {
                 var redirect = standaloneAuth.getAttribute('data-redirect') || '/';
-                var base = getConfig().servePath;
+                var base = getConfig().servePath || '';
+                var safeTarget = base + '/';
+                if (/^\/(?![/\\])/.test(redirect)) {
+                    try {
+                        var parsed = new URL(redirect, window.location.origin);
+                        if (parsed.origin === window.location.origin) {
+                            var cleanPath = parsed.pathname + parsed.search + parsed.hash;
+                            safeTarget = (base && cleanPath !== base && !cleanPath.startsWith(base + '/'))
+                                ? (base + cleanPath)
+                                : cleanPath;
+                        }
+                    } catch (e) {}
+                }
                 setTimeout(function () {
-                    window.location.href = redirect.startsWith('/') ? (base + redirect) : base + '/';
+                    window.location.href = safeTarget;
                 }, 300);
             });
         }
@@ -1082,7 +1108,23 @@
 
     window.addEventListener('bolo:before-navigate', function () {
         closeSearch();
-        if (authModal) authModal.hidden = true;
+        clearTimeout(dockResizeTimer);
+        dockResizeTimer = null;
+        if (searchModal) {
+            searchModal.remove();
+            searchModal = null;
+            searchInput = null;
+            searchResultsEl = null;
+            searchFiltersEl = null;
+        }
+        if (authModal) {
+            authModal.remove();
+            authModal = null;
+        }
+        if (quickDock) {
+            quickDock.remove();
+            quickDock = null;
+        }
         document.querySelectorAll('.volo-book-reader.is-fullscreen').forEach(exitReaderFullscreen);
         document.documentElement.classList.remove('volo-reader-lock-scroll');
     });

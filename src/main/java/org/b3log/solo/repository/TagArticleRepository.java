@@ -27,6 +27,7 @@ import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Tag;
 import org.b3log.solo.service.ArticleQueryService;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -86,11 +87,26 @@ public class TagArticleRepository extends AbstractRepository {
                 + articleRepository.getName() + " AS a ON a.oId = r.article_oId WHERE a.articleStatus = ?"
                 + " GROUP BY t.oId, t.tagTitle ORDER BY C DESC, t.tagTitle LIMIT ?",
                 Article.ARTICLE_STATUS_C_PUBLISHED, num);
-        for (final JSONObject record : records) {
-            record.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, record.getInt("C"));
-            record.remove("C");
+        if (null == records || records.isEmpty()) {
+            return new ArrayList<>();
         }
-        return records;
+        final List<JSONObject> normalized = new ArrayList<>(records.size());
+        for (final JSONObject record : records) {
+            if (null == record) {
+                continue;
+            }
+            final String id = QueryResults.optStringIgnoreCase(record, Keys.OBJECT_ID);
+            final String title = QueryResults.optStringIgnoreCase(record, Tag.TAG_TITLE);
+            final int count = QueryResults.optIntIgnoreCase(record, "C");
+            QueryResults.removeIgnoreCase(record, "C");
+            QueryResults.removeIgnoreCase(record, Keys.OBJECT_ID);
+            QueryResults.removeIgnoreCase(record, Tag.TAG_TITLE);
+            record.put(Keys.OBJECT_ID, id);
+            record.put(Tag.TAG_TITLE, title);
+            record.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, count);
+            normalized.add(record);
+        }
+        return normalized;
     }
 
     protected TagRepository getTagRepository() {
@@ -126,19 +142,34 @@ public class TagArticleRepository extends AbstractRepository {
                 Article.ARTICLE_STATUS_C_PUBLISHED);
         if (null != rows) {
             for (final JSONObject row : rows) {
-                counts.put(row.optString("T"), row.optInt("C"));
+                if (null == row) {
+                    continue;
+                }
+                String tagId = QueryResults.optStringIgnoreCase(row, "T");
+                if (tagId.isEmpty()) {
+                    tagId = QueryResults.optStringIgnoreCase(row, Tag.TAG + "_" + Keys.OBJECT_ID);
+                }
+                if (!tagId.isEmpty()) {
+                    counts.put(tagId, QueryResults.optIntIgnoreCase(row, "C"));
+                }
             }
         }
         return counts;
     }
 
     public int getPublishedArticleCount(final String tagId) {
+        if (null == tagId || tagId.isBlank()) {
+            return 0;
+        }
         try {
             final List<JSONObject> result = select("SELECT count(*) AS C FROM " + articleRepository.getName()
                     + " AS a WHERE a.articleStatus = ? AND EXISTS (SELECT 1 FROM " + getName()
                     + " AS t WHERE t.article_oId = a.oId AND t.tag_oId = ?)",
                     Article.ARTICLE_STATUS_C_PUBLISHED, tagId);
-            return result.get(0).optInt("C");
+            if (null == result || result.isEmpty()) {
+                return 0;
+            }
+            return QueryResults.optIntIgnoreCase(result.get(0), "C");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets tag [" + tagId + "]'s published article count failed", e);
 

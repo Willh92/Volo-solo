@@ -168,10 +168,14 @@ Emiya.prototype.listen = function() {
   });
   $(".J_replyName").on('click', function() {
     var replyName = $(this).attr('data-originalId');
-    $('#' + replyName)[0].scrollIntoViewIfNeeded(true);
-    $('#' + replyName).addClass('blink');
+    var targetEl = replyName ? document.getElementById(replyName) : null;
+    if (!targetEl) return;
+    if (typeof targetEl.scrollIntoView === 'function') {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    $(targetEl).addClass('blink');
     setTimeout(function() {
-      $('#' + replyName).removeClass('blink');
+      $(targetEl).removeClass('blink');
     }, 3000);
   });
   $('.J_backToTop').on('click keydown', function(e) {

@@ -29,6 +29,8 @@ public final class ReadingStatsUtil {
     private static final long MILLIS_PER_DAY = 86_400_000L;
     private static final Pattern LATIN_WORD_PATTERN = Pattern.compile("[A-Za-z0-9_]+(?:[-'][A-Za-z0-9_]+)*");
     private static final Pattern CODE_FENCE_CONTENT = Pattern.compile("(?s)```.*?```|~~~.*?~~~");
+    private static final Pattern MARKDOWN_IMAGE_PATTERN = Pattern.compile("!\\[[^\\]]*\\]\\([^)]*\\)");
+    private static final Pattern MARKDOWN_LINK_PATTERN = Pattern.compile("\\[([^\\]]*)\\]\\([^)]*\\)");
 
     private ReadingStatsUtil() {
     }
@@ -44,8 +46,8 @@ public final class ReadingStatsUtil {
             return new Stats(0, 1);
         }
         // Keep code words counted at half weight so long code blocks don't wildly inflate reading time
-        final String withoutLinks = clean.replaceAll("!\\[[^\\]]*\\]\\([^)]*\\)", " ")
-                .replaceAll("\\[([^\\]]*)\\]\\([^)]*\\)", "$1");
+        final String withoutImages = MARKDOWN_IMAGE_PATTERN.matcher(clean).replaceAll(" ");
+        final String withoutLinks = MARKDOWN_LINK_PATTERN.matcher(withoutImages).replaceAll("$1");
         final String proseOnly = CODE_FENCE_CONTENT.matcher(withoutLinks).replaceAll(" ");
 
         int cjkCount = 0;

@@ -136,6 +136,24 @@ public class BlogProcessor {
      * PWA manifest JSON template.
      */
     private static String PWA_MANIFESTO_JSON;
+    private static final byte[] EMPTY_MANIFEST_BYTES = new byte[0];
+
+    private record ManifestCacheKey(String servePath, String staticServePath,
+                                    String blogTitle, String blogSubtitle, String themeColor) {
+    }
+
+    private record CachedManifest(ManifestCacheKey key, String renderedJson) {
+    }
+
+    private volatile CachedManifest cachedManifest;
+
+    private static final org.b3log.latke.http.renderer.AbstractResponseRenderer NO_OP_MANIFEST_RENDERER =
+            new org.b3log.latke.http.renderer.AbstractResponseRenderer() {
+                @Override
+                public void render(final RequestContext ctx) {
+                    // Already rendered via HttpCompression.sendText
+                }
+            };
 
     /**
      * Bounded LRU cache of rendered favicons restricted to standard icon dimensions.
@@ -162,29 +180,54 @@ public class BlogProcessor {
      */
     @RequestProcessing(value = "/manifest.json", method = {HttpMethod.GET, HttpMethod.HEAD})
     public void getPWAManifestJSON(final RequestContext context) {
-        final JsonRenderer renderer = new JsonRenderer();
-        renderer.setPretty(true);
-        context.setRenderer(renderer);
-        final JSONObject preference = optionQueryService.getPreference();
-        if (null == preference) {
-            if ("HEAD".equalsIgnoreCase(context.method()) && context.getResponse() != null) {
-                context.getResponse().setContentType("application/json; charset=UTF-8");
-                context.sendBytes(new byte[0]);
+        String name = optionQueryService.getPreferenceString(Option.ID_C_BLOG_TITLE, null);
+        String description;
+        if (null == name) {
+            final JSONObject preference = optionQueryService.getPreference();
+            if (null == preference) {
+                context.setRenderer(NO_OP_MANIFEST_RENDERER);
+                if (context.getResponse() != null) {
+                    context.getResponse().setContentType("application/json; charset=UTF-8");
+                    if ("HEAD".equalsIgnoreCase(context.method())) {
+                        context.sendBytes(EMPTY_MANIFEST_BYTES);
+                    } else {
+                        context.sendString("{}");
+                    }
+                }
+                return;
             }
-            return;
+            name = preference.optString(Option.ID_C_BLOG_TITLE);
+            description = preference.optString(Option.ID_C_BLOG_SUBTITLE);
+        } else {
+            description = optionQueryService.getPreferenceString(Option.ID_C_BLOG_SUBTITLE, "");
         }
-        final String name = preference.optString(Option.ID_C_BLOG_TITLE);
-        final String description = preference.optString(Option.ID_C_BLOG_SUBTITLE);
-        final JSONObject jsonObject = new JSONObject(PWA_MANIFESTO_JSON);
-        jsonObject.put("name", name);
-        jsonObject.put("short_name", name);
-        jsonObject.put("description", description);
-        jsonObject.put("theme_color", org.b3log.solo.util.SiteAppearance.color());
-        jsonObject.put("background_color", "#f6f7f3");
-        renderer.setJSONObject(jsonObject);
-        if ("HEAD".equalsIgnoreCase(context.method()) && context.getResponse() != null) {
-            JsonResponses.applyCompression(context);
-            context.getRenderer().render(context);
+
+        final String themeColor = org.b3log.solo.util.SiteAppearance.color();
+        final ManifestCacheKey cacheKey = new ManifestCacheKey(
+                Latkes.getServePath(), Latkes.getStaticServePath(), name, description, themeColor);
+        CachedManifest cached = cachedManifest;
+        final String renderedJson;
+        if (null != cached && cacheKey.equals(cached.key())) {
+            renderedJson = cached.renderedJson();
+        } else {
+            final JSONObject jsonObject = new JSONObject(PWA_MANIFESTO_JSON);
+            jsonObject.put("name", name);
+            jsonObject.put("short_name", name);
+            jsonObject.put("description", description);
+            jsonObject.put("theme_color", themeColor);
+            jsonObject.put("background_color", "#f6f7f3");
+            renderedJson = jsonObject.toString(4);
+            cachedManifest = new CachedManifest(cacheKey, renderedJson);
+        }
+
+        if (context.getResponse() != null) {
+            context.setRenderer(NO_OP_MANIFEST_RENDERER);
+            org.b3log.solo.web.HttpCompression.sendText(context, renderedJson, "application/json; charset=UTF-8");
+        } else {
+            final JsonRenderer renderer = new JsonRenderer();
+            renderer.setPretty(true);
+            renderer.setJSONObject(new JSONObject(renderedJson));
+            context.setRenderer(renderer);
         }
     }
 
@@ -271,8 +314,12 @@ public class BlogProcessor {
 
         jsonObject.put("recentArticleTime", articleQueryService.getRecentArticleTime());
         final JSONObject statistic = statisticQueryService.getStatistic();
-        jsonObject.put("articleCount", statistic.getLong(Option.ID_T_STATISTIC_PUBLISHED_ARTICLE_COUNT));
-        jsonObject.put("commentCount", statistic.getLong(Option.ID_T_STATISTIC_PUBLISHED_BLOG_COMMENT_COUNT));
+        jsonObject.put("articleCount", null == statistic
+                ? 0L
+                : statistic.optLong(Option.ID_T_STATISTIC_PUBLISHED_ARTICLE_COUNT, 0L));
+        jsonObject.put("commentCount", null == statistic
+                ? 0L
+                : statistic.optLong(Option.ID_T_STATISTIC_PUBLISHED_BLOG_COMMENT_COUNT, 0L));
         jsonObject.put("tagCount", tagQueryService.getTagCount());
         jsonObject.put("servePath", Latkes.getServePath());
         jsonObject.put("staticServePath", Latkes.getStaticServePath());
@@ -280,7 +327,8 @@ public class BlogProcessor {
         jsonObject.put("runtimeMode", Latkes.getRuntimeMode());
         jsonObject.put("runtimeDatabase", Latkes.getRuntimeDatabase());
         jsonObject.put("locale", Latkes.getLocale());
-        final String userName = userQueryService.getAdmin().optString(User.USER_NAME);
+        final JSONObject admin = userQueryService.getAdmin();
+        final String userName = null == admin ? "" : admin.optString(User.USER_NAME);
         jsonObject.put("userName", userName);
     }
 
@@ -329,7 +377,10 @@ public class BlogProcessor {
             }
 
             for (final JSONObject article : articles) {
-                final String tagString = article.optString(Article.ARTICLE_TAGS_REF);
+                if (null == article) {
+                    continue;
+                }
+                final String tagString = org.b3log.solo.util.QueryResults.optStringIgnoreCase(article, Article.ARTICLE_TAGS_REF);
                 final JSONArray tagArray = new JSONArray();
                 data.put(tagArray);
 

@@ -85,6 +85,7 @@ import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.repository.TagArticleRepository;
 import org.b3log.solo.repository.TagRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
@@ -772,6 +773,11 @@ public class DataModelService {
         }
     }
 
+    private record CachedUsite(String raw, JSONObject parsed) {
+    }
+
+    private volatile CachedUsite cachedUsite;
+
     /**
      * Fills usite. 展示站点连接 https://github.com/b3log/solo/issues/12719
      *
@@ -783,8 +789,18 @@ public class DataModelService {
             if (null == usiteOpt) {
                 return;
             }
+            final String raw = usiteOpt.optString(Option.OPTION_VALUE);
+            if (StringUtils.isBlank(raw)) {
+                return;
+            }
+            CachedUsite snapshot = cachedUsite;
+            if (null == snapshot || !raw.equals(snapshot.raw())) {
+                final JSONObject parsed = new JSONObject(raw);
+                snapshot = new CachedUsite(raw, Solos.clone(parsed));
+                cachedUsite = snapshot;
+            }
 
-            dataModel.put(Option.ID_C_USITE, new JSONObject(usiteOpt.optString(Option.OPTION_VALUE)));
+            dataModel.put(Option.ID_C_USITE, Solos.clone(snapshot.parsed()));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Fills usite failed", e);
         }
@@ -807,14 +823,19 @@ public class DataModelService {
         // 支持配置自定义模板变量 https://github.com/b3log/solo/issues/12535
         final Map<String, String> customVars = new HashMap<>();
         final String customVarsStr = preference.optString(Option.ID_C_CUSTOM_VARS);
-        final String[] customVarsArray = customVarsStr.split("\\|");
-        for (int i = 0; i < customVarsArray.length; i++) {
-            final String customVarPair = customVarsArray[i];
-            if (StringUtils.isNotBlank(customVarsStr)) {
-                final String customVarKey = customVarPair.split("=")[0];
-                final String customVarVal = customVarPair.split("=")[1];
-                if (StringUtils.isNotBlank(customVarKey) && StringUtils.isNotBlank(customVarVal)) {
-                    customVars.put(customVarKey, customVarVal);
+        if (StringUtils.isNotBlank(customVarsStr)) {
+            for (final String rawPair : customVarsStr.split("\\|")) {
+                final String pair = rawPair.trim();
+                if (pair.isEmpty()) {
+                    continue;
+                }
+                final int eq = pair.indexOf('=');
+                if (eq <= 0) {
+                    continue;
+                }
+                final String k = pair.substring(0, eq).trim();
+                if (!k.isEmpty()) {
+                    customVars.put(k, pair.substring(eq + 1));
                 }
             }
         }
@@ -1475,17 +1496,33 @@ public class DataModelService {
 
             final boolean needViewPwd = Solos.needViewPwd(context, article);
             final boolean fullContentList = ArticleQueryService.isFullContentListStyle(preference);
-            if (needViewPwd && fullContentList) {
-                final String content = langPropsService.get("articleContentPwd");
-                article.put(ARTICLE_CONTENT, content);
-            }
-
-            processArticleAbstract(preference, article);
-
-            if (fullContentList) {
-                articleQueryService.markdown(article, context);
+            final boolean hadContent = article.has(ARTICLE_CONTENT);
+            if (needViewPwd) {
+                final String pwdLabel = resolveArticleContentPwdLabel();
+                final String articleListStyle = preference.optString(Option.ID_C_ARTICLE_LIST_STYLE);
+                final boolean titleOnly = "titleOnly".equals(articleListStyle) || "0".equals(articleListStyle);
+                article.put(Article.ARTICLE_ABSTRACT, titleOnly ? "" : pwdLabel);
+                article.put(Article.ARTICLE_ABSTRACT_TEXT, pwdLabel);
+                if (fullContentList || hadContent) {
+                    article.put(ARTICLE_CONTENT, pwdLabel);
+                }
+                article.put(Article.ARTICLE_IMG1_URL, Images.randImage());
+                if (fullContentList) {
+                    articleQueryService.markdown(article, context);
+                } else {
+                    articleQueryService.markdownAbstractOnly(article, context);
+                    if (hadContent) {
+                        article.put(ARTICLE_CONTENT, pwdLabel);
+                    }
+                }
             } else {
-                articleQueryService.markdownAbstractOnly(article, context);
+                article.remove(Article.ARTICLE_VIEW_PWD);
+                processArticleAbstract(preference, article);
+                if (fullContentList) {
+                    articleQueryService.markdown(article, context);
+                } else {
+                    articleQueryService.markdownAbstractOnly(article, context);
+                }
             }
             article.put("needViewPwd", needViewPwd);
             article.remove(Article.ARTICLE_VIEW_PWD);
@@ -1622,10 +1659,30 @@ public class DataModelService {
         if (null == articles || articles.isEmpty()) {
             return;
         }
+        if (null != articleQueryService) {
+            articleQueryService.preloadAuthors(articles);
+        }
         final CategoryPreload preload = preloadArticleCategories(articles);
         for (final JSONObject article : articles) {
             setArticleExProperties(context, article, preference, preload);
         }
+    }
+
+    private String resolveArticleContentPwdLabel() {
+        LangPropsService lps = this.langPropsService;
+        if (null == lps) {
+            try {
+                lps = BeanManager.getInstance().getReference(LangPropsService.class);
+            } catch (final Exception ignored) {
+            }
+        }
+        if (null != lps) {
+            final String label = lps.get("articleContentPwd");
+            if (null != label) {
+                return label;
+            }
+        }
+        return "articleContentPwd";
     }
 
     /**
@@ -1636,16 +1693,30 @@ public class DataModelService {
      * @param article    the specified article
      */
     private void processArticleAbstract(final JSONObject preference, final JSONObject article) {
+        if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+            final String pwdLabel = resolveArticleContentPwdLabel();
+            final String articleListStyle = preference.optString(Option.ID_C_ARTICLE_LIST_STYLE);
+            final boolean titleOnly = "titleOnly".equals(articleListStyle) || "0".equals(articleListStyle);
+            article.put(Article.ARTICLE_ABSTRACT, titleOnly ? "" : pwdLabel);
+            article.put(Article.ARTICLE_ABSTRACT_TEXT, pwdLabel);
+            if (article.has(ARTICLE_CONTENT)) {
+                article.put(ARTICLE_CONTENT, pwdLabel);
+            }
+            article.put(Article.ARTICLE_IMG1_URL, Images.randImage());
+            return;
+        }
+
         final String articleAbstract = article.optString(Article.ARTICLE_ABSTRACT);
         if (StringUtils.isBlank(articleAbstract)) {
             article.put(Article.ARTICLE_ABSTRACT, "");
         }
         final String articleAbstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
         if (StringUtils.isBlank(articleAbstractText)) {
-            final LangPropsService lps = null != this.langPropsService
-                    ? this.langPropsService
-                    : BeanManager.getInstance().getReference(LangPropsService.class);
-            article.put(Article.ARTICLE_ABSTRACT_TEXT, lps.get("articleContentPwd"));
+            final String sourceForAbstract = StringUtils.isNotBlank(articleAbstract)
+                    ? articleAbstract
+                    : article.optString(Article.ARTICLE_CONTENT);
+            article.put(Article.ARTICLE_ABSTRACT_TEXT,
+                    StringUtils.isNotBlank(sourceForAbstract) ? Article.getAbstractText(sourceForAbstract) : "");
         }
 
         final String articleListStyle = preference.optString(Option.ID_C_ARTICLE_LIST_STYLE);

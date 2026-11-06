@@ -139,6 +139,10 @@ public class CommentConsole {
      * @param context the specified request context
      */
     public void getComments(final RequestContext context) {
+        if (!Solos.isAdminOrAuthorLoggedIn(context)) {
+            org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。");
+            return;
+        }
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
 
@@ -150,7 +154,18 @@ public class CommentConsole {
             requestJSONObject.put(org.b3log.solo.model.Common.KEYWORD, context.param("k") == null ? "" : context.param("k"));
             requestJSONObject.put("status", context.param("status") == null ? "all" : context.param("status"));
             final boolean adminLoggedIn = Solos.isAdminLoggedIn(context);
-            final JSONObject result = commentQueryService.getComments(requestJSONObject, adminLoggedIn);
+            final String currentUserId;
+            if (adminLoggedIn) {
+                currentUserId = null;
+            } else {
+                final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+                currentUserId = null == currentUser ? "" : currentUser.optString(Keys.OBJECT_ID);
+                if (currentUserId.isBlank()) {
+                    org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。");
+                    return;
+                }
+            }
+            final JSONObject result = commentQueryService.getComments(requestJSONObject, adminLoggedIn, currentUserId);
             final java.util.Map<String, String> emails = adminLoggedIn
                     ? org.b3log.solo.bolo.prop.MailService.getUserMailEmailsByCommentId()
                     : java.util.Collections.emptyMap();
@@ -204,12 +219,22 @@ public class CommentConsole {
         }
         try {
             final String commentId = context.pathVar("id");
+            if (null == commentId || commentId.isBlank()) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "评论编号不正确。");
+                return;
+            }
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             if (!commentQueryService.canAccessComment(commentId, currentUser)) {
                 org.b3log.solo.util.AdminRequests.reject(context, 403, langPropsService.get("forbiddenLabel"));
                 return;
             }
-            final JSONObject payload = context.requestJSON();
+            final JSONObject payload;
+            try {
+                payload = context.requestJSON();
+            } catch (final org.json.JSONException | IllegalArgumentException invalid) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             if (payload == null || !payload.has("status")) {
                 org.b3log.solo.util.AdminRequests.reject(context, 400, "缺少审核状态参数。");
                 return;
@@ -248,6 +273,10 @@ public class CommentConsole {
     }
 
     public void getArticleComments(final RequestContext context) {
+        if (!Solos.isAdminOrAuthorLoggedIn(context)) {
+            org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。");
+            return;
+        }
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
         final JSONObject ret = new JSONObject();
@@ -256,7 +285,7 @@ public class CommentConsole {
         try {
             final String articleId = context.pathVar("id");
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            if (articleQueryService != null && !articleQueryService.canAccessArticle(articleId, currentUser)) {
+            if (null == currentUser || (articleQueryService != null && !articleQueryService.canAccessArticle(articleId, currentUser))) {
                 ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
                 return;

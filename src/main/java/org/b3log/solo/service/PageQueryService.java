@@ -17,16 +17,15 @@
  */
 package org.b3log.solo.service;
 
-import org.b3log.latke.Keys;
-import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Paginator;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Page;
 import org.b3log.solo.repository.PageRepository;
 import org.json.JSONArray;
@@ -59,19 +58,7 @@ public class PageQueryService {
      * Gets a page by the specified page id.
      *
      * @param pageId the specified page id
-     * @return for example,
-     * <pre>
-     * {
-     *     "page": {
-     *         "oId": "",
-     *         "pageTitle": "",
-     *         "pageOrder": int,
-     *         "pagePermalink": "",
-     *         "pageOpenTarget": "",
-     *         "pageIcon": ""
-     *     }
-     * }
-     * </pre>, returns {@code null} if not found
+     * @return page JSON wrapper, or {@code null} if not found
      * @throws ServiceException service exception
      */
     public JSONObject getPage(final String pageId) throws ServiceException {
@@ -96,27 +83,8 @@ public class PageQueryService {
     /**
      * Gets pages by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10
-     *                          see {@link Pagination} for more details
-     * @return for example,
-     * <pre>
-     * {
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "pages": [{
-     *         "oId": "",
-     *         "pageTitle": "",
-     *         "pageOrder": int,
-     *         "pagePermalink": "",
-     *         "pageOpenTarget": ""
-     *      }, ....]
-     * }
-     * </pre>
+     * @param requestJSONObject the specified request json object
+     * @return paginated pages
      * @throws ServiceException service exception
      * @see Pagination
      */
@@ -128,7 +96,7 @@ public class PageQueryService {
             final int pageSize = requestJSONObject.getInt(Pagination.PAGINATION_PAGE_SIZE);
             final int windowSize = requestJSONObject.getInt(Pagination.PAGINATION_WINDOW_SIZE);
 
-            final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Page.PAGE_ORDER, SortDirection.ASCENDING).setPageCount(1);
+            final Query query = new Query().setPage(currentPageNum, pageSize).addSort(Page.PAGE_ORDER, SortDirection.ASCENDING);
             org.b3log.solo.util.AdminListSearch.apply(query, requestJSONObject, Page.PAGE_TITLE, Page.PAGE_PERMALINK);
             final JSONObject result = pageRepository.get(query);
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);

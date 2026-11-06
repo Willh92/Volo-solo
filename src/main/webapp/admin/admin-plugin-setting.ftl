@@ -17,34 +17,34 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 -->
-<textarea id="jsoneditor" rows="10" cols="110">
-	${setting}
-</textarea>
+<textarea id="jsoneditor" rows="10" cols="110">${setting?html}</textarea>
 
-<input type="hidden" id="pluginId" value="${oId}">
+<input type="hidden" id="pluginId" value="${oId?html}">
 <button class="marginRight12" id="updateSetting" onclick="updateSetting()">save</button>
 
 <script type="text/javascript">
+    function updatePluginSetting() {
+        var pluginId = $('#pluginId').val();
+        var json = $('#jsoneditor').val();
 
-
-	function updateSetting(){
-
-		var pluginId = $("#pluginId").val();
-
-		$("#loadMsg").text(Label.loadingLabel);
-          var requestJSONObject = {
-            "oId": pluginId,
-            "setting":json
+        $('#loadMsg').text(Label.loadingLabel);
+        var requestJSONObject = {
+            'oId': pluginId,
+            'setting': json
         };
 
         $.ajax({
-            url: Label.servePath + "/console/plugin/updateSetting",
-            type: "POST",
+            url: Label.servePath + '/console/plugin/updateSetting',
+            type: 'POST',
             cache: false,
             data: JSON.stringify(requestJSONObject),
-            success: function(result, textStatus){
-                $("#tipMsg").text(result.msg);
+            success: function (result, textStatus) {
+                $('#tipMsg').text(result.msg);
+            },
+            complete: function () {
+                $('#loadMsg').text('');
             }
         });
-	}
+    }
+    var updateSetting = updatePluginSetting;
 </script>

@@ -209,6 +209,14 @@ body.bolo-console {
   .f-blue { color: var(--bolo-accent); }
   .table-main input:not([type='checkbox']):not([type='radio']) { padding: 8px 10px; border: 1px solid var(--bolo-line); border-radius: 7px; background: var(--bolo-surface); color: var(--bolo-text); }
   .console-card-list .table-main table { min-width: 840px; }
+  .table-main table { word-break: normal; overflow-wrap: break-word; }
+  .console-card-list .table-main td > div { padding-left: 0; }
+  .table-main td:is([data-column='pagePermalink'], [data-column='linkAddress'], [data-column='followUrl'], [data-column='followAddress'], [data-column='userURL'], [data-column='userEmail'], [data-column='categoryURI']) { overflow-wrap: anywhere; }
+  @media (min-width: 769px) {
+    :is(.table-header th, .table-main td):is([data-column='comments'], [data-column='articleViewCount'], [data-column='userArticleCount'], [data-column='date'], [data-column='version'], [data-column='status'], [data-column='statusText'], [data-column='userRole'], [data-column='isAdmin'], [data-column='pageOpenTarget'], [data-column='pageTarget'], [data-column='pageOrder'], [data-column='linkOrder'], [data-column='followOrder']) { white-space: nowrap; word-break: normal; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
+    #ipBanList, #geoAccessRules { overflow-x: auto; }
+    .console-ip-ban-table, .console-security-table { min-width: 720px; }
+  }
   .table-header { padding: 0; background: var(--bolo-raised); border-color: var(--bolo-line); }
   .table-header th { padding: 14px 12px; text-indent: 0; font-size: 12px; color: var(--bolo-text); font-weight: 500; }
   .table-main td { padding: 15px 12px; border-color: var(--bolo-line); color: var(--bolo-text); line-height: 1.75; }
@@ -401,11 +409,11 @@ html[data-bolo-theme='dark'] body.bolo-console { --console-nav-text: color-mix(i
     .footer { padding: 10px 16px 20px; }
     .console-chart-grid { grid-template-columns: 1fr; gap: 24px; }
     .console-chart-grid canvas { max-height: 260px; }
-    :is(#logList,#recentLogs), :is(#logList,#recentLogs) tbody { display: block; width: 100%; }
-    :is(#logList,#recentLogs) tr { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 12px 0; border-bottom: 1px solid var(--bolo-line); }
-    :is(#logList,#recentLogs) td { display: block; width: auto !important; padding: 0; min-width: 0; font-size: 12px; line-height: 1.7; }
-    :is(#logList,#recentLogs) td:last-child { grid-column: 1 / -1; overflow-wrap: anywhere; }
-    :is(#logList,#recentLogs) td:nth-child(2) { text-align: right; }
+    :is(#logList,#recentLogs,.console-log-output), :is(#logList,#recentLogs,.console-log-output) tbody { display: block; width: 100%; }
+    :is(#logList,#recentLogs,.console-log-output) tr { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 4px 10px; padding: 12px 0; border-bottom: 1px solid var(--bolo-line); }
+    :is(#logList,#recentLogs,.console-log-output) td { display: block; border: 0; width: auto !important; padding: 0; min-width: 0; font-size: 12px; line-height: 1.7; }
+    :is(#logList,#recentLogs,.console-log-output) td:last-child { grid-column: 1 / -1; overflow-wrap: anywhere; }
+    :is(#logList,#recentLogs,.console-log-output) td:nth-child(2) { text-align: right; }
     .volo-about-grid { grid-template-columns: 1fr; gap: 0; }
     .volo-about-mark { width: 65px; height: 65px; border-radius: 21px; font-size: 40px; }
     .console-welcome h2 { font-size: 24px; }
@@ -488,7 +496,7 @@ body.bolo-console .console-geo-rule-regions { grid-column:1 / -1; }
 body.bolo-console :is(#tabPreferencePanel,.console-security) .console-geo-rule-field { display:flex; flex-direction:column; gap:9px; min-width:0; margin:0; color:var(--bolo-text); font-size:13px; }
 body.bolo-console :is(#tabPreferencePanel,.console-security) .console-geo-rule-field :is(input,textarea,select) { box-sizing:border-box; width:100%; min-width:0; max-width:none; margin:0; }
 body.bolo-console .console-geo-rule-field textarea { min-height:76px; }
-@media (max-width:680px) {
+@media (max-width: 768px) {
  body.bolo-console .console-geo-access { padding:16px; }
  body.bolo-console .console-geo-rule-fields { grid-template-columns:minmax(0,1fr); }
 }
@@ -523,7 +531,7 @@ body.bolo-console .console-ip-bans {
  .console-ip-ban-table th:last-child { width:116px; }
  .console-ip-ban-table button { width:auto; margin:0; padding:5px 9px; border:1px solid var(--bolo-line); background:transparent; color:var(--bolo-text); white-space:nowrap; }
  .console-ip-ban-table button:hover:not(:disabled) { background:var(--bolo-raised); border-color:var(--bolo-accent); color:var(--bolo-accent); }
- @media (max-width:760px) {
+ @media (max-width: 768px) {
   .console-ip-ban-add { display:flex; flex-direction:column; align-items:stretch; gap:8px; }
   .console-ip-ban-add label:not(:first-child) { margin-top:6px; }
   .console-ip-ban-add button { align-self:flex-end; width:auto; margin-top:6px; }
@@ -680,7 +688,8 @@ body.bolo-console .console-github-summary { margin:16px 0; font-weight:600; colo
 body.bolo-console .console-github-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
 body.bolo-console .console-github-table :is(th,td) { padding:12px; text-align:left; vertical-align:middle; border-bottom:1px solid var(--bolo-line); overflow-wrap:anywhere; }
 body.bolo-console .console-github-table th { font-weight:500; background:var(--bolo-raised); color:var(--bolo-muted); }
-body.bolo-console .console-github-table th:first-child { width:60px; }
+body.bolo-console .console-github-table th:first-child { width:60px; text-align:center; }
+body.bolo-console .console-github-table :is(th,td):is(:nth-child(4),:nth-child(5)) { white-space:nowrap; font-variant-numeric:tabular-nums; }
 body.bolo-console .console-github-table th:nth-child(n+3) { width:72px; }
 body.bolo-console .console-github-table td:first-child { text-align:center; }
 body.bolo-console .console-github-table input[type='checkbox'] { width:17px; height:17px; margin:0; }
@@ -698,7 +707,7 @@ body.bolo-console .console-utility-action { display:flex; align-items:center; fl
 body.bolo-console .console-utility-action + .console-utility-action { margin-top:18px; padding-top:18px; border-top:1px solid var(--bolo-line); }
 body.bolo-console .console-utility-action > p { flex:1 1 240px; margin:0; line-height:1.8; color:var(--bolo-muted); }
 body.bolo-console .console-utility-action button { float:none; margin:0; width:auto; }
-@media(max-width:680px) {
+@media (max-width: 768px) {
   body.bolo-console .console-utility-action button { margin-left:auto; }
   body.bolo-console .console-github-card { padding:14px; }
   body.bolo-console .console-github-table, body.bolo-console .console-github-table tbody { display:block; }
@@ -742,18 +751,18 @@ body.bolo-console .console-log-more { float:right; font-size:12px; font-weight:4
 body.bolo-console .console-log-output table { width:100%; border-collapse:collapse; table-layout:fixed; }
 body.bolo-console .console-log-output td { padding:12px 10px; vertical-align:top; border-bottom:1px solid var(--bolo-line); overflow-wrap:anywhere; font-size:12px; }
 body.bolo-console :is(#logList,#recentLogs) td:first-child { box-sizing:content-box; width:60px; white-space:nowrap; overflow-wrap:normal; }
-body.bolo-console :is(#logList,#recentLogs) td:nth-child(2) { box-sizing:content-box; width:160px; white-space:nowrap; }
+body.bolo-console :is(#logList,#recentLogs) td:nth-child(2) { box-sizing:content-box; width:160px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 body.bolo-console .console-log-output p { margin:6px 0 0; white-space:pre-wrap; }
 body.bolo-console .console-log-output details { margin-top:8px; }
 body.bolo-console .console-log-output summary { cursor:pointer; }
 body.bolo-console .console-log-output pre { max-height:240px; overflow:auto; white-space:pre-wrap; font:inherit; }
-@media(max-width:600px) {
+@media (max-width: 768px) {
  body.bolo-console .tip { left:14px; right:14px; width:auto; max-width:none; transform:none; }
  body.bolo-console .console-pagination { gap:5px; }
  body.bolo-console .console-pagination .console-page-count { padding-inline:3px; }
- body.bolo-console .console-log-output tr { display:grid; grid-template-columns:50px minmax(0,1fr); }
- body.bolo-console .console-log-output td { border:0; width:auto !important; padding:6px; }
- body.bolo-console .console-log-output td:last-child { grid-column:1/-1; padding-bottom:16px; border-bottom:1px solid var(--bolo-line); }
+
+
+
 }
 
 
@@ -792,8 +801,9 @@ body.bolo-console {
   .console-table-toolbar .console-form-help:empty { display:none; }
 
   .console-simple-table-wrap { width:100%; overflow-x:auto; margin:14px 0 0; border:1px solid var(--bolo-line); border-radius:10px; background:var(--bolo-surface); }
-  .console-simple-table { width:100%; border-collapse:collapse; font-size:13px; color:var(--bolo-text); }
-  .console-simple-table :is(th,td) { padding:12px 14px; border-bottom:1px solid var(--bolo-line); text-align:left; vertical-align:middle; overflow-wrap:anywhere; }
+  .console-simple-table { width:100%; min-width:680px; border-collapse:collapse; font-size:13px; color:var(--bolo-text); word-break:normal; overflow-wrap:break-word; }
+  .console-simple-table :is(th,td) { padding:12px 14px; border-bottom:1px solid var(--bolo-line); text-align:left; vertical-align:middle; word-break:normal; overflow-wrap:break-word; }
+  .console-simple-table :is(td.is-right, th.is-right, td:has(> .console-row-actions), td:has(> time), td time, td.console-tabular) { white-space:nowrap; font-variant-numeric:tabular-nums; }
   .console-simple-table tbody tr:last-child td { border-bottom:0; }
   .console-simple-table th { background:var(--bolo-raised); color:var(--bolo-muted); font-size:12px; font-weight:500; white-space:nowrap; }
   .console-simple-table td.is-right, .console-simple-table th.is-right { text-align:right; }
@@ -923,7 +933,7 @@ body.bolo-console {
     .console-trend-kpi--note { grid-column:1 / -1; }
     .console-trend-lists { grid-template-columns:minmax(0,1fr); }
   }
-  @media (max-width:680px) {
+  @media (max-width: 768px) {
     .console-form-grid, .console-form-grid--3, .console-form-grid--4 { grid-template-columns:minmax(0,1fr); }
     .console-form-cell--wide { grid-column:auto; }
     .console-table-toolbar { padding:12px; }

@@ -23,6 +23,7 @@ import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Tag;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -62,12 +63,61 @@ public class TagRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getByArticleId(final String articleId) throws RepositoryException {
-        if (null == articleId || articleId.isBlank()) {
+        if (null == articleId || articleId.isBlank() || null == tagArticleRepository) {
             return new ArrayList<>();
         }
         final List<JSONObject> rows = select("SELECT t.oId, t.tagTitle FROM " + getName() + " AS t JOIN "
                 + tagArticleRepository.getName() + " AS r ON r.tag_oId = t.oId WHERE r.article_oId = ?", articleId);
-        return null == rows ? new ArrayList<>() : rows;
+        if (null == rows || rows.isEmpty()) {
+            return new ArrayList<>();
+        }
+        final List<JSONObject> normalized = new ArrayList<>(rows.size());
+        for (final JSONObject row : rows) {
+            if (null == row) {
+                continue;
+            }
+            final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+            final String title = QueryResults.optStringIgnoreCase(row, Tag.TAG_TITLE);
+            QueryResults.removeIgnoreCase(row, Keys.OBJECT_ID);
+            QueryResults.removeIgnoreCase(row, Tag.TAG_TITLE);
+            row.put(Keys.OBJECT_ID, id);
+            row.put(Tag.TAG_TITLE, title);
+            normalized.add(row);
+        }
+        return normalized;
+    }
+
+    /**
+     * Gets all unused tags (tags with zero rows in {@code tag_article}) in a single {@code NOT EXISTS} SQL query.
+     *
+     * @return list of unused tags ordered by {@code tagTitle ASC}
+     * @throws RepositoryException repository exception
+     */
+    public List<JSONObject> getUnusedTags() throws RepositoryException {
+        if (null == tagArticleRepository) {
+            return new ArrayList<>();
+        }
+        final List<JSONObject> rows = select(
+                "SELECT t.oId, t.tagTitle FROM " + getName() + " t "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM " + tagArticleRepository.getName()
+                        + " r WHERE r.tag_oId = t.oId) ORDER BY t.tagTitle ASC");
+        if (null == rows || rows.isEmpty()) {
+            return new ArrayList<>();
+        }
+        final List<JSONObject> normalized = new ArrayList<>(rows.size());
+        for (final JSONObject row : rows) {
+            if (null == row) {
+                continue;
+            }
+            final String id = QueryResults.optStringIgnoreCase(row, Keys.OBJECT_ID);
+            final String title = QueryResults.optStringIgnoreCase(row, Tag.TAG_TITLE);
+            if (!id.isEmpty()) {
+                normalized.add(new JSONObject()
+                        .put(Keys.OBJECT_ID, id)
+                        .put(Tag.TAG_TITLE, title));
+            }
+        }
+        return normalized;
     }
 
     /**
@@ -89,22 +139,37 @@ public class TagRepository extends AbstractRepository {
                             + " AS r WHERE r.article_oId = a.oId AND r.tag_oId = t.oId)) AS C FROM "
                             + getName() + " AS t WHERE t.tagTitle = ? LIMIT 1",
                     Article.ARTICLE_STATUS_C_PUBLISHED, tagTitle);
-            if (null == rows || rows.isEmpty()) {
+            if (null == rows || rows.isEmpty() || null == rows.get(0)) {
                 return null;
             }
             final JSONObject ret = rows.get(0);
-            ret.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, ret.optInt("C"));
-            ret.remove("C");
+            final String id = QueryResults.optStringIgnoreCase(ret, Keys.OBJECT_ID);
+            final String title = QueryResults.optStringIgnoreCase(ret, Tag.TAG_TITLE, tagTitle);
+            final int count = QueryResults.optIntIgnoreCase(ret, "C");
+            QueryResults.removeIgnoreCase(ret, "C");
+            QueryResults.removeIgnoreCase(ret, Keys.OBJECT_ID);
+            QueryResults.removeIgnoreCase(ret, Tag.TAG_TITLE);
+            ret.put(Keys.OBJECT_ID, id);
+            ret.put(Tag.TAG_TITLE, title);
+            ret.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, count);
             return ret;
         }
 
-        final Query query = new Query().setFilter(new PropertyFilter(Tag.TAG_TITLE, FilterOperator.EQUAL, tagTitle)).setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Tag.TAG_TITLE, FilterOperator.EQUAL, tagTitle))
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject ret = getFirst(query);
         if (null == ret) {
             return null;
         }
 
-        final String tagId = ret.optString(Keys.OBJECT_ID);
+        final String tagId = QueryResults.optStringIgnoreCase(ret, Keys.OBJECT_ID);
+        final String resolvedTitle = QueryResults.optStringIgnoreCase(ret, Tag.TAG_TITLE, tagTitle);
+        QueryResults.removeIgnoreCase(ret, Keys.OBJECT_ID);
+        QueryResults.removeIgnoreCase(ret, Tag.TAG_TITLE);
+        ret.put(Keys.OBJECT_ID, tagId);
+        ret.put(Tag.TAG_TITLE, resolvedTitle);
         final int articleCount = null == tagArticleRepository ? 0 : tagArticleRepository.getPublishedArticleCount(tagId);
         ret.put(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT, articleCount);
 

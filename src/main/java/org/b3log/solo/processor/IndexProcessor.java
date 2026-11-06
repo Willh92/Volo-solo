@@ -23,7 +23,6 @@ import org.b3log.solo.util.AdminRequests;
 import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
@@ -35,6 +34,7 @@ import org.b3log.latke.http.RequestContext;
 import org.b3log.solo.web.annotation.RequestProcessing;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.AbstractResponseRenderer;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.SoloApplication;
@@ -103,6 +103,23 @@ public class IndexProcessor {
     @Inject
     private InitService initService;
 
+    @Inject
+    private TotpService totpService;
+
+    private static final byte[] EMPTY_BYTES = new byte[0];
+
+    private static final AbstractResponseRenderer NO_OP_HEAD_RENDERER = new AbstractResponseRenderer() {
+        @Override
+        public void render(final RequestContext ctx) {
+            final Response resp = null == ctx ? null : ctx.getResponse();
+            if (null != resp && !resp.isCommitted()) {
+                resp.setContentType("text/html; charset=UTF-8");
+                HttpCompression.ensureVaryAcceptEncoding(resp);
+                ctx.sendBytes(EMPTY_BYTES);
+            }
+        }
+    };
+
     /**
      * Shows index with the specified context.
      *
@@ -112,8 +129,9 @@ public class IndexProcessor {
     public void showIndex(final RequestContext context) {
         final Request request = context.getRequest();
         final Response response = context.getResponse();
-        final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "index.ftl");
-        final Map<String, Object> dataModel = renderer.getDataModel();
+        final boolean headRequest = "HEAD".equalsIgnoreCase(context.method());
+        final AbstractFreeMarkerRenderer renderer = headRequest ? null : new SkinRenderer(context, "index.ftl");
+        final Map<String, Object> dataModel = headRequest ? new java.util.HashMap<>(32) : renderer.getDataModel();
         try {
             final int currentPageNum = Paginator.getPage(request);
             final JSONObject preference = optionQueryService.getPreference();
@@ -121,19 +139,24 @@ public class IndexProcessor {
             // 前台皮肤切换 https://github.com/b3log/solo/issues/12060
             String specifiedSkin = Skins.getSkinDirName(context);
             if (StringUtils.isBlank(specifiedSkin)) {
-                final JSONObject skinOpt = optionQueryService.getSkin();
-                specifiedSkin = Solos.isMobile(request) ?
-                        skinOpt.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME) :
-                        skinOpt.optString(Option.ID_C_SKIN_DIR_NAME);
+                specifiedSkin = Solos.isMobile(request)
+                        ? optionQueryService.getSkinString(Option.ID_C_MOBILE_SKIN_DIR_NAME,
+                                Option.DefaultPreference.DEFAULT_MOBILE_SKIN_DIR_NAME)
+                        : optionQueryService.getSkinString(Option.ID_C_SKIN_DIR_NAME,
+                                Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
             }
             request.setAttribute(Keys.TEMPLATE_DIR_NAME, specifiedSkin);
 
-            Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
+            if (!headRequest) {
+                Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) context.attr(Keys.TEMPLATE_DIR_NAME), dataModel);
+            }
 
             dataModelService.fillIndexArticles(context, dataModel, currentPageNum, preference);
-            dataModelService.fillCommon(context, dataModel, preference);
-            dataModelService.fillFaviconURL(dataModel, preference);
-            dataModelService.fillUsite(dataModel);
+            if (!headRequest) {
+                dataModelService.fillCommon(context, dataModel, preference);
+                dataModelService.fillFaviconURL(dataModel, preference);
+                dataModelService.fillUsite(dataModel);
+            }
 
             dataModel.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, currentPageNum);
             final int previousPageNum = currentPageNum > 1 ? currentPageNum - 1 : 0;
@@ -144,11 +167,12 @@ public class IndexProcessor {
             dataModel.put(Pagination.PAGINATION_NEXT_PAGE_NUM, nextPageNum);
             dataModel.put(Common.PATH, "");
 
-            if ("HEAD".equalsIgnoreCase(context.method())) {
+            if (headRequest) {
+                context.setRenderer(NO_OP_HEAD_RENDERER);
                 if (response != null) {
                     response.setContentType("text/html; charset=UTF-8");
                     HttpCompression.ensureVaryAcceptEncoding(response);
-                    context.sendBytes(new byte[0]);
+                    context.sendBytes(EMPTY_BYTES);
                 }
             } else {
                 statisticMgmtService.incBlogViewCount(context, response);
@@ -184,8 +208,6 @@ public class IndexProcessor {
         AdminPaths.fill(dataModel);
         final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
         dataModel.putAll(langs);
-        final BeanManager beanManager = BeanManager.getInstance();
-        final InitService initService = beanManager.getReference(InitService.class);
         final String status = context.getRequest().getParameter("status");
         if (status != null && status.equals("error")) {
             dataModel.put(Common.DATA, 0);
@@ -196,7 +218,6 @@ public class IndexProcessor {
         } else {
             dataModel.put(Common.DATA, 1);
         }
-        final TotpService totpService = beanManager.getReference(TotpService.class);
         final boolean loginCaptchaRequired = UpgradeService.boloFastMigration
                 || !initService.isInited()
                 || totpService == null

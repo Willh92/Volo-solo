@@ -18,12 +18,122 @@ public final class AttackTracker {
     private static final int SHARD_CAPACITY = TOTAL_CAPACITY / SHARDS;
     private static final int MAX_PROBE_PATHS = 16;
     private static final int MAX_MISSING_PATHS = 32;
-    private static final java.util.regex.Pattern SENSITIVE_PATH_PATTERN = java.util.regex.Pattern.compile(
-            ".*(?:^|/)(?:\\.env(?:[./].*)?|\\.git(?:/.*)?|web-inf(?:/.*)?|meta-inf(?:/.*)?|etc/passwd|actuator/(?:env|heapdump)|wp-config\\.php|vendor/phpunit/.*|phpmyadmin(?:/.*)?)$");
-    private static final java.util.regex.Pattern SCRIPT_PATH_PATTERN = java.util.regex.Pattern.compile(
-            ".*\\.(?:php[0-9]?|asp|aspx|jsp|cgi)(?:/.*)?$");
-    private static final java.util.regex.Pattern ASSET_PATH_PATTERN = java.util.regex.Pattern.compile(
-            ".*\\.(?:css|js|map|png|jpg|jpeg|webp|gif|svg|ico|woff2?|ttf|otf)$");
+
+    private static boolean isAssetPath(final String path) {
+        final int len = path.length();
+        if (len < 3) {
+            return false;
+        }
+        return switch (path.charAt(len - 1)) {
+            case 's' -> path.endsWith(".js") || path.endsWith(".css");
+            case 'p' -> path.endsWith(".map") || path.endsWith(".webp");
+            case 'g' -> path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".svg");
+            case 'f' -> path.endsWith(".gif") || path.endsWith(".ttf") || path.endsWith(".otf") || path.endsWith(".woff");
+            case 'o' -> path.endsWith(".ico");
+            case '2' -> path.endsWith(".woff2");
+            default -> false;
+        };
+    }
+
+    private static boolean isScriptPath(final String path) {
+        int dot = path.indexOf('.');
+        if (dot < 0) {
+            return false;
+        }
+        final int len = path.length();
+        while (dot >= 0) {
+            final int pos = dot + 1;
+            if (pos + 3 <= len) {
+                switch (path.charAt(pos)) {
+                    case 'p' -> {
+                        if (path.regionMatches(pos, "php", 0, 3)) {
+                            final int end = pos + 3;
+                            if (end == len || path.charAt(end) == '/') {
+                                return true;
+                            }
+                            final char d = path.charAt(end);
+                            if (d >= '0' && d <= '9' && (end + 1 == len || path.charAt(end + 1) == '/')) {
+                                return true;
+                            }
+                        }
+                    }
+                    case 'a' -> {
+                        if (path.regionMatches(pos, "aspx", 0, 4) && (pos + 4 == len || path.charAt(pos + 4) == '/')) {
+                            return true;
+                        }
+                        if (path.regionMatches(pos, "asp", 0, 3) && (pos + 3 == len || path.charAt(pos + 3) == '/')) {
+                            return true;
+                        }
+                    }
+                    case 'j' -> {
+                        if (path.regionMatches(pos, "jsp", 0, 3) && (pos + 3 == len || path.charAt(pos + 3) == '/')) {
+                            return true;
+                        }
+                    }
+                    case 'c' -> {
+                        if (path.regionMatches(pos, "cgi", 0, 3) && (pos + 3 == len || path.charAt(pos + 3) == '/')) {
+                            return true;
+                        }
+                    }
+                    default -> {
+                    }
+                }
+            }
+            dot = path.indexOf('.', pos);
+        }
+        return false;
+    }
+
+    private static boolean isSensitivePath(final String path) {
+        final int len = path.length();
+        int start = 0;
+        while (start <= len) {
+            if (start < len && matchesSensitiveTail(path, start, len)) {
+                return true;
+            }
+            final int slash = path.indexOf('/', start);
+            if (slash < 0) {
+                break;
+            }
+            start = slash + 1;
+        }
+        return false;
+    }
+
+    private static boolean matchesSensitiveTail(final String path, final int start, final int len) {
+        return switch (path.charAt(start)) {
+            case '.' -> matchesDotEnv(path, start, len) || matchesSegmentOrSubpath(path, start, len, ".git");
+            case 'w' -> matchesSegmentOrSubpath(path, start, len, "web-inf")
+                    || matchesExactTail(path, start, len, "wp-config.php");
+            case 'm' -> matchesSegmentOrSubpath(path, start, len, "meta-inf");
+            case 'e' -> matchesExactTail(path, start, len, "etc/passwd");
+            case 'a' -> matchesExactTail(path, start, len, "actuator/env")
+                    || matchesExactTail(path, start, len, "actuator/heapdump");
+            case 'v' -> path.startsWith("vendor/phpunit/", start);
+            case 'p' -> matchesSegmentOrSubpath(path, start, len, "phpmyadmin");
+            default -> false;
+        };
+    }
+
+    private static boolean matchesDotEnv(final String path, final int start, final int len) {
+        if (!path.startsWith(".env", start)) {
+            return false;
+        }
+        final int next = start + 4;
+        return next == len || path.charAt(next) == '.' || path.charAt(next) == '/';
+    }
+
+    private static boolean matchesSegmentOrSubpath(final String path, final int start, final int len, final String token) {
+        if (!path.startsWith(token, start)) {
+            return false;
+        }
+        final int next = start + token.length();
+        return next == len || path.charAt(next) == '/';
+    }
+
+    private static boolean matchesExactTail(final String path, final int start, final int len, final String token) {
+        return len - start == token.length() && path.startsWith(token, start);
+    }
 
     private final LongSupplier clock;
     private final Shard[] shards = new Shard[SHARDS];
@@ -138,9 +248,9 @@ public final class AttackTracker {
         if (path.indexOf('\\') >= 0) path = path.replace('\\', '/');
         if (path.startsWith("/error/")) return null;
         final boolean traversal = path.contains("../") || path.indexOf('\0') >= 0;
-        final boolean sensitive = SENSITIVE_PATH_PATTERN.matcher(path).matches();
-        final boolean script = SCRIPT_PATH_PATTERN.matcher(path).matches() || path.startsWith("/wp-admin/") || path.startsWith("/wp-includes/");
-        final boolean asset = ASSET_PATH_PATTERN.matcher(path).matches();
+        final boolean sensitive = isSensitivePath(path);
+        final boolean script = isScriptPath(path) || path.startsWith("/wp-admin/") || path.startsWith("/wp-includes/");
+        final boolean asset = isAssetPath(path);
         // Assets, repeated one-off broken links and successful requests do not count as failed probes.
         if (asset && !traversal && !sensitive && !script) return null;
         final boolean needsFingerprint = (status == 0 && !traversal && (sensitive || script)) || status == 404;

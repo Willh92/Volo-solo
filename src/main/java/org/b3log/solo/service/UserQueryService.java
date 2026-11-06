@@ -17,32 +17,39 @@
  */
 package org.b3log.solo.service;
 
-import org.b3log.solo.util.AdminPaths;
-import org.b3log.solo.model.Common;
-
-import java.util.List;
-
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
+import org.b3log.latke.repository.CompositeFilter;
+import org.b3log.latke.repository.CompositeFilterOperator;
+import org.b3log.latke.repository.Filter;
 import org.b3log.latke.repository.FilterOperator;
 import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.RepositoryException;
+import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Paginator;
 import org.b3log.latke.util.URLs;
+import org.b3log.solo.logging.Logger;
+import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.util.AdminListSearch;
+import org.b3log.solo.util.AdminPaths;
+import org.b3log.solo.util.QueryResults;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * User query service.
@@ -86,7 +93,10 @@ public class UserQueryService {
     public JSONObject getUserByGitHubId(final String githubId) {
         try {
             return userRepository.getFirst(
-                    new Query().setFilter(new PropertyFilter(UserExt.USER_GITHUB_ID, FilterOperator.EQUAL, githubId)));
+                    new Query()
+                            .setFilter(new PropertyFilter(UserExt.USER_GITHUB_ID, FilterOperator.EQUAL, githubId))
+                            .setPage(1, 1)
+                            .setPageCount(1));
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Gets a user by GitHub id [" + githubId + "] failed", e);
 
@@ -127,26 +137,8 @@ public class UserQueryService {
     /**
      * Gets users by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10
-     * @return for example,
-     * 
-     *         <pre>
-     * {
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "users": [{
-     *         "oId": "",
-     *         "userName": "",
-     *         "roleName": ""
-     *      }, ....]
-     * }
-     *         </pre>
-     * 
+     * @param requestJSONObject the specified request json object
+     * @return paginated users JSON
      * @throws ServiceException service exception
      * @see Pagination
      */
@@ -157,24 +149,27 @@ public class UserQueryService {
         final int pageSize = Math.max(1, requestJSONObject.optInt(Pagination.PAGINATION_PAGE_SIZE, 15));
         final int windowSize = Math.max(1, requestJSONObject.optInt(Pagination.PAGINATION_WINDOW_SIZE, 20));
         final Query query = new Query().setPage(currentPageNum, pageSize)
-                .addSort(Keys.OBJECT_ID, org.b3log.latke.repository.SortDirection.DESCENDING);
+                .addSort(Keys.OBJECT_ID, SortDirection.DESCENDING);
         final String roleFilter = requestJSONObject.optString("role").strip();
-        final String keyword = requestJSONObject.optString("keyword").strip();
-        final java.util.List<org.b3log.latke.repository.Filter> filters = new java.util.ArrayList<>();
+        final String keyword = AdminListSearch.normalizeKeyword(requestJSONObject.optString(Common.KEYWORD));
+        final List<Filter> filters = new ArrayList<>();
         if (!roleFilter.isEmpty() && !"all".equals(roleFilter)) {
             filters.add(new PropertyFilter(User.USER_ROLE, FilterOperator.EQUAL, roleFilter));
         }
         if (!keyword.isEmpty()) {
-            filters.add(org.b3log.latke.repository.CompositeFilterOperator.or(
-                    new PropertyFilter(User.USER_NAME, FilterOperator.LIKE, "%" + keyword + "%"),
-                    new PropertyFilter(UserExt.USER_EMAIL, FilterOperator.LIKE, "%" + keyword.toLowerCase(java.util.Locale.ROOT) + "%")
-            ));
+            final String lowerKeyword = keyword.toLowerCase(Locale.ROOT);
+            if (keyword.equals(lowerKeyword)) {
+                filters.add(AdminListSearch.likeAny(keyword, User.USER_NAME, UserExt.USER_EMAIL));
+            } else {
+                filters.add(CompositeFilterOperator.or(
+                        AdminListSearch.likeAny(keyword, User.USER_NAME),
+                        AdminListSearch.likeAny(lowerKeyword, UserExt.USER_EMAIL)));
+            }
         }
         if (filters.size() == 1) {
             query.setFilter(filters.get(0));
         } else if (filters.size() > 1) {
-            query.setFilter(new org.b3log.latke.repository.CompositeFilter(
-                    org.b3log.latke.repository.CompositeFilterOperator.AND, filters));
+            query.setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters));
         }
 
         JSONObject result;
@@ -192,7 +187,7 @@ public class UserQueryService {
         final List<Integer> pageNums = Paginator.paginate(currentPageNum, pageSize, pageCount, windowSize);
         pagination.put(Pagination.PAGINATION_PAGE_COUNT, pageCount);
         pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
-        final JSONArray users = org.b3log.solo.util.QueryResults.array(result);
+        final JSONArray users = QueryResults.array(result);
         ret.put(User.USERS, users);
 
         return ret;
@@ -202,18 +197,7 @@ public class UserQueryService {
      * Gets a user by the specified user id.
      *
      * @param userId the specified user id
-     * @return for example,
-     * 
-     *         <pre>
-     * {
-     *     "user": {
-     *         "oId": "",
-     *         "userName": ""
-     *     }
-     * }
-     *         </pre>
-     * 
-     *         , returns {@code null} if not found
+     * @return user wrapper JSON, returns {@code null} if not found
      */
     public JSONObject getUser(final String userId) {
         final JSONObject ret = new JSONObject();
@@ -270,7 +254,7 @@ public class UserQueryService {
         String b3name = "";
         try {
             b3name = optionRepository.get(Option.ID_C_HACPAI_USER).optString(Option.OPTION_VALUE);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             b3name = Option.DefaultPreference.DEFAULT_B3LOG_USERNAME;
         }
         if (b3name.isEmpty()) {
@@ -289,7 +273,7 @@ public class UserQueryService {
         String b3pass = "";
         try {
             b3pass = optionRepository.get(Option.ID_C_B3LOG_KEY).optString(Option.OPTION_VALUE);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             b3pass = Option.DefaultPreference.DEFAULT_B3LOG_PASSWORD;
         }
         if (b3pass.isEmpty()) {
@@ -301,7 +285,7 @@ public class UserQueryService {
 
     public String getConfiguredB3Key() {
         try {
-            final org.json.JSONObject opt = optionRepository.get(Option.ID_C_B3LOG_KEY);
+            final JSONObject opt = optionRepository.get(Option.ID_C_B3LOG_KEY);
             final String b3pass = opt == null ? "" : opt.optString(Option.OPTION_VALUE).trim();
             if (b3pass.isEmpty() || Option.DefaultPreference.DEFAULT_B3LOG_PASSWORD.equals(b3pass)) {
                 return "";
@@ -316,7 +300,7 @@ public class UserQueryService {
         String fishKey = "";
         try {
             fishKey = optionRepository.get(Option.ID_C_FISH_KEY).optString(Option.OPTION_VALUE);
-        } catch (Exception e) {
+        } catch (final Exception ignored) {
         }
         return fishKey;
     }

@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
+import java.util.regex.Pattern;
 
 import org.b3log.latke.http.Cookie;
 import org.b3log.latke.http.Request;
@@ -39,7 +40,6 @@ import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Crypts;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.SoloApplication;
@@ -51,6 +51,7 @@ import org.b3log.solo.model.Option;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.repository.UserRepository;
+import org.b3log.solo.service.ShareTokenService;
 import org.b3log.solo.service.UserQueryService;
 import org.json.JSONObject;
 
@@ -117,6 +118,68 @@ public final class Solos {
      * Default window size.
      */
     private static final int DEFAULT_WINDOW_SIZE = 20;
+
+    private static final Pattern FILENAME_DISALLOWED_CHARS = Pattern.compile("[^(a-zA-Z0-9\\u4e00-\\u9fa5\\.)]");
+    private static final Pattern FILENAME_SPECIAL_CHARS = Pattern.compile("[\\?\\\\/:|<>\\*\\[\\]\\(\\)\\$%\\{\\}@~]");
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s");
+    private static final Pattern SLASH_SPLIT_PATTERN = Pattern.compile("/");
+
+    private record CachedBean<T>(BeanManager owner, T instance) {
+    }
+
+    private static volatile CachedBean<OptionRepository> cachedOptionRepository;
+    private static volatile CachedBean<UserQueryService> cachedUserQueryService;
+    private static volatile CachedBean<UserRepository> cachedUserRepository;
+    private static volatile CachedBean<ShareTokenService> cachedShareTokenService;
+
+    private static OptionRepository resolveOptionRepository(final BeanManager beanManager) {
+        final CachedBean<OptionRepository> cached = cachedOptionRepository;
+        if (cached != null && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final OptionRepository ref = beanManager.getReference(OptionRepository.class);
+        if (ref != null) {
+            cachedOptionRepository = new CachedBean<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static UserQueryService resolveUserQueryService(final BeanManager beanManager) {
+        final CachedBean<UserQueryService> cached = cachedUserQueryService;
+        if (cached != null && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final UserQueryService ref = beanManager.getReference(UserQueryService.class);
+        if (ref != null) {
+            cachedUserQueryService = new CachedBean<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static UserRepository resolveUserRepository(final BeanManager beanManager) {
+        final CachedBean<UserRepository> cached = cachedUserRepository;
+        if (cached != null && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final UserRepository ref = beanManager.getReference(UserRepository.class);
+        if (ref != null) {
+            cachedUserRepository = new CachedBean<>(beanManager, ref);
+        }
+        return ref;
+    }
+
+    private static ShareTokenService resolveShareTokenService(final BeanManager beanManager) {
+        final CachedBean<ShareTokenService> cached = cachedShareTokenService;
+        if (cached != null && cached.owner == beanManager) {
+            return cached.instance;
+        }
+        final ShareTokenService ref = beanManager.getReference(ShareTokenService.class);
+        if (ref != null) {
+            cachedShareTokenService = new CachedBean<>(beanManager, ref);
+        }
+        return ref;
+    }
+
     private static long uploadTokenCheckTime;
     private static long uploadTokenTime;
     private static String uploadToken = "";
@@ -264,7 +327,7 @@ public final class Solos {
             }
 
             final BeanManager beanManager = BeanManager.getInstance();
-            final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
+            final OptionRepository optionRepository = resolveOptionRepository(beanManager);
             final JSONObject imageBed = optionRepository.get(Option.ID_C_TUCHUANG_CONFIG);
             final String imageBedConfig = imageBed == null ? "" : imageBed.optString(Option.OPTION_VALUE).trim();
             // Custom image beds are served by this application and need no community token.
@@ -274,7 +337,7 @@ public final class Solos {
                         .put(Common.UPLOAD_URL, Latkes.getContextPath() + "/pic/upload")
                         .put(Common.UPLOAD_MSG, "");
             }
-            UserQueryService userQueryService = beanManager.getReference(UserQueryService.class);
+            UserQueryService userQueryService = resolveUserQueryService(beanManager);
             String userName = userQueryService.getB3username();
             String userB3Key = userQueryService.getB3password();
 
@@ -331,8 +394,9 @@ public final class Solos {
      * @return sanitized file name
      */
     public static String sanitizeFilename(final String unsanitized) {
-        return unsanitized.replaceAll("[^(a-zA-Z0-9\\u4e00-\\u9fa5\\.)]", "")
-                .replaceAll("[\\?\\\\/:|<>\\*\\[\\]\\(\\)\\$%\\{\\}@~]", "").replaceAll("\\s", "");
+        final String step1 = FILENAME_DISALLOWED_CHARS.matcher(unsanitized).replaceAll("");
+        final String step2 = FILENAME_SPECIAL_CHARS.matcher(step1).replaceAll("");
+        return WHITESPACE_PATTERN.matcher(step2).replaceAll("");
     }
 
     /**
@@ -407,8 +471,7 @@ public final class Solos {
             return null;
         }
 
-        final BeanManager beanManager = BeanManager.getInstance();
-        final UserRepository userRepository = beanManager.getReference(UserRepository.class);
+        final UserRepository userRepository = resolveUserRepository(BeanManager.getInstance());
         try {
             final String value = Crypts.decryptByAES(authCookie.getValue(), COOKIE_SECRET);
             if (StringUtils.isNotBlank(value)) {
@@ -485,7 +548,6 @@ public final class Solos {
      *
      * @param request  the specified request
      * @param response the specified response
-     * @return {@code true} if succeed, otherwise returns {@code false}
      */
     public static void logout(final Request request, final Response response) {
         if (null != request) {
@@ -495,6 +557,7 @@ public final class Solos {
             if (null != session) {
                 session.setAttribute(Common.ARTICLES_VIEW_PWD, "{}");
                 org.b3log.latke.http.Sessions.CACHE.remove(session.getId());
+                org.b3log.solo.SoloApplication.untrackSession(session.getId());
             }
         }
         if (null != response) {
@@ -603,12 +666,11 @@ public final class Solos {
         if (null == context) {
             return true;
         }
-        if (Boolean.TRUE.equals(context.attr(org.b3log.solo.service.ShareTokenService.PREVIEW_ACCESS_ATTR))) {
+        if (Boolean.TRUE.equals(context.attr(ShareTokenService.PREVIEW_ACCESS_ATTR))) {
             return false;
         }
         try {
-            final org.b3log.solo.service.ShareTokenService shareTokenService =
-                    BeanManager.getInstance().getReference(org.b3log.solo.service.ShareTokenService.class);
+            final ShareTokenService shareTokenService = resolveShareTokenService(BeanManager.getInstance());
             if (null != shareTokenService && shareTokenService.hasValidPreviewToken(context, article)) {
                 return false;
             }
@@ -714,7 +776,7 @@ public final class Solos {
      *
      * @param path the specified path, "/{page}/{pageSize}/{windowSize}"
      * @return pagination request json object, for example,
-     * 
+     *
      *         <pre>
      * {
      *     "paginationCurrentPageNum": int,
@@ -724,9 +786,12 @@ public final class Solos {
      *         </pre>
      */
     public static JSONObject buildPaginationRequest(final String path) {
-        final Integer currentPageNum = getCurrentPageNum(path);
-        final Integer pageSize = getPageSize(path);
-        final Integer windowSize = getWindowSize(path);
+        final String[] parts = (StringUtils.isBlank(path) || "/".equals(path))
+                ? null
+                : SLASH_SPLIT_PATTERN.split(path);
+        final Integer currentPageNum = getCurrentPageNum(parts);
+        final Integer pageSize = getPageSize(parts);
+        final Integer windowSize = getWindowSize(parts);
 
         final JSONObject ret = new JSONObject();
         ret.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, currentPageNum);
@@ -736,38 +801,20 @@ public final class Solos {
         return ret;
     }
 
-    /**
-     * Gets the request page number from the specified path.
-     *
-     * @param path the specified path
-     * @return page number, returns {@code 1} if the specified request URI can not
-     *         convert to an number
-     */
-    private static int getCurrentPageNum(final String path) {
-        if (StringUtils.isBlank(path) || path.equals("/")) {
+    private static int getCurrentPageNum(final String[] parts) {
+        if (null == parts || 0 == parts.length) {
             return 1;
         }
-        final String currentPageNumber = path.split("/")[0];
+        final String currentPageNumber = parts[0];
         if (!Strings.isNumeric(currentPageNumber)) {
             return 1;
         }
 
-        return Integer.valueOf(currentPageNumber);
+        return Integer.parseInt(currentPageNumber);
     }
 
-    /**
-     * Gets the request page size from the specified path.
-     *
-     * @param path the specified path
-     * @return page number, returns {@value #DEFAULT_PAGE_SIZE} if the specified
-     *         request URI can not convert to an number
-     */
-    private static int getPageSize(final String path) {
-        if (StringUtils.isBlank(path)) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        final String[] parts = path.split("/");
-        if (1 >= parts.length) {
+    private static int getPageSize(final String[] parts) {
+        if (null == parts || 1 >= parts.length) {
             return DEFAULT_PAGE_SIZE;
         }
         final String pageSize = parts[1];
@@ -775,22 +822,11 @@ public final class Solos {
             return DEFAULT_PAGE_SIZE;
         }
 
-        return Integer.valueOf(pageSize);
+        return Integer.parseInt(pageSize);
     }
 
-    /**
-     * Gets the request window size from the specified path.
-     *
-     * @param path the specified path
-     * @return page number, returns {@value #DEFAULT_WINDOW_SIZE} if the specified
-     *         request URI can not convert to an number
-     */
-    private static int getWindowSize(final String path) {
-        if (StringUtils.isBlank(path)) {
-            return DEFAULT_WINDOW_SIZE;
-        }
-        final String[] parts = path.split("/");
-        if (2 >= parts.length) {
+    private static int getWindowSize(final String[] parts) {
+        if (null == parts || 2 >= parts.length) {
             return DEFAULT_WINDOW_SIZE;
         }
         final String windowSize = parts[2];
@@ -798,6 +834,6 @@ public final class Solos {
             return DEFAULT_WINDOW_SIZE;
         }
 
-        return Integer.valueOf(windowSize);
+        return Integer.parseInt(windowSize);
     }
 }

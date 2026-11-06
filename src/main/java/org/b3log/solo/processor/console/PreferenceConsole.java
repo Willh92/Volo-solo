@@ -189,6 +189,18 @@ public class PreferenceConsole {
                 return;
             }
             final JSONObject preference = org.b3log.solo.util.Solos.clone(storedPreference);
+            preference.remove(Option.ID_C_VOLO_REMOTE_BACKUP);
+            final java.util.Iterator<String> prefKeys = preference.keys();
+            final java.util.List<String> legacyRemoteBackupKeys = new java.util.ArrayList<>();
+            while (prefKeys.hasNext()) {
+                final String k = prefKeys.next();
+                if (k != null && k.startsWith(Option.ID_C_VOLO_REMOTE_BACKUP + ".")) {
+                    legacyRemoteBackupKeys.add(k);
+                }
+            }
+            for (final String k : legacyRemoteBackupKeys) {
+                preference.remove(k);
+            }
 
             String footerContent = "";
             final JSONObject opt = optionQueryService.getOptionById(Option.ID_C_FOOTER_CONTENT);
@@ -285,12 +297,24 @@ public class PreferenceConsole {
      * @param context the specified request context
      */
     public void updatePreference(final RequestContext context) {
+        final JSONObject requestJSONObject;
+        try {
+            requestJSONObject = context.requestJSON();
+        } catch (final Exception e) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求参数不正确。");
+            return;
+        }
+        if (null == requestJSONObject || !(requestJSONObject.opt(Option.CATEGORY_C_PREFERENCE) instanceof JSONObject)) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求参数不正确。");
+            return;
+        }
+
         final JsonRenderer renderer = new JsonRenderer();
         context.setRenderer(renderer);
 
         try {
-            final JSONObject requestJSONObject = context.requestJSON();
             final JSONObject preference = requestJSONObject.getJSONObject(Option.CATEGORY_C_PREFERENCE);
+            preference.remove(Option.ID_C_VOLO_REMOTE_BACKUP);
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
             if (isInvalid(preference, ret)) {

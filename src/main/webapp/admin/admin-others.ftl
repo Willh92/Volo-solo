@@ -288,11 +288,15 @@
         </section>
         <section class="console-utility-section"><h3>邮件提醒数据</h3><div class="console-utility-action"><p>清除旧评论关联的邮箱记录后，这些评论将无法再收到邮件提醒。此操作不会删除评论，请确认不再需要旧通知记录后执行。</p><button type="button" onclick="admin.others.clearMailCache(this)">清除邮箱缓存</button></div></section>
     </div>
+    <#if b3logEnabled>
     <div id="tabOthersPanel_move" class="fn__none">
         ${others1Label}
     </div>
     <script>
         $(function () {
+            if (typeof window.__voloMigrationCleanup === 'function') {
+                window.__voloMigrationCleanup();
+            }
             function refreshMigrationStatus() {
                 if (!window.location.hash.startsWith('#tools/others/move')) return;
                 $.ajax({
@@ -307,12 +311,18 @@
             refreshMigrationStatus();
             const migrationStatusTimer = setInterval(refreshMigrationStatus, 10000);
             window.addEventListener('hashchange', refreshMigrationStatus);
-            if (window.BoloNavigation) BoloNavigation.onLeave(function () {
+            const cleanupMigrationStatus = function () {
                 clearInterval(migrationStatusTimer);
                 window.removeEventListener('hashchange', refreshMigrationStatus);
-            });
+                if (window.__voloMigrationCleanup === cleanupMigrationStatus) {
+                    window.__voloMigrationCleanup = null;
+                }
+            };
+            window.__voloMigrationCleanup = cleanupMigrationStatus;
+            if (window.BoloNavigation) BoloNavigation.onLeave(cleanupMigrationStatus);
         });
     </script>
+    </#if>
     <div id="tabOthersPanel_log" class="fn__none form">
         <div class="console-log-summary">
             <span>${others2Label} <strong id="memFree"></strong></span>
@@ -411,8 +421,10 @@
         </script>
 
     </div>
+    <#if b3logEnabled || fishpiEnabled>
     <div id="tabOthersPanel_commentSync" class="fn__none form">
         <script type="text/javascript">
+            <#if b3logEnabled || fishpiEnabled>
             $.ajax({
                 url: Label.servePath + '/article/commentSync/getList',
                 type: 'GET',
@@ -430,6 +442,7 @@
                     }
                 }
             });
+            </#if>
             function requestCommentSync(button, url, payload) {
                 if (button.disabled) return;
                 if (!/^\d+$/.test(payload.localArticleId || '') || !/^\d+$/.test(payload.remoteArticleId || '')
@@ -499,5 +512,6 @@
         </#if>
 
     </div>
+    </#if>
 </div>
 ${plugins}

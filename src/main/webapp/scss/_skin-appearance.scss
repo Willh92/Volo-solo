@@ -156,6 +156,9 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
     .footer { background: #243632; color: var(--bolo-muted); animation: none; }
     .article__bottom .item::before { opacity: .2; }
     .card-info-bookmark { background-color: #426d5a; }
+    :is(#article-container, .post-content, #post, #page) table:not(#{$bolo-excluded-table}):not(:is(#{$bolo-excluded-table-ancestors}) *) { border-color: var(--bolo-line); color: var(--bolo-text); }
+    :is(#article-container, .post-content, #post, #page) table:not(#{$bolo-excluded-table}) :is(tbody, tr, td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-surface); border-color: var(--bolo-line); color: var(--bolo-text); }
+    :is(#article-container, .post-content, #post, #page) table:not(#{$bolo-excluded-table}) :is(thead, thead tr, th, tbody tr:nth-child(2n), tbody tr:nth-child(2n) td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-raised); border-color: var(--bolo-line); color: var(--bolo-text); }
   }
   &[data-bolo-skin='bolo-casper'] {
     .comment, #comment { background-color: var(--bolo-bg); color: var(--bolo-text); }
@@ -248,7 +251,9 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
     #nexmoe-content .nexmoe-hitokoto p { color: var(--bolo-muted); }
     #nexmoe-content .nexmoe-post-copyright, #pjax .nexmoe-comment { background: var(--bolo-raised); color: var(--bolo-text); }
     #nexmoe-content .nexmoe-post-copyright a { color: var(--bolo-accent); }
-    #nexmoe-content .vditor-reset :is(thead,th,td) { background: var(--bolo-surface) !important; color: var(--bolo-text); border-color: var(--bolo-line) !important; }
+    #nexmoe-content article table:not(#{$bolo-excluded-table}):not(:is(#{$bolo-excluded-table-ancestors}) *) { color: var(--bolo-text); border-color: var(--bolo-line); -webkit-box-shadow: 0 0 0 1px var(--bolo-line); box-shadow: 0 0 0 1px var(--bolo-line); }
+    #nexmoe-content article table:not(#{$bolo-excluded-table}) :is(tbody, tr, td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-surface) !important; color: var(--bolo-text); border-color: var(--bolo-line) !important; }
+    #nexmoe-content article table:not(#{$bolo-excluded-table}) :is(thead, thead tr, th, tbody tr:nth-child(2n), tbody tr:nth-child(2n) td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-raised) !important; color: var(--bolo-text); border-color: var(--bolo-line) !important; }
     #comment { background: var(--bolo-code); color: var(--bolo-text); border: 1px solid var(--bolo-line); }
     #nexmoe-header .nexmoe-drawer, #nexmoe-header .nexmoe-widget-wrap { background-color: var(--bolo-surface); color: var(--bolo-text); box-shadow: 0 3px 18px #0002; }
     #nexmoe-content, #nexmoe-header .nexmoe-count, #nexmoe-header .list-content, .nexmoe-widget, .nexmoe-post,
@@ -283,6 +288,9 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
     .site-search input { background-color: var(--bolo-surface); border-color: var(--bolo-line); opacity: 1; }
     .site-search input::placeholder { color: var(--bolo-muted); }
     .site-nav-toggle .btn-bar { background-color: var(--bolo-text); }
+    .post-body table:not(#{$bolo-excluded-table}):not(:is(#{$bolo-excluded-table-ancestors}) *) { border-color: var(--bolo-line); color: var(--bolo-text); }
+    .post-body table:not(#{$bolo-excluded-table}) :is(tbody, tr, td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-surface); border-color: var(--bolo-line); color: var(--bolo-text); }
+    .post-body table:not(#{$bolo-excluded-table}) :is(thead, thead tr, th, tr:nth-child(2n), tr:nth-child(2n) td, tbody tr:nth-child(2n) td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-raised); border-color: var(--bolo-line); color: var(--bolo-text); }
   }
   &[data-bolo-skin='bolo-nijigen'] {
     .tag, .tag a { background-color: var(--bolo-raised); color: var(--bolo-muted); }
@@ -357,6 +365,9 @@ html[data-bolo-theme='dark'][data-bolo-page='public'] {
     .post, .widget-hd, .user-comment-header, .footer { border-color: var(--bolo-line); }
     .tag-item, .badge, .page-navigator a { background: var(--bolo-raised); color: #acc7b8; }
     .user-comment-body, .profile { background-color: transparent; }
+    :is(.post-content, .text-area-preview, .user-comment-body) table:not(#{$bolo-excluded-table}):not(:is(#{$bolo-excluded-table-ancestors}) *) { border-color: var(--bolo-line); color: var(--bolo-text); }
+    :is(.post-content, .text-area-preview, .user-comment-body) table:not(#{$bolo-excluded-table}) :is(tbody, tr, td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-surface); border-color: var(--bolo-line); color: var(--bolo-text); }
+    :is(.post-content, .text-area-preview, .user-comment-body) table:not(#{$bolo-excluded-table}) :is(thead, thead tr, th, tbody tr:nth-child(2n), tbody tr:nth-child(2n) td):not(:is(#{$bolo-excluded-table-ancestors}) *) { background-color: var(--bolo-raised); border-color: var(--bolo-line); color: var(--bolo-text); }
   }
   &[data-bolo-skin='bolo-yilia'] {
     .abstract aside strong { background: var(--bolo-raised); color: var(--bolo-text); }

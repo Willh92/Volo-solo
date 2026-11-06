@@ -70,7 +70,7 @@ public final class Markdowns {
     private static final Logger LOGGER = Logger.getLogger(Markdowns.class);
 
     private static final int MAX_MD_CACHE_ENTRIES = 512;
-    private static final int MAX_MD_CACHE_CHARS = 8 * 1024 * 1024;
+    private static final int MAX_MD_CACHE_CHARS = 2_000_000;
     private static final int MAX_CACHEABLE_MD_LENGTH = 262144;
     private static final int MAX_CACHEABLE_HTML_LENGTH = 524288;
 
@@ -314,11 +314,23 @@ public final class Markdowns {
      * 'markdownErrorLabel' if exception
      */
     public static String toHTML(final String markdownText) {
+        return toHTML(markdownText, true);
+    }
+
+    /**
+     * Converts the specified markdown text to HTML, optionally caching the rendered HTML in {@code MD_CACHE}.
+     *
+     * @param markdownText the specified markdown text
+     * @param cacheable    {@code true} to read/populate {@code MD_CACHE}, {@code false} for callers with their own
+     *                     output cache (such as RSS/Atom syndication feeds)
+     * @return converted HTML, returns an empty string "" if the specified markdown text is "" or {@code null}
+     */
+    public static String toHTML(final String markdownText, final boolean cacheable) {
         if (StringUtils.isBlank(markdownText)) {
             return "";
         }
 
-        final String cacheKey = markdownText.length() <= MAX_CACHEABLE_MD_LENGTH
+        final String cacheKey = cacheable && markdownText.length() <= MAX_CACHEABLE_MD_LENGTH
                 ? DigestUtils.sha256Hex(markdownText) : null;
         if (null != cacheKey) {
             final String cachedHTML = getCached(cacheKey);

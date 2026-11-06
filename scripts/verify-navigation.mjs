@@ -218,4 +218,86 @@ for(const skin of skins){
   assert.deepEqual(head.querySelectorAll('link[rel="stylesheet"]').map(l=>l.href),incomingLinks.map(l=>l.href),'PJAX navigation must keep appearance.css after admin.css and console-theme.css');
 }
 
+// Singleton vendor deduplication & SweetAlert <style> preservation across PJAX transitions.
+{
+  let current=new URL('http://localhost:18085/');
+  const headChildren=[],executedSrcs=[];
+  const makeNode=(tagName,extra={})=>{
+    const attrs=new Map();
+    return {
+      tagName,attributes:[],childNodes:[],...extra,
+      hasAttribute:k=>attrs.has(k),
+      getAttribute:k=>attrs.get(k)??'',
+      setAttribute(k,v){const s=String(v);attrs.set(k,s);if(k==='src'||k==='href'||k==='type')this[k]=s;this.attributes=[...attrs.entries()].map(([name,value])=>({name,value}));},
+      removeAttribute(k){attrs.delete(k);},
+      matches:()=>false,
+      remove(){const i=headChildren.indexOf(this);if(i>=0)headChildren.splice(i,1);}
+    };
+  };
+  // Initial full-page load SweetAlert <style> (injected without data-bolo-navigation)
+  const swalStyle=makeNode('STYLE',{textContent:'.swal-overlay{opacity:0}.swal-modal{background:#fff}'});
+  headChildren.push(swalStyle);
+  const head={...makeNode('HEAD'),children:headChildren,querySelectorAll:()=>[],appendChild(el){headChildren.push(el);return el;}};
+  const body={...makeNode('BODY'),classList:{contains:()=>false},replaceChildren(){},appendChild(el){
+    if(el.tagName==='SCRIPT'&&el.src){
+      executedSrcs.push(el.src);
+      queueMicrotask(()=>el.onload?.());
+    }
+    return el;
+  }};
+  const doc=Object.assign(new Target(),{
+    currentScript:{hasAttribute:()=>true},readyState:'complete',head,
+    documentElement:{...makeNode('HTML'),dataset:{boloPage:'public',boloSkin:'bolo-nexmoe',boloLoginUrl:'/start',boloAdminUrl:'/admin-index.do'}},
+    body,
+    createElement:tag=>makeNode(String(tag).toUpperCase()),
+    querySelectorAll:()=>[],importNode:v=>v,title:'Home'
+  });
+  const loc={get href(){return current.href;},get origin(){return current.origin;},assign(h){current=new URL(h);}};
+  const hist={state:null,replaceState(s,_,h){this.state=s;current=new URL(h,current);},pushState(s,_,h){this.state=s;current=new URL(h,current);}};
+  const jq=Object.assign(()=>({on(){},off(){},empty(){}}),{isReady:true,holdReady(){},fn:{ready(){},fancybox(){}},cookie(){}});
+  const win=Object.assign(new Target(),{
+    location:loc,scrollY:0,scrollX:0,scrollTo(){},confirm:()=>true,
+    setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},
+    jQuery:jq,$:jq,
+    swal(){},
+    mdui:{mutation(){}},
+    LazyLoad:function(){},
+    Typed:function(){},
+    Swiper:function(){},
+    TweenMax:function(){}
+  });
+  const makeScript=src=>{const s=makeNode('SCRIPT',{type:''});s.setAttribute('src',src);return s;};
+  const incomingScripts=[
+    'http://localhost:18085/js/bolo/sweetalert.min.js?1',
+    'http://localhost:18085/skins/bolo-nexmoe/source/mdui_043tiny/js/mdui.min.js?1',
+    'http://localhost:18085/js/lib/fancybox/jquery.fancybox.min.js?1',
+    'http://localhost:18085/js/lib/jquery/jquery.cookie.min.js?1',
+    'http://localhost:18085/skins/bolo-sakura/js/lazyload.iife.min.js?1',
+    'http://localhost:18085/skins/bolo-butterfly/js/typed.min.js?1',
+    'http://localhost:18085/skins/bolo-fantastic/js/swiper.min.js?1',
+    'http://localhost:18085/skins/bolo-bubble/js/TweenMax.min.js?1',
+    'http://localhost:18085/skins/bolo-nexmoe/js/app.min.js?1'
+  ].map(makeScript);
+  class XHR extends Target{send(){}abort(){}}
+  vm.runInNewContext(source,{
+    window:win,document:doc,location:loc,history:hist,URL,URLSearchParams,FormData,AbortController,XMLHttpRequest:XHR,HTMLFormElement:class{},
+    Event:class{constructor(t){this.type=t;}},CustomEvent:class{constructor(t,o){this.type=t;this.detail=o?.detail;}},console,
+    fetch:async href=>({ok:true,status:200,url:href,redirected:false,headers:new Map([['Content-Type','text/html']]),text:async()=>''}),
+    DOMParser:class{parseFromString(){return{head:{...makeNode('HEAD'),children:[],querySelectorAll:()=>[]},body:{...makeNode('BODY'),childNodes:[],querySelectorAll:()=>[]},documentElement:{...makeNode('HTML'),lang:'zh-CN',className:''},querySelectorAll:sel=>sel==='script'?incomingScripts:[],title:'Post'};}}
+  });
+  doc.currentScript=null;
+  await win.BoloNavigation.navigate('/articles/1.html');
+  assert(headChildren.includes(swalStyle),'SweetAlert <style> in <head> must survive PJAX cleanup');
+  assert(swalStyle.hasAttribute('data-bolo-navigation'),'SweetAlert <style> must be marked persistent for future navigations');
+  assert.deepEqual(executedSrcs,['http://localhost:18085/skins/bolo-nexmoe/js/app.min.js?1'],'Already-loaded singleton vendor scripts (sweetalert, mdui, fancybox, cookie, lazyload, typed, swiper, TweenMax) must be skipped across PJAX');
+
+  const commonHead=fs.readFileSync('src/main/webapp/common-template/macro-common_head.ftl','utf8');
+  assert(!commonHead.includes('user-scalable=0')&&!commonHead.includes('maximum-scale=1.0'),'Viewport meta must allow mobile pinch-to-zoom');
+  assert(/<script\s+data-bolo-navigation[^>]*jquery\.min\.js/.test(commonHead),'macro-common_head.ftl must load persistent jquery.min.js');
+  for(const skin of ['bolo-butterfly','bolo-emiya','bolo-NeoEase','bolo-next','bolo-yilia']){
+    const footer=fs.readFileSync(`src/main/webapp/skins/${skin}/footer.ftl`,'utf8');
+    assert(!footer.includes('jquery.min.js'),`${skin}/footer.ftl must not reload duplicate jquery.min.js`);
+  }
+}
+
 console.log('Navigation checks passed: '+skins.length+' skins, page cleanup, history, native-link exclusions and chapter tracking');

@@ -37,6 +37,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class OptionCache {
 
     /**
+     * Option category dedicated to chunked large option documents.
+     */
+    public static final String CATEGORY_DOCUMENT_CHUNK = "voloDocumentChunk";
+
+    /**
      * Option cache.
      */
     private final Map<String, JSONObject> cache = new ConcurrentHashMap<>();
@@ -50,12 +55,65 @@ public class OptionCache {
     private static final int MISSING_EVICT_BATCH = 64;
     private final java.util.Set<String> missingIds = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Checks whether the given option ID matches the ephemeral document-chunk key pattern
+     * ({@code <rootId>.<32-hex-generation>.<chunkIndex>}).
+     *
+     * @param id option ID
+     * @return {@code true} if {@code id} is a document chunk ID
+     */
+    public static boolean isDocumentChunkId(final String id) {
+        if (null == id || id.length() < 36) {
+            return false;
+        }
+        final int lastDot = id.lastIndexOf('.');
+        if (lastDot <= 33 || lastDot >= id.length() - 1) {
+            return false;
+        }
+        final int indexLen = id.length() - (lastDot + 1);
+        if (indexLen > 4) {
+            return false;
+        }
+        for (int i = lastDot + 1; i < id.length(); i++) {
+            final char c = id.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        final int prevDot = id.lastIndexOf('.', lastDot - 1);
+        if (prevDot <= 0 || (lastDot - prevDot - 1) != 32) {
+            return false;
+        }
+        for (int i = prevDot + 1; i < lastDot; i++) {
+            final char c = id.charAt(i);
+            final boolean isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+            if (!isHex) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Checks whether the specified option represents a chunked document fragment that must bypass caching.
+     *
+     * @param option option JSON object
+     * @return {@code true} if the option is a document chunk
+     */
+    public static boolean isDocumentChunk(final JSONObject option) {
+        if (null == option) {
+            return false;
+        }
+        return CATEGORY_DOCUMENT_CHUNK.equals(option.optString(Option.OPTION_CATEGORY))
+                || isDocumentChunkId(option.optString(Keys.OBJECT_ID));
+    }
+
     public boolean isMissing(final String id) {
-        return null != id && missingIds.contains(id);
+        return null != id && !isDocumentChunkId(id) && missingIds.contains(id);
     }
 
     public void markMissing(final String id) {
-        if (null == id || id.isEmpty() || id.length() > 128) {
+        if (null == id || id.isEmpty() || id.length() > 128 || isDocumentChunkId(id)) {
             return;
         }
         if (missingIds.size() >= MAX_MISSING_IDS) {
@@ -82,13 +140,53 @@ public class OptionCache {
     }
 
     /**
+     * Checks whether a category snapshot is currently present in cache.
+     *
+     * @param category option category
+     * @return {@code true} if cached
+     */
+    public boolean hasCategory(final String category) {
+        return null != category && categoryCache.containsKey(category);
+    }
+
+    /**
+     * Reads a scalar string property directly from a cached category snapshot without cloning the full object.
+     *
+     * @param category     option category
+     * @param key          option key
+     * @param defaultValue fallback value when absent or uncached
+     * @return option string value or {@code defaultValue}
+     */
+    public String getCategoryString(final String category, final String key, final String defaultValue) {
+        if (null == category || null == key) {
+            return defaultValue;
+        }
+        final JSONObject snapshot = categoryCache.get(category);
+        if (null == snapshot) {
+            return defaultValue;
+        }
+        return snapshot.optString(key, defaultValue);
+    }
+
+    /**
+     * Reads a scalar preference string directly from the cached preference snapshot without cloning.
+     *
+     * @param key          preference key
+     * @param defaultValue fallback value when absent or uncached
+     * @return preference string value or {@code defaultValue}
+     */
+    public String getPreferenceString(final String key, final String defaultValue) {
+        return getCategoryString(Option.CATEGORY_C_PREFERENCE, key, defaultValue);
+    }
+
+    /**
      * Gets merged options as a JSON object for the specified category.
      *
      * @param category the specified category
      * @return merged options
      */
     public JSONObject getCategory(final String category) {
-        if (null == category) {
+        if (null == category || CATEGORY_DOCUMENT_CHUNK.equals(category)) {
             return null;
         }
         final JSONObject ret = categoryCache.get(category);
@@ -106,7 +204,7 @@ public class OptionCache {
      * @param mergedOptions the specified merged options
      */
     public void putCategory(final String category, final JSONObject mergedOptions) {
-        if (null == category || null == mergedOptions) {
+        if (null == category || null == mergedOptions || CATEGORY_DOCUMENT_CHUNK.equals(category)) {
             return;
         }
         categoryCache.put(category, Solos.clone(mergedOptions));
@@ -119,7 +217,7 @@ public class OptionCache {
      * @return option, returns {@code null} if not found
      */
     public JSONObject getOption(final String id) {
-        if (null == id) {
+        if (null == id || isDocumentChunkId(id)) {
             return null;
         }
         final JSONObject option = cache.get(id);
@@ -143,11 +241,30 @@ public class OptionCache {
         if (id.isEmpty()) {
             return;
         }
+        if (isDocumentChunk(option)) {
+            missingIds.remove(id);
+            cache.remove(id);
+            return;
+        }
         missingIds.remove(id);
-        cache.put(id, Solos.clone(option));
+        final JSONObject prev = cache.put(id, Solos.clone(option));
 
         final String category = option.optString(Option.OPTION_CATEGORY);
-        if (!category.isEmpty()) {
+        if (null != prev) {
+            final String oldCategory = prev.optString(Option.OPTION_CATEGORY);
+            if (!oldCategory.isEmpty() && !oldCategory.equals(category)
+                    && !CATEGORY_DOCUMENT_CHUNK.equals(oldCategory)) {
+                categoryCache.computeIfPresent(oldCategory, (cat, existing) -> {
+                    if (!existing.has(id)) {
+                        return existing;
+                    }
+                    final JSONObject updated = Solos.clone(existing);
+                    updated.remove(id);
+                    return updated.isEmpty() ? null : updated;
+                });
+            }
+        }
+        if (!category.isEmpty() && !CATEGORY_DOCUMENT_CHUNK.equals(category)) {
             final Object val = option.opt(Option.OPTION_VALUE);
             categoryCache.computeIfPresent(category, (cat, existing) -> {
                 final JSONObject updated = Solos.clone(existing);
@@ -168,13 +285,24 @@ public class OptionCache {
         }
         missingIds.remove(id);
         final JSONObject option = cache.remove(id);
-        if (null == option) {
-            return;
+        if (null != option) {
+            final String category = option.optString(Option.OPTION_CATEGORY);
+            if (!category.isEmpty() && !CATEGORY_DOCUMENT_CHUNK.equals(category)) {
+                categoryCache.computeIfPresent(category, (cat, existing) -> {
+                    if (!existing.has(id)) {
+                        return existing;
+                    }
+                    final JSONObject updated = Solos.clone(existing);
+                    updated.remove(id);
+                    return updated.isEmpty() ? null : updated;
+                });
+            }
         }
-
-        final String category = option.optString(Option.OPTION_CATEGORY);
-        if (!category.isEmpty()) {
-            categoryCache.computeIfPresent(category, (cat, existing) -> {
+        for (final String catKey : categoryCache.keySet()) {
+            categoryCache.computeIfPresent(catKey, (cat, existing) -> {
+                if (!existing.has(id)) {
+                    return existing;
+                }
                 final JSONObject updated = Solos.clone(existing);
                 updated.remove(id);
                 return updated.isEmpty() ? null : updated;
@@ -183,17 +311,41 @@ public class OptionCache {
     }
 
     /**
-     * Evicts a single option ID and clears cached category snapshots without mutating any category snapshot in-place.
+     * Evicts a single option ID from option and negative caches without polluting {@code missingIds}
+     * and without clearing unrelated category snapshots.
      *
      * @param id the specified option id
      */
-    public void evictOption(final String id) {
+    public void evict(final String id) {
         if (null == id) {
             return;
         }
         missingIds.remove(id);
-        cache.remove(id);
-        categoryCache.clear();
+        final JSONObject removed = cache.remove(id);
+        if (isDocumentChunkId(id)) {
+            return;
+        }
+        if (null != removed) {
+            final String category = removed.optString(Option.OPTION_CATEGORY);
+            if (!category.isEmpty()) {
+                categoryCache.remove(category);
+                return;
+            }
+        }
+        for (final Map.Entry<String, JSONObject> entry : categoryCache.entrySet()) {
+            if (entry.getValue().has(id)) {
+                categoryCache.remove(entry.getKey());
+            }
+        }
+    }
+
+    /**
+     * Evicts a single option ID and invalidates any affected cached category snapshot.
+     *
+     * @param id the specified option id
+     */
+    public void evictOption(final String id) {
+        evict(id);
     }
 
     /**

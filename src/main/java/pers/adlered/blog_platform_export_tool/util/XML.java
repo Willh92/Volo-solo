@@ -32,31 +32,39 @@ import java.util.List;
  **/
 public class XML {
 
-    public static List<String> getAvailableFiles() {
-        List<String> availableFiles = new ArrayList<>();
-        String xmlFolder = Decompress.path;
-        File file = new File(xmlFolder);
-        try {
-            File[] files = file.listFiles();
-            if (files != null) {
-                for (File i : files) {
-                    availableFiles.add(i.getAbsolutePath());
+    public static List<String> getAvailableFiles(final String xmlFolder) {
+        final List<String> availableFiles = new ArrayList<>();
+        if (xmlFolder == null || xmlFolder.isBlank()) {
+            return availableFiles;
+        }
+        final File folder = new File(xmlFolder);
+        final File[] files = folder.listFiles();
+        if (files != null) {
+            for (final File item : files) {
+                if (item.isFile()) {
+                    availableFiles.add(item.getAbsolutePath());
                 }
             }
-        } catch (NullPointerException ignored) {
         }
         return availableFiles;
     }
 
+    @Deprecated
+    public static List<String> getAvailableFiles() {
+        return getAvailableFiles(Decompress.currentPath());
+    }
+
     // 用于调试，打印出结果
-    public static void printResult(List<TranslateResult> result) {
-        for (TranslateResult i : result) {
+    public static void printResult(final List<TranslateResult> result) {
+        if (result == null) {
+            return;
+        }
+        for (final TranslateResult i : result) {
             System.out.println("=====================================================");
-            System.out.println("标题：" +  i.getTitle());
+            System.out.println("标题：" + i.getTitle());
             System.out.println("作者：" + i.getAuthor());
             System.out.println("日期：" + i.getDate());
             System.out.println("链接：" + i.getLink());
-            // System.out.println("正文：" + i.getArticleContent());
             System.out.println("=====================================================");
         }
     }

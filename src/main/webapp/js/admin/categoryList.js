@@ -39,19 +39,16 @@ admin.categoryList = {
         this.tablePagination.buildTable([{
                 text: "",
                 index: "linkOrder",
-                width: 60
+                width: 68
             }, {
-                style: "padding-left: 12px;",
                 text: Label.titleLabel,
                 index: "categoryTitle",
-                width: 230
+                width: 180
             }, {
-                style: "padding-left: 12px;",
                 text: 'URI',
                 index: "categoryURI",
-                width: 230
+                width: 180
             }, {
-                style: "padding-left: 12px;",
                 text: Label.descriptionLabel,
                 index: "categoryDesc",
                 minWidth: 180
@@ -183,7 +180,6 @@ admin.categoryList = {
                     admin.categoryList.getList(admin.categoryList.pageInfo.pageCount);
 
                     $("#loadMsg").text("");
-                    location.reload();
                 }
             });
         }
@@ -262,7 +258,6 @@ admin.categoryList = {
                     admin.categoryList.getList(pageNum);
 
                     $("#loadMsg").text("");
-                    location.reload();
                 }
             });
         }
@@ -308,7 +303,6 @@ admin.categoryList = {
                 admin.categoryList.getList(admin.categoryList.pageInfo.currentPage);
 
                 $("#loadMsg").text("");
-                location.reload();
             }
         });
     }

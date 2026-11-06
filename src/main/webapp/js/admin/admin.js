@@ -23,6 +23,29 @@
  * @author <a href="https://github.com/adlered">adlered (Bolo Author)</a>
  */
 
+if (typeof Util !== 'undefined' && Util && typeof Util.formatDate !== 'function') {
+    Util.formatDate = function (value, mode) {
+        if (value === null || value === undefined || typeof value === 'boolean') return '—'
+        if (typeof value === 'string') {
+            value = value.trim()
+            if (!value) return '—'
+            if (/^\d+$/.test(value)) value = Number(value)
+        }
+        var d = value instanceof Date ? value : new Date(value)
+        var time = d.getTime()
+        if (!Number.isFinite(time) || time < 0) return '—'
+        var pad = function (n) { return (n < 10 ? '0' : '') + n }
+        var ymd = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+        if (mode === 1) {
+            return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+        }
+        if (mode === 2) {
+            return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+        }
+        return ymd
+    }
+}
+
 Util.escapeHtml = function (value) {
     return String(value == null ? '' : value)
         .replace(/&/g, '&amp;')
@@ -381,16 +404,17 @@ $.extend(Admin.prototype, {
             }
         }
 
-        $(document).off('ajaxError.voloConsole').on('ajaxError.voloConsole', function (event, xhr, options, exc) {
+        $(document).off('ajaxError.boloConsole').on('ajaxError.boloConsole', function (event, jqXHR, options, exc) {
+            if (jqXHR && jqXHR.statusText === 'abort') return
             $('#loadMsg').text('')
-            admin.handleRequestError(xhr, exc)
+            if (jqXHR) admin.handleRequestError(jqXHR, exc)
         })
         if (window.addEventListener) {
             var onPageShow = function (event) { if (event && event.persisted && window.location && window.location.reload) window.location.reload() }
             window.addEventListener('pageshow', onPageShow)
-            if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole'); if (window.removeEventListener) window.removeEventListener('pageshow', onPageShow) })
+            if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { window.onbeforeunload = null; $(document).off('ajaxError.boloConsole'); if (window.removeEventListener) window.removeEventListener('pageshow', onPageShow) })
         } else if (window.BoloNavigation) {
-            window.BoloNavigation.onLeave(function () { $(document).off('ajaxError.voloConsole') })
+            window.BoloNavigation.onLeave(function () { window.onbeforeunload = null; $(document).off('ajaxError.boloConsole') })
         }
     },
     /**

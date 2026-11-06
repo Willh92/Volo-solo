@@ -38,18 +38,15 @@ admin.commentList = {
       {
         text: Label.commentContentLabel,
         index: 'content',
-        minWidth: 174,
-        style: 'padding-left: 12px;',
+        minWidth: 200,
       }, {
         text: Label.authorLabel,
         index: 'title',
-        style: 'padding-left: 12px;',
-        width: 220,
+        width: 200,
       }, {
         text: Label.dateLabel,
         index: 'date',
-        width: 112,
-        style: 'padding-left: 12px;',
+        width: 148,
       }, {
         text: '操作',
         index: 'actions',
@@ -149,7 +146,7 @@ admin.commentList = {
             commentsData[i].title += '<span class="console-comment-address">' + escape(address) + (comments[i].commentRegion ? '<br>' + escape(comments[i].commentRegion) : '') + '</span>'
             commentsData[i].actions += ' <a class="console-row-action" href="#" data-comment-id="' + escape(comments[i].oId) + '" onclick="admin.commentList.ban(this.dataset.commentId); return false;">封禁 IP</a>'
           }
-          commentsData[i].date = $.bowknot.getDate(comments[i].commentTime)
+          commentsData[i].date = $.bowknot.getDate(comments[i].commentTime, 2)
         }
 
         that.tablePagination.updateTablePagination(commentsData, pageNum,

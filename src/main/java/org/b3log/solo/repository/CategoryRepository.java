@@ -17,10 +17,15 @@
  */
 package org.b3log.solo.repository;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.BeanManager;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.AbstractRepository;
 import org.b3log.latke.repository.FilterOperator;
 import org.b3log.latke.repository.PropertyFilter;
@@ -28,6 +33,7 @@ import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.repository.annotation.Repository;
+import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Category;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,6 +47,12 @@ import org.json.JSONObject;
  */
 @Repository
 public class CategoryRepository extends AbstractRepository {
+
+    @Inject
+    private CategoryTagRepository categoryTagRepository;
+
+    @Inject
+    private ArticleRepository articleRepository;
 
     /**
      * Public constructor.
@@ -59,6 +71,7 @@ public class CategoryRepository extends AbstractRepository {
     public JSONObject getByTitle(final String categoryTitle) throws RepositoryException {
         final Query query = new Query()
                 .setFilter(new PropertyFilter(Category.CATEGORY_TITLE, FilterOperator.EQUAL, categoryTitle))
+                .setPage(1, 1)
                 .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
@@ -79,6 +92,7 @@ public class CategoryRepository extends AbstractRepository {
     public JSONObject getByURI(final String categoryURI) throws RepositoryException {
         final Query query = new Query()
                 .setFilter(new PropertyFilter(Category.CATEGORY_URI, FilterOperator.EQUAL, categoryURI))
+                .setPage(1, 1)
                 .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
@@ -96,7 +110,11 @@ public class CategoryRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public int getMaxOrder() throws RepositoryException {
-        final Query query = new Query().addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING);
+        final Query query = new Query()
+                .select(Category.CATEGORY_ORDER)
+                .addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
@@ -122,7 +140,9 @@ public class CategoryRepository extends AbstractRepository {
         final Query query = new Query()
                 .setFilter(new PropertyFilter(Category.CATEGORY_ORDER, FilterOperator.LESS_THAN,
                         category.optInt(Category.CATEGORY_ORDER)))
-                .addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING).setPage(1, 1);
+                .addSort(Category.CATEGORY_ORDER, SortDirection.DESCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
@@ -148,7 +168,9 @@ public class CategoryRepository extends AbstractRepository {
         final Query query = new Query()
                 .setFilter(new PropertyFilter(Category.CATEGORY_ORDER, FilterOperator.GREATER_THAN,
                         category.optInt(Category.CATEGORY_ORDER)))
-                .addSort(Category.CATEGORY_ORDER, SortDirection.ASCENDING).setPage(1, 1);
+                .addSort(Category.CATEGORY_ORDER, SortDirection.ASCENDING)
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (1 != array.length()) {
@@ -167,7 +189,9 @@ public class CategoryRepository extends AbstractRepository {
      */
     public JSONObject getByOrder(final int order) throws RepositoryException {
         final Query query = new Query()
-                .setFilter(new PropertyFilter(Category.CATEGORY_ORDER, FilterOperator.EQUAL, order));
+                .setFilter(new PropertyFilter(Category.CATEGORY_ORDER, FilterOperator.EQUAL, order))
+                .setPage(1, 1)
+                .setPageCount(1);
         final JSONObject result = get(query);
         final JSONArray array = org.b3log.solo.util.QueryResults.array(result);
         if (0 == array.length()) {
@@ -178,13 +202,17 @@ public class CategoryRepository extends AbstractRepository {
     }
 
     /**
-     * Gets most used categories (contains the most tags) with the specified number.
+     * Gets categories ordered by {@code categoryOrder} with accurate published article counts joined against
+     * {@code b3_solo_article.articleStatus = PUBLISHED}.
      *
      * @param num the specified number
-     * @return a list of most used categories, returns an empty list if not found
+     * @return a list of categories, returns an empty list if not found
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostUsedCategories(final int num) throws RepositoryException {
+        if (num <= 0) {
+            return new ArrayList<>();
+        }
         final Query query = new Query().addSort(Category.CATEGORY_ORDER, SortDirection.ASCENDING).setPage(1, num)
                 .setPageCount(1);
         final List<JSONObject> ret = getList(query);
@@ -193,26 +221,60 @@ public class CategoryRepository extends AbstractRepository {
         }
 
         final BeanManager beanManager = BeanManager.getInstance();
-        final CategoryTagRepository categoryTagRepository = beanManager.getReference(CategoryTagRepository.class);
+        final CategoryTagRepository ctRepo = null != categoryTagRepository
+                ? categoryTagRepository
+                : (null == beanManager ? null : beanManager.getReference(CategoryTagRepository.class));
+        final ArticleRepository artRepo = null != articleRepository
+                ? articleRepository
+                : (null == beanManager ? null : beanManager.getReference(ArticleRepository.class));
+        if (null == ctRepo) {
+            for (final JSONObject category : ret) {
+                category.put(Category.CATEGORY_T_PUBLISHED_ARTICLE_COUNT, 0);
+            }
+            return ret;
+        }
+
         final Object[] categoryIds = new Object[ret.size()];
         for (int i = 0; i < ret.size(); i++) {
             categoryIds[i] = ret.get(i).optString(Keys.OBJECT_ID);
         }
-        final java.util.Map<String, Integer> tagCounts = new java.util.HashMap<>();
-        final List<JSONObject> countRows = categoryTagRepository.select(
-                "SELECT category_oId, COUNT(*) AS C FROM " + categoryTagRepository.getName()
-                        + " WHERE category_oId IN (" + String.join(",", java.util.Collections.nCopies(categoryIds.length, "?"))
-                        + ") GROUP BY category_oId",
-                categoryIds);
+        final Map<String, Integer> publishedCounts = new HashMap<>();
+        final String inPlaceholders = String.join(",", Collections.nCopies(categoryIds.length, "?"));
+        final List<JSONObject> countRows;
+        if (null != artRepo) {
+            final Object[] params = new Object[categoryIds.length + 1];
+            params[0] = Article.ARTICLE_STATUS_C_PUBLISHED;
+            System.arraycopy(categoryIds, 0, params, 1, categoryIds.length);
+            countRows = ctRepo.select(
+                    "SELECT ct.category_oId, COUNT(DISTINCT a.oId) AS C FROM " + ctRepo.getName() + " ct "
+                            + "INNER JOIN " + artRepo.getName() + " a ON ct.tag_oId = a.oId AND a.articleStatus = ? "
+                            + "WHERE ct.category_oId IN (" + inPlaceholders + ") GROUP BY ct.category_oId",
+                    params);
+        } else {
+            countRows = ctRepo.select(
+                    "SELECT category_oId, COUNT(*) AS C FROM " + ctRepo.getName()
+                            + " WHERE category_oId IN (" + inPlaceholders + ") GROUP BY category_oId",
+                    categoryIds);
+        }
         if (countRows != null) {
             for (final JSONObject row : countRows) {
-                tagCounts.put(row.optString(Category.CATEGORY + "_" + Keys.OBJECT_ID), row.optInt("C"));
+                if (null == row) {
+                    continue;
+                }
+                String catId = row.optString(Category.CATEGORY + "_" + Keys.OBJECT_ID);
+                if (catId.isEmpty()) {
+                    catId = row.optString("CATEGORY_OID", row.optString("category_oid"));
+                }
+                if (!catId.isEmpty()) {
+                    final int cnt = row.has("C") ? row.optInt("C") : row.optInt("c");
+                    publishedCounts.put(catId, cnt);
+                }
             }
         }
 
         for (final JSONObject category : ret) {
             final String categoryId = category.optString(Keys.OBJECT_ID);
-            category.put(Category.CATEGORY_T_PUBLISHED_ARTICLE_COUNT, tagCounts.getOrDefault(categoryId, 0));
+            category.put(Category.CATEGORY_T_PUBLISHED_ARTICLE_COUNT, publishedCounts.getOrDefault(categoryId, 0));
         }
 
         return ret;

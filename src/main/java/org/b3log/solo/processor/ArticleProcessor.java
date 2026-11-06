@@ -242,13 +242,6 @@ public class ArticleProcessor {
         final JSONObject result = Solos.newSucc();
         context.renderJSON(result);
 
-        final String markdownText = context.requestJSON().optString("markdownText");
-        if (StringUtils.isBlank(markdownText)) {
-            result.put(Common.DATA, "");
-
-            return;
-        }
-
         /*
          * if (!Solos.isLoggedIn(context)) {
          * result.put(Keys.CODE, -1);
@@ -259,18 +252,33 @@ public class ArticleProcessor {
          */
 
         try {
+            final JSONObject req = context.requestJSON();
+            if (null == req) {
+                context.setStatus(400);
+                result.put(Keys.CODE, -1);
+                result.put(Keys.MSG, null != langPropsService ? langPropsService.get("getFailLabel") : "Invalid request");
+                return;
+            }
+
+            final String markdownText = req.optString("markdownText");
+            if (StringUtils.isBlank(markdownText)) {
+                result.put(Common.DATA, "");
+
+                return;
+            }
+
             final String html;
             if (Solos.isAdminOrAuthorLoggedIn(context)) {
                 if (markdownText.length() > 524288) {
                     result.put(Keys.CODE, -1);
-                    result.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                    result.put(Keys.MSG, null != langPropsService ? langPropsService.get("getFailLabel") : "Payload too large");
                     return;
                 }
                 html = articleQueryService.renderRichMarkdown("preview", markdownText, Solos.isAdminLoggedIn(context), context, true);
             } else {
                 if (markdownText.length() > 2000) {
                     result.put(Keys.CODE, -1);
-                    result.put(Keys.MSG, langPropsService.get("getFailLabel"));
+                    result.put(Keys.MSG, null != langPropsService ? langPropsService.get("getFailLabel") : "Payload too large");
                     return;
                 }
                 html = Markdowns.clean(Markdowns.toHTMLLocally(markdownText));
@@ -279,7 +287,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
             result.put(Keys.CODE, -1);
-            result.put(Keys.MSG, langPropsService.get("getFailLabel"));
+            result.put(Keys.MSG, null != langPropsService ? langPropsService.get("getFailLabel") : "Internal error");
         }
     }
 
@@ -556,44 +564,60 @@ public class ArticleProcessor {
     @RequestProcessing(value = "/article/id/{id}/relevant/articles", method = HttpMethod.GET)
     public void getRelevantArticles(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
+        final JsonRenderer renderer = new JsonRenderer();
+        context.setRenderer(renderer);
+        renderer.setJSONObject(jsonObject);
 
         final JSONObject preference = optionQueryService.getPreference();
 
         final int displayCnt = preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT);
         if (0 == displayCnt) {
-            jsonObject.put(Common.RELEVANT_ARTICLES, new ArrayList<JSONObject>());
-
-            final JsonRenderer renderer = new JsonRenderer();
-            context.setRenderer(renderer);
-            renderer.setJSONObject(jsonObject);
+            jsonObject.put(Common.RELEVANT_ARTICLES, Collections.emptyList());
 
             return;
         }
 
-        final Request request = context.getRequest();
         Stopwatchs.start("Get Relevant Articles");
-        final String articleId = context.pathVar("id");
-        if (StringUtils.isBlank(articleId)) {
-            context.sendError(404);
+        try {
+            final String articleId = context.pathVar("id");
+            if (StringUtils.isBlank(articleId)) {
+                jsonObject.put(Common.RELEVANT_ARTICLES, Collections.emptyList());
 
-            return;
+                return;
+            }
+
+            final JSONObject article = articleQueryService.getArticleById(articleId);
+            if (null == article) {
+                jsonObject.put(Common.RELEVANT_ARTICLES, Collections.emptyList());
+
+                return;
+            }
+
+            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS)) {
+                final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+                boolean authorized = false;
+                try {
+                    authorized = null != currentUser && articleQueryService.canAccessArticle(articleId, currentUser);
+                } catch (final Exception ignored) {
+                }
+                if (!authorized) {
+                    jsonObject.put(Common.RELEVANT_ARTICLES, Collections.emptyList());
+
+                    return;
+                }
+            }
+
+            if (Solos.needViewPwd(context, article)) {
+                jsonObject.put(Common.RELEVANT_ARTICLES, Collections.emptyList());
+
+                return;
+            }
+
+            final List<JSONObject> relevantArticles = articleQueryService.getRelevantArticles(article, preference);
+            jsonObject.put(Common.RELEVANT_ARTICLES, relevantArticles);
+        } finally {
+            Stopwatchs.end();
         }
-
-        final JSONObject article = articleQueryService.getArticleById(articleId);
-        if (null == article) {
-            context.sendError(404);
-
-            return;
-        }
-
-        final List<JSONObject> relevantArticles = articleQueryService.getRelevantArticles(article, preference);
-        jsonObject.put(Common.RELEVANT_ARTICLES, relevantArticles);
-
-        final JsonRenderer renderer = new JsonRenderer();
-        context.setRenderer(renderer);
-        renderer.setJSONObject(jsonObject);
-
-        Stopwatchs.end();
     }
 
     /**
@@ -652,9 +676,13 @@ public class ArticleProcessor {
             requestJSONObject.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
             requestJSONObject.put(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT,
                     preference.optBoolean(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT));
+            requestJSONObject.put(ArticleQueryService.SKIP_VIEW_OVERLAY, true);
+            final JSONArray excludes = new JSONArray();
+            excludes.put("articleCategory");
             if (!ArticleQueryService.isFullContentListStyle(preference)) {
-                requestJSONObject.put(Keys.EXCLUDES, new JSONArray().put(Article.ARTICLE_CONTENT));
+                excludes.put(Article.ARTICLE_CONTENT);
             }
+            requestJSONObject.put(Keys.EXCLUDES, excludes);
             final JSONObject result = articleQueryService.getArticles(requestJSONObject);
             final List<JSONObject> articles = org.b3log.latke.util.CollectionUtils
                     .jsonArrayToList(result.getJSONArray(Article.ARTICLES));
@@ -1154,6 +1182,7 @@ public class ArticleProcessor {
                 article.put("articleCategory", cachedView.articleCategoryTitle());
                 article.put("categoryURI", cachedView.categoryUri());
             } else {
+                final String cachedAbstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
                 articleQueryService.markdown(article, context);
                 String decoratedContent = article.optString(Article.ARTICLE_CONTENT);
                 final String headerWidgets = org.b3log.solo.util.ReadingStatsUtil.buildArticleHeaderWidgets(article, rawMarkdown, preference);
@@ -1179,7 +1208,14 @@ public class ArticleProcessor {
                 }
                 article.put(Article.ARTICLE_CONTENT, decoratedContent);
                 // For <meta name="description" content="${article.articleAbstract}"/>
-                final String metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
+                final String metaDescription;
+                if (StringUtils.isNotBlank(cachedAbstractText)
+                        && !org.b3log.solo.service.HiddenContentService.containsLockSyntax(rawAbstract)
+                        && !org.b3log.solo.service.HiddenContentService.containsLockSyntax(cachedAbstractText)) {
+                    metaDescription = cachedAbstractText;
+                } else {
+                    metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
+                }
                 article.put(Article.ARTICLE_ABSTRACT, metaDescription);
                 if (tocActive) {
                     ToCPlugin.processArticleToc(article);

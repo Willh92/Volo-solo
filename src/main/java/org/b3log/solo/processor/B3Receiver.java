@@ -203,8 +203,11 @@ public class B3Receiver {
                 return;
             }
 
-            oldArticle.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(sanitizedContent));
             oldArticle.put(Article.ARTICLE_CONTENT, sanitizedContent);
+            oldArticle.put(Article.ARTICLE_ABSTRACT, "");
+            final String abstractText = Article.getAbstractText(oldArticle);
+            oldArticle.put(Article.ARTICLE_ABSTRACT, abstractText);
+            oldArticle.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
             oldArticle.put(Article.ARTICLE_TITLE, title);
             oldArticle.put(Article.ARTICLE_TAGS_REF, symArticle.optString("tags"));
             oldArticle.put(Common.POST_TO_COMMUNITY, false);

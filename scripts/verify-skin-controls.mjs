@@ -106,4 +106,147 @@ for (const [skin, object, method] of [['bolo-nexmoe','Skin','_initBackToTop'],['
   sandbox.initCanvas('fixture');assert(active);assert.equal(listeners.size,1);assert.equal(ticks.size,1);
   cleanups[0]();assert(!active);assert.equal(listeners.size,0);assert.equal(ticks.size,0,'PJAX must remove the animation ticker');
 }
+
+// Round 5: Butterfly live bolo:themechange data-theme sync & onLeave removal
+{
+  const rootAttrs=new Map();
+  const winEvents=new Map();
+  const leaveCallbacks=[];
+  let curTheme='light';
+  const noopJq=()=>{
+    const obj={
+      0:{},length:0,
+      off(){return obj;},on(){return obj;},click(){return obj;},mouseover(){return obj;},
+      css(){return obj;},each(){return obj;},children(){return obj;},eq(){return obj;},
+      hide(){return obj;},show(){return obj;},fadeOut(){return obj;},fadeIn(){return obj;},
+      addClass(){return obj;},removeClass(){return obj;},toggleClass(){return obj;},
+      hasClass:()=>false,attr(){return obj;},prop(){return obj;},find(){return obj;},
+      width:()=>100,height:()=>100,scrollTop:()=>0,ready(fn){obj._ready=fn;return obj;}
+    };
+    return obj;
+  };
+  const win={
+    innerWidth:1280,
+    BoloTheme:{current:()=>curTheme},
+    BoloNavigation:{onLeave:fn=>leaveCallbacks.push(fn)},
+    GLOBAL_CONFIG:{Snackbar:undefined,isanchor:false},
+    GLOBAL_CONFIG_SITE:{isPost:false,isSidebar:false},
+    matchMedia:()=>({matches:false,addListener(){},removeListener(){}}),
+    addEventListener(type,fn){winEvents.set(type,fn);},
+    removeEventListener(type,fn){if(winEvents.get(type)===fn)winEvents.delete(type);}
+  };
+  const doc={
+    cookie:'',readyState:'complete',
+    body:{clientWidth:1280},
+    documentElement:{
+      setAttribute:(k,v)=>rootAttrs.set(k,String(v)),
+      removeAttribute:k=>rootAttrs.delete(k),
+      getAttribute:k=>rootAttrs.get(k)??null
+    },
+    querySelector:()=>null,
+    addEventListener(){},
+    removeEventListener(){}
+  };
+  const bfSandbox={
+    window:win,document:doc,$:noopJq,
+    BoloTheme:win.BoloTheme,BoloNavigation:win.BoloNavigation,
+    GLOBAL_CONFIG:win.GLOBAL_CONFIG,GLOBAL_CONFIG_SITE:win.GLOBAL_CONFIG_SITE,
+    throttle:fn=>fn,scrollToDest(){},sidebarPaddingR(){},closeSidebar(){},openSidebar(){},leftRight(){}
+  };
+  vm.runInNewContext(butterfly,bfSandbox);
+  win.Skin.init();
+  assert.equal(rootAttrs.get('data-theme'),'light','Butterfly Skin.init must sync initial data-theme');
+  curTheme='dark';
+  winEvents.get('bolo:themechange')({detail:{theme:'dark'}});
+  assert.equal(rootAttrs.get('data-theme'),'dark','Butterfly must update data-theme on live bolo:themechange');
+  leaveCallbacks.forEach(fn=>fn());
+  assert(!rootAttrs.has('data-theme'),'Butterfly onLeave must remove html[data-theme]');
+  assert(!winEvents.has('bolo:themechange'),'Butterfly onLeave must remove bolo:themechange listener');
+}
+
+// Round 5: NexT >= 1200 sidebar auto-open threshold & < 1200 / onLeave cleanup
+{
+  let viewport=1100;
+  const toggleClasses=new Set();
+  const bodyCss={};
+  const sidebarCss={};
+  const winHandlers=new Map();
+  const leaveCallbacks=[];
+  let readyFn=null;
+  let toggleClickHandler=null;
+  const toggleObj={
+    hasClass:c=>toggleClasses.has(c),
+    addClass(c){toggleClasses.add(c);return this;},
+    removeClass(c){toggleClasses.delete(c);return this;},
+    click(fn){if(fn)toggleClickHandler=fn;else toggleClickHandler?.call(this);return this;}
+  };
+  const $next=sel=>{
+    if(sel===windowObj){
+      return {
+        width:()=>viewport,
+        off(ev){winHandlers.delete(ev);return this;},
+        on(ev,fn){winHandlers.set(ev,fn);return this;},
+        scrollTop:()=>0
+      };
+    }
+    if(sel===docObj){
+      return {ready(fn){readyFn=fn;}};
+    }
+    if(sel==='.sidebar-toggle'||sel===toggleObj){
+      return toggleObj;
+    }
+    if(sel==='.sidebar'){
+      return {
+        stop(){return this;},
+        css(k,v){sidebarCss[k]=v;return this;},
+        animate(props,cb){Object.assign(sidebarCss,props);cb?.();return this;},
+        find:()=>({stop(){return this;},css(){return this;},animate(){return this;}})
+      };
+    }
+    if(sel==='body'){
+      return {
+        stop(){return this;},
+        css(k,v){bodyCss[k]=v;return this;},
+        animate(props){Object.assign(bodyCss,props);return this;}
+      };
+    }
+    if(sel==='.article__toc li')return {length:3};
+    if(sel==='.main')return {animate(_,__,cb){cb?.();return this;}};
+    return {
+      length:0,click(){return this;},slideToggle(){return this;},
+      css(){return this;},animate(_,cb){if(typeof _==='object'&&typeof cb==='function')cb();return this;},
+      each(){return this;},find(){return this;},parent(){return this;},addClass(){return this;},removeClass(){return this;}
+    };
+  };
+  const windowObj={scrollY:0,addEventListener(){},removeEventListener(){},BoloNavigation:{onLeave:fn=>leaveCallbacks.push(fn)}};
+  const docObj={querySelector:()=>null};
+  const nextSandbox={
+    window:windowObj,document:docObj,$:$next,Util:{goTop(){}},
+    setTimeout:()=>1,requestAnimationFrame:()=>1,cancelAnimationFrame(){}
+  };
+  vm.runInNewContext(read('skins/bolo-next/js/bolo-next.js').replace(/NexT\.init\(\);\s*$/,''),nextSandbox);
+  nextSandbox.NexT.init();
+  readyFn();
+  nextSandbox.NexT.initArticle();
+  assert(!toggleClasses.has('sidebar-active'),'NexT must NOT auto-open sidebar at 1100px (< 1200px)');
+  assert(!toggleClasses.has('has-toc'),'NexT initArticle must NOT activate desktop TOC below 1200px');
+
+  viewport=1280;
+  readyFn();
+  assert(toggleClasses.has('sidebar-active'),'NexT must auto-open sidebar at >= 1200px');
+  assert.equal(bodyCss['padding-right'],320);
+
+  viewport=1024;
+  winHandlers.get('resize.boloNextSidebar')();
+  assert(!toggleClasses.has('sidebar-active'),'Resizing below 1200px must close active NexT sidebar');
+  assert.equal(bodyCss['padding-right'],'','Resizing below 1200px must clear body padding-right');
+
+  viewport=1280;
+  readyFn();
+  assert(toggleClasses.has('sidebar-active'));
+  leaveCallbacks.forEach(fn=>fn());
+  assert(!toggleClasses.has('sidebar-active'),'Leaving NexT page must clean up sidebar-active');
+  assert.equal(bodyCss['padding-right'],'','Leaving NexT page must clean up body padding-right');
+}
+
 console.log('Skin control checks passed: Butterfly tools, Bubble animation bounds/cleanup, Yilia transitions, Nexmoe and Next scroll visibility and keyboard return.');

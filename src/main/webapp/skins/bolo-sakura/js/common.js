@@ -27,6 +27,10 @@
  */
 var Skin = {
     init: function () {
+        if (window.sakuraLazyLoad && typeof window.sakuraLazyLoad.destroy === 'function') {
+            window.sakuraLazyLoad.destroy();
+            window.sakuraLazyLoad = null;
+        }
         if (typeof LazyLoad !== 'undefined') {
             window.sakuraLazyLoad = new LazyLoad({elements_selector: '.lazyload'});
         }
@@ -117,6 +121,10 @@ var Skin = {
         document.addEventListener('keydown', onKeyDown);
         if (window.BoloNavigation) {
             window.BoloNavigation.onLeave(function () {
+                if (window.sakuraLazyLoad && typeof window.sakuraLazyLoad.destroy === 'function') {
+                    window.sakuraLazyLoad.destroy();
+                    window.sakuraLazyLoad = null;
+                }
                 if (window.removeEventListener) window.removeEventListener('scroll', updateHeader);
                 if (document.removeEventListener) document.removeEventListener('keydown', onKeyDown);
             });

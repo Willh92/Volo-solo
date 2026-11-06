@@ -101,21 +101,8 @@ public final class JsonResponses {
                 }
                 return;
             }
-            final String json = delegate.isPretty() ? obj.toString(4) : obj.toString();
-            if ("HEAD".equalsIgnoreCase(context.method())) {
-                HttpCompression.sendText(context, json, "application/json; charset=UTF-8");
-                return;
-            }
-            if (PublicResourceHandler.acceptsGzip(context.header("Accept-Encoding"))) {
-                HttpCompression.sendText(context, json, "application/json; charset=UTF-8");
-                return;
-            }
-            if (json.length() >= HttpCompression.MIN_GZIP_BYTES
-                    || (json.length() * 3 >= HttpCompression.MIN_GZIP_BYTES
-                    && HttpCompression.utf8EncodedLength(json) >= HttpCompression.MIN_GZIP_BYTES)) {
-                HttpCompression.ensureVaryAcceptEncoding(context.getResponse());
-            }
-            delegate.render(context);
+            final String body = delegate.isPretty() ? obj.toString(4) : obj.toString();
+            HttpCompression.sendText(context, body, "application/json; charset=UTF-8");
         }
     }
 }

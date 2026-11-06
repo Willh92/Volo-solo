@@ -262,10 +262,10 @@ admin.preference = {
     $('#indexNowKey').val(key)
     admin.showNotice('已生成随机 IndexNow 密钥，请点击“更新”保存生效。')
   },
-  update: function () {
-    if (this.saving || this.loaded === false) return
+  update: function (onSuccess) {
+    if (this.saving || this.loaded === false) return false
     if (!admin.preference.validate()) {
-      return
+      return false
     }
 
     $('#tipMsg').text('')
@@ -383,16 +383,20 @@ admin.preference = {
       contentType: 'application/json',
       data: JSON.stringify(requestJSONObject),
       success: function (result) {
-        if (!result.sc) { admin.showNotice(result.msg || '设置保存失败，请检查后重试。', 'error'); return }
+        if (!result || !result.sc) { admin.showNotice((result && result.msg) || '设置保存失败，请检查后重试。', 'error'); return }
+        if (typeof onSuccess === 'function') {
+          onSuccess(result)
+        }
         var nextLocale = $('#localeString').val()
         var nextEditorMode = $("input[name='editorMode']:checked").val()
         var nextTuChuang = String($('#sourceTC').text() || '')
         if (nextLocale !== admin.preference.locale ||
             nextEditorMode !== admin.preference.editorMode ||
-            nextTuChuang !== admin.preference.tuChuangRaw) {
+            (typeof onSuccess !== 'function' && nextTuChuang !== admin.preference.tuChuangRaw)) {
           window.location.reload()
           return
         }
+        admin.preference.tuChuangRaw = nextTuChuang
         if (typeof Label === 'object' && Label) {
           Label.PAGE_SIZE = String(requestJSONObject.preference.articleListDisplayCount)
           Label.WINDOW_SIZE = String(requestJSONObject.preference.articleListPaginationWindowSize)

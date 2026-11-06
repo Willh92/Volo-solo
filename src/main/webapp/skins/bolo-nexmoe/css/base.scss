@@ -43,7 +43,7 @@ a {
 }
 
 html {
-  margin-left: calc(100vw - 100%) !important;
+  margin-left: 0 !important;
 }
 
 body {
@@ -1262,7 +1262,7 @@ article {
     margin: 0 0 0 2em;
   }
 
-  table {
+  table:not(.volo-github-repos-table):not(.nexmoe-album) {
     border: none;
     width: auto !important;
     color: #5b6064;
@@ -1318,10 +1318,6 @@ article {
 
     tr {
       background-color: #fff;
-
-      td:first-child, th:first-child {
-        white-space: nowrap;
-      }
 
       &:nth-child(2n) {
         background-color: #f8f8f8;
@@ -1697,15 +1693,9 @@ font.douyin {
     .vditor-reset {
       margin-top: 0px;
     }
-    table {
+    table:not(.volo-github-repos-table):not(.nexmoe-album) {
       th, td {
         padding: 5px !important;
-      }
-    }
-
-    tr {
-      td:first-child, th:first-child {
-        white-space: normal !important;
       }
     }
   }

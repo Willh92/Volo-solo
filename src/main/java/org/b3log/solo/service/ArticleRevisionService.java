@@ -14,14 +14,13 @@ import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.util.Ids;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.ArticleRevision;
 import org.b3log.solo.repository.ArticleRevisionRepository;
+import org.b3log.solo.util.MonotonicIds;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -54,19 +53,24 @@ public class ArticleRevisionService {
         }
         final Transaction tx = articleRevisionRepository.beginTransaction();
         try {
-            final List<JSONObject> existing = articleRevisionRepository.listByArticleId(articleId, 20);
+            final List<JSONObject> existing = articleRevisionRepository.listByArticleId(articleId, 1);
+            long now = System.currentTimeMillis();
             if (existing.isEmpty() && previousArticle != null && hasContentDiff(previousArticle, currentArticle)) {
+                final long prevCreated = Math.min(previousArticle.optLong(Article.ARTICLE_UPDATED, now - 1000L), now - 1L);
                 insertRow(articleId,
                         previousArticle.optString(Article.ARTICLE_TITLE, ""),
                         previousArticle.optString(Article.ARTICLE_ABSTRACT, ""),
                         previousArticle.optString(Article.ARTICLE_CONTENT, ""),
                         authorName,
                         "更新前历史版本",
-                        previousArticle.optLong(Article.ARTICLE_UPDATED, System.currentTimeMillis() - 1000L));
+                        prevCreated);
             }
             if (!existing.isEmpty() && !hasSnapshotDiff(existing.get(0), currentArticle)) {
                 tx.commit();
                 return;
+            }
+            if (!existing.isEmpty()) {
+                now = Math.max(now, existing.get(0).optLong(ArticleRevision.REVISION_CREATED, 0L) + 1L);
             }
             insertRow(articleId,
                     currentArticle.optString(Article.ARTICLE_TITLE, ""),
@@ -74,7 +78,7 @@ public class ArticleRevisionService {
                     currentArticle.optString(Article.ARTICLE_CONTENT, ""),
                     authorName,
                     StringUtils.defaultIfBlank(note, previousArticle == null ? "创建文章" : "编辑保存"),
-                    System.currentTimeMillis());
+                    now);
             articleRevisionRepository.pruneExcess(articleId, ArticleRevision.MAX_REVISIONS_PER_ARTICLE);
             tx.commit();
         } catch (final Exception e) {
@@ -105,28 +109,15 @@ public class ArticleRevisionService {
     }
 
     /**
-     * Lists lightweight revision metadata for the editor history drawer.
+     * Lists lightweight revision metadata for the editor history drawer without loading full {@code revisionContent} CLOBs.
      */
     public List<JSONObject> listRevisions(final String articleId) throws ServiceException {
         if (StringUtils.isBlank(articleId)) {
             return List.of();
         }
         try {
-            final List<JSONObject> rows = articleRevisionRepository.listByArticleId(
+            return articleRevisionRepository.listMetadataByArticleId(
                     articleId, ArticleRevision.MAX_REVISIONS_PER_ARTICLE);
-            final List<JSONObject> summaries = new ArrayList<>(rows.size());
-            for (final JSONObject row : rows) {
-                final String content = row.optString(ArticleRevision.REVISION_CONTENT, "");
-                summaries.add(new JSONObject()
-                        .put(Keys.OBJECT_ID, row.optString(Keys.OBJECT_ID))
-                        .put(ArticleRevision.ARTICLE_OID, row.optString(ArticleRevision.ARTICLE_OID))
-                        .put(ArticleRevision.REVISION_TITLE, row.optString(ArticleRevision.REVISION_TITLE))
-                        .put(ArticleRevision.REVISION_AUTHOR_NAME, row.optString(ArticleRevision.REVISION_AUTHOR_NAME))
-                        .put(ArticleRevision.REVISION_NOTE, row.optString(ArticleRevision.REVISION_NOTE))
-                        .put(ArticleRevision.REVISION_CREATED, row.optLong(ArticleRevision.REVISION_CREATED))
-                        .put("contentLength", content.length()));
-            }
-            return summaries;
         } catch (final RepositoryException e) {
             throw new ServiceException(e);
         }
@@ -153,7 +144,7 @@ public class ArticleRevisionService {
     private void insertRow(final String articleId, final String title, final String abs, final String content,
                            final String authorName, final String note, final long createdMillis) throws RepositoryException {
         final JSONObject rev = new JSONObject();
-        rev.put(Keys.OBJECT_ID, Ids.genTimeMillisId());
+        rev.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
         rev.put(ArticleRevision.ARTICLE_OID, articleId);
         rev.put(ArticleRevision.REVISION_TITLE, StringUtils.left(StringUtils.defaultString(title), 255));
         rev.put(ArticleRevision.REVISION_ABSTRACT, StringUtils.defaultString(abs));

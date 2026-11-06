@@ -34,8 +34,10 @@ import org.b3log.solo.model.Page;
 import org.b3log.solo.service.PageMgmtService;
 import org.b3log.solo.service.PageQueryService;
 import org.b3log.solo.service.UserQueryService;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -114,17 +116,25 @@ public class PageConsole {
 
         try {
             final JSONObject requestJSON = context.requestJSON();
+            if (null == requestJSON || null == requestJSON.optJSONObject(Page.PAGE)) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             pageMgmtService.updatePage(requestJSON);
 
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
+            jsonObject.put(Keys.MSG, (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : langPropsService.get("updateFailLabel"));
         }
     }
 
@@ -198,12 +208,18 @@ public class PageConsole {
 
         try {
             final JSONObject requestJSON = context.requestJSON();
+            if (null == requestJSON || null == requestJSON.optJSONObject(Page.PAGE)) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             final String pageId = pageMgmtService.addPage(requestJSON);
 
             ret.put(Keys.OBJECT_ID, pageId);
             ret.put(Keys.MSG, langPropsService.get("addSuccLabel"));
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) { // May be permalink check exception
             LOGGER.log(Level.WARN, e.getMessage(), e);
 
@@ -243,8 +259,16 @@ public class PageConsole {
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
-            final String linkId = requestJSONObject.getString(Keys.OBJECT_ID);
-            final String direction = requestJSONObject.getString(Common.DIRECTION);
+            if (null == requestJSONObject) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final String linkId = requestJSONObject.optString(Keys.OBJECT_ID);
+            final String direction = requestJSONObject.optString(Common.DIRECTION);
+            if (linkId.isBlank() || (!"up".equals(direction) && !"down".equals(direction))) {
+                AdminRequests.reject(context, 400, "排序参数不正确。");
+                return;
+            }
 
             pageMgmtService.changeOrder(linkId, direction);
 
@@ -252,6 +276,8 @@ public class PageConsole {
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
 
             renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -342,11 +368,13 @@ public class PageConsole {
             final JSONObject result = pageQueryService.getPages(requestJSONObject);
             final JSONArray pages = result.optJSONArray(Page.PAGES);
 
-            for (int i = 0; i < pages.length(); i++) {
-                final JSONObject page = pages.getJSONObject(i);
-                String title = page.optString(Page.PAGE_TITLE);
-                title = StringEscapeUtils.escapeXml11(title);
-                page.put(Page.PAGE_TITLE, title);
+            if (null != pages) {
+                for (int i = 0; i < pages.length(); i++) {
+                    final JSONObject page = pages.getJSONObject(i);
+                    String title = page.optString(Page.PAGE_TITLE);
+                    title = StringEscapeUtils.escapeXml11(title);
+                    page.put(Page.PAGE_TITLE, title);
+                }
             }
 
             result.put(org.b3log.solo.model.Common.STATUS_CODE, true);

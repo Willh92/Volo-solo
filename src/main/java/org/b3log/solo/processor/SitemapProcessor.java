@@ -103,6 +103,12 @@ public class SitemapProcessor {
     private ArchiveDateRepository archiveDateRepository;
 
     @Inject
+    private org.b3log.solo.repository.TagArticleRepository tagArticleRepository;
+
+    @Inject
+    private org.b3log.solo.repository.ArchiveDateArticleRepository archiveDateArticleRepository;
+
+    @Inject
     private SyndicationCacheService syndicationCacheService;
 
     @Inject
@@ -341,21 +347,45 @@ public class SitemapProcessor {
         if (tagRepository == null) {
             return;
         }
-        final JSONObject result = tagRepository.get(new Query().select(Tag.TAG_TITLE).setPageCount(1));
-        final JSONArray tags = QueryResults.array(result);
         final String servePath = Latkes.getServePath();
 
-        for (int i = 0; i < tags.length(); i++) {
-            final JSONObject tag = tags.optJSONObject(i);
-            if (tag == null) {
-                continue;
+        if (articleRepository != null && tagArticleRepository != null
+                && Latkes.RuntimeDatabase.NONE != Latkes.getRuntimeDatabase()) {
+            final String sql = "SELECT t." + Tag.TAG_TITLE + " FROM " + tagRepository.getName() + " AS t"
+                    + " WHERE EXISTS (SELECT 1 FROM " + tagArticleRepository.getName() + " AS rel"
+                    + " INNER JOIN " + articleRepository.getName() + " AS a ON rel.article_oId = a.oId"
+                    + " WHERE rel.tag_oId = t.oId AND a.articleStatus = ?)";
+            final java.util.List<JSONObject> rows = tagRepository.select(sql, Article.ARTICLE_STATUS_C_PUBLISHED);
+            if (rows != null) {
+                for (final JSONObject tag : rows) {
+                    if (tag == null) {
+                        continue;
+                    }
+                    final String title = optColumnString(tag, Tag.TAG_TITLE);
+                    if (StringUtils.isBlank(title)) {
+                        continue;
+                    }
+                    addUrlIfAbsent(sitemap, seenLocs, servePath + "/tags/" + URLs.encode(title), null);
+                }
             }
-            final String title = tag.optString(Tag.TAG_TITLE);
-            if (StringUtils.isBlank(title)) {
-                continue;
+        } else {
+            final JSONObject result = tagRepository.get(new Query().select(Tag.TAG_TITLE).setPageCount(1));
+            final JSONArray tags = QueryResults.array(result);
+            for (int i = 0; i < tags.length(); i++) {
+                final JSONObject tag = tags.optJSONObject(i);
+                if (tag == null) {
+                    continue;
+                }
+                if (tag.has(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT)
+                        && tag.optInt(Tag.TAG_T_PUBLISHED_REFERENCE_COUNT) <= 0) {
+                    continue;
+                }
+                final String title = tag.optString(Tag.TAG_TITLE);
+                if (StringUtils.isBlank(title)) {
+                    continue;
+                }
+                addUrlIfAbsent(sitemap, seenLocs, servePath + "/tags/" + URLs.encode(title), null);
             }
-            final String link = URLs.encode(title);
-            addUrlIfAbsent(sitemap, seenLocs, servePath + "/tags/" + link, null);
         }
 
         // Tags wall
@@ -369,22 +399,73 @@ public class SitemapProcessor {
         if (archiveDateRepository == null) {
             return;
         }
-        final JSONObject result = archiveDateRepository.get(new Query().select(ArchiveDate.ARCHIVE_TIME).setPageCount(1));
-        final JSONArray archiveDates = QueryResults.array(result);
         final String servePath = Latkes.getServePath();
 
-        for (int i = 0; i < archiveDates.length(); i++) {
-            final JSONObject archiveDate = archiveDates.optJSONObject(i);
-            if (archiveDate == null) {
-                continue;
+        if (articleRepository != null && archiveDateArticleRepository != null
+                && Latkes.RuntimeDatabase.NONE != Latkes.getRuntimeDatabase()) {
+            final String sql = "SELECT d." + ArchiveDate.ARCHIVE_TIME + " FROM "
+                    + archiveDateRepository.getName() + " AS d"
+                    + " WHERE EXISTS (SELECT 1 FROM " + archiveDateArticleRepository.getName() + " AS rel"
+                    + " INNER JOIN " + articleRepository.getName() + " AS a ON rel.article_oId = a.oId"
+                    + " WHERE rel.archiveDate_oId = d.oId AND a.articleStatus = ?)";
+            final java.util.List<JSONObject> rows = archiveDateRepository.select(sql, Article.ARTICLE_STATUS_C_PUBLISHED);
+            if (rows != null) {
+                for (final JSONObject archiveDate : rows) {
+                    if (archiveDate == null) {
+                        continue;
+                    }
+                    final long time = optColumnLong(archiveDate, ArchiveDate.ARCHIVE_TIME);
+                    if (time <= 0L) {
+                        continue;
+                    }
+                    final String dateString = DateFormatUtils.format(time, "yyyy/MM");
+                    addUrlIfAbsent(sitemap, seenLocs, servePath + "/archives/" + dateString, null);
+                }
             }
-            final long time = archiveDate.optLong(ArchiveDate.ARCHIVE_TIME, 0L);
-            if (time <= 0L) {
-                continue;
+        } else {
+            final JSONObject result = archiveDateRepository.get(new Query().select(ArchiveDate.ARCHIVE_TIME).setPageCount(1));
+            final JSONArray archiveDates = QueryResults.array(result);
+            for (int i = 0; i < archiveDates.length(); i++) {
+                final JSONObject archiveDate = archiveDates.optJSONObject(i);
+                if (archiveDate == null) {
+                    continue;
+                }
+                if (archiveDate.has(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT)
+                        && archiveDate.optInt(ArchiveDate.ARCHIVE_DATE_T_PUBLISHED_ARTICLE_COUNT) <= 0) {
+                    continue;
+                }
+                final long time = archiveDate.optLong(ArchiveDate.ARCHIVE_TIME, 0L);
+                if (time <= 0L) {
+                    continue;
+                }
+                final String dateString = DateFormatUtils.format(time, "yyyy/MM");
+                addUrlIfAbsent(sitemap, seenLocs, servePath + "/archives/" + dateString, null);
             }
-            final String dateString = DateFormatUtils.format(time, "yyyy/MM");
-            addUrlIfAbsent(sitemap, seenLocs, servePath + "/archives/" + dateString, null);
         }
+    }
+
+    private static String optColumnString(final JSONObject row, final String columnName) {
+        if (row.has(columnName)) {
+            return row.optString(columnName);
+        }
+        for (final String key : row.keySet()) {
+            if (columnName.equalsIgnoreCase(key)) {
+                return row.optString(key);
+            }
+        }
+        return "";
+    }
+
+    private static long optColumnLong(final JSONObject row, final String columnName) {
+        if (row.has(columnName)) {
+            return row.optLong(columnName, 0L);
+        }
+        for (final String key : row.keySet()) {
+            if (columnName.equalsIgnoreCase(key)) {
+                return row.optLong(key, 0L);
+            }
+        }
+        return 0L;
     }
 
     /**

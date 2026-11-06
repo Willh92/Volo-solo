@@ -28,6 +28,16 @@
 var NexT = {
   init: function () {
     this.initBackToTop();
+    function closeSidebarImmediate () {
+      var $toggle = $('.sidebar-toggle');
+      var $sidebar = $('.sidebar');
+      if ($toggle.hasClass('sidebar-active')) {
+        $toggle.removeClass('sidebar-active');
+        $sidebar.stop(true, true).css('right', -320);
+        $sidebar.find('section').stop(true, true).css('opacity', 0);
+      }
+      $('body').stop(true, true).css('padding-right', '');
+    }
     $('.sidebar-toggle').click(function () {
       var $sidebar = $('.sidebar');
       if ($(this).hasClass('sidebar-active')) {
@@ -55,6 +65,16 @@ var NexT = {
       }
     });
 
+    $(window).off('resize.boloNextSidebar').on('resize.boloNextSidebar', function () {
+      if ($(window).width() < 1200) {
+        closeSidebarImmediate();
+      }
+    });
+    window.BoloNavigation?.onLeave(function () {
+      $(window).off('resize.boloNextSidebar');
+      closeSidebarImmediate();
+    });
+
     $('.site-nav-toggle').click(function () {
       $('.site-nav').slideToggle();
     });
@@ -62,7 +82,7 @@ var NexT = {
     $(document).ready(function () {
       // Fade the content without moving chapters after the reader starts navigating.
       $('.main').animate({opacity: 1}, 400, function () {
-        if ($('.article__toc li').length > 0 && $(window).width() > 1000) {
+        if ($('.article__toc li').length > 0 && $(window).width() >= 1200) {
           $('.sidebar-toggle').click();
         }
       });
@@ -114,7 +134,7 @@ var NexT = {
     });
   },
   initArticle: function () {
-    if ($('.article__toc li').length > 0 && $(window).width() > 1000) {
+    if ($('.article__toc li').length > 0 && $(window).width() >= 1200) {
       // add color to sidebar menu
       $('.sidebar-toggle').addClass('has-toc');
       this.initToc();

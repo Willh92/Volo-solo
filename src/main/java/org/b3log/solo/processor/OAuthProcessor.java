@@ -515,7 +515,8 @@ public class OAuthProcessor {
     }
 
     private void migrateLow(int version, String username, String password, final RequestContext context) throws SQLException {
-        final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
+        final String rawPrefix = Latkes.getLocalProperty("jdbc.tablePrefix");
+        final String tablePrefix = (rawPrefix == null || rawPrefix.isBlank()) ? "" : rawPrefix.trim() + "_";
         try (Connection connection = Connections.getConnection()) {
             try {
                 migrateAdministrator(connection, tablePrefix, username, password, Latkes.getServePath());
@@ -567,52 +568,69 @@ public class OAuthProcessor {
 
     private void migrateHigh(int version) throws SQLException, RepositoryException {
         // 高版本降级到4.2.0
-        Connection connection = Connections.getConnection();
-        Statement statement = connection.createStatement();
-        String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
-        // 降级表到4.2.0
-        // 添加列
-        try {
-            statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD COLUMN `articleCommentCount` int(11) NOT NULL COMMENT '文章评论计数' DEFAULT 0;");
-        } catch (Exception ignored) {
+        final String rawPrefix = Latkes.getLocalProperty("jdbc.tablePrefix");
+        final String tablePrefix = (rawPrefix == null || rawPrefix.isBlank()) ? "" : rawPrefix.trim() + "_";
+        final String safePrefix = tablePrefix.replace("`", "``");
+        try (final Connection connection = Connections.getConnection()) {
+            try (final Statement statement = connection.createStatement()) {
+                // 降级表到4.2.0
+                // 添加列
+                try {
+                    statement.executeUpdate("ALTER TABLE `" + safePrefix + "article` ADD COLUMN `articleCommentCount` int(11) NOT NULL COMMENT '文章评论计数' DEFAULT 0;");
+                } catch (final Exception ignored) {
+                }
+                try {
+                    statement.executeUpdate("ALTER TABLE `" + safePrefix + "article` ADD COLUMN `articleViewCount` int(11) NOT NULL COMMENT '文章浏览计数' DEFAULT 0;");
+                } catch (final Exception ignored) {
+                }
+                try {
+                    statement.executeUpdate("ALTER TABLE `" + safePrefix + "article` ADD COLUMN `articleCommentable` char(1) NOT NULL COMMENT '文章是否可以评论' DEFAULT '1';");
+                } catch (final Exception ignored) {
+                }
+                // comment表
+                try {
+                    statement.executeUpdate("CREATE TABLE IF NOT EXISTS `" + safePrefix + "comment` ( `oId` varchar(19) NOT NULL COMMENT '主键', `commentContent` text NOT NULL COMMENT '评论内容', `commentCreated` bigint(20) NOT NULL COMMENT '评论时间戳', `commentName` varchar(50) NOT NULL COMMENT '评论人名称', `commentOnId` varchar(19) NOT NULL COMMENT '评论的文章/页面的 id', `commentSharpURL` varchar(255) NOT NULL COMMENT '评论访问路径，带 # 锚点', `commentThumbnailURL` text NOT NULL COMMENT '评论人头像图片链接地址', `commentURL` varchar(255) NOT NULL COMMENT '评论人链接地址', `commentOriginalCommentId` varchar(19) DEFAULT NULL COMMENT '评论回复时原始的评论 id，即父评论 id', `commentOriginalCommentName` varchar(50) DEFAULT NULL COMMENT '评论回复时原始的评论人名称，即父评论人名称', PRIMARY KEY (`oId`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表';");
+                } catch (final Exception ignored) {
+                }
+                if (!connection.getAutoCommit()) {
+                    connection.commit();
+                }
+            } catch (final SQLException failure) {
+                try {
+                    connection.rollback();
+                } catch (final SQLException rollbackErr) {
+                    failure.addSuppressed(rollbackErr);
+                }
+                throw failure;
+            }
         }
-        try {
-            statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD COLUMN `articleViewCount` int(11) NOT NULL COMMENT '文章浏览计数' DEFAULT 0;");
-        } catch (Exception ignored) {
-        }
-        try {
-            statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD COLUMN `articleCommentable` char(1) NOT NULL COMMENT '文章是否可以评论' DEFAULT '1';");
-        } catch (Exception ignored) {
-        }
-        // comment表
-        try {
-            statement.executeUpdate("CREATE TABLE `b3_solo_comment` ( `oId` varchar(19) NOT NULL COMMENT '主键', `commentContent` text NOT NULL COMMENT '评论内容', `commentCreated` bigint(20) NOT NULL COMMENT '评论时间戳', `commentName` varchar(50) NOT NULL COMMENT '评论人名称', `commentOnId` varchar(19) NOT NULL COMMENT '评论的文章/页面的 id', `commentSharpURL` varchar(255) NOT NULL COMMENT '评论访问路径，带 # 锚点', `commentThumbnailURL` text NOT NULL COMMENT '评论人头像图片链接地址', `commentURL` varchar(255) NOT NULL COMMENT '评论人链接地址', `commentOriginalCommentId` varchar(19) DEFAULT NULL COMMENT '评论回复时原始的评论 id，即父评论 id', `commentOriginalCommentName` varchar(50) DEFAULT NULL COMMENT '评论回复时原始的评论人名称，即父评论人名称', PRIMARY KEY (`oId`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评论表';");
-        } catch (Exception ignored) {
-        }
-        statement.close();
-        connection.commit();
-        connection.close();
         // 降级版本，添加设定
-        BeanManager beanManager = BeanManager.getInstance();
-        OptionRepository optionRepository = (OptionRepository)beanManager.getReference(OptionRepository.class);
-        Transaction transaction = optionRepository.beginTransaction();
-        JSONObject versionOpt = optionRepository.get("version");
-        versionOpt.put("optionValue", "4.2.0");
+        final BeanManager beanManager = BeanManager.getInstance();
+        final OptionRepository optionRepository = beanManager.getReference(OptionRepository.class);
+        final Transaction transaction = optionRepository.beginTransaction();
         try {
-            optionRepository.update("version", versionOpt, new String[0]);
-        } catch (Exception ignored) {
+            final JSONObject versionOpt = optionRepository.get("version");
+            if (versionOpt != null) {
+                versionOpt.put("optionValue", "4.2.0");
+                optionRepository.update("version", versionOpt, new String[0]);
+            }
+            final List<Object[]> optList = new ArrayList<>();
+            Collections.addAll(optList,
+                    new Object[]{Option.ID_C_MOST_COMMENT_ARTICLE_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_MOST_COMMENT_ARTICLE_DISPLAY_COUNT},
+                    new Object[]{Option.ID_C_MOST_VIEW_ARTICLE_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_MOST_VIEW_ARTICLES_DISPLAY_COUNT},
+                    new Object[]{Option.ID_C_RECENT_COMMENT_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_RECENT_COMMENT_DISPLAY_COUNT},
+                    new Object[]{Option.ID_C_COMMENTABLE, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_COMMENTABLE}
+            );
+            for (final Object[] i : optList) {
+                saveOption(i, optionRepository);
+            }
+            transaction.commit();
+        } catch (final RepositoryException | RuntimeException e) {
+            if (transaction != null && transaction.isActive()) {
+                transaction.rollback();
+            }
+            throw e;
         }
-        List<Object[]> optList = new ArrayList<>();
-        Collections.addAll(optList,
-                    new Object[] { Option.ID_C_MOST_COMMENT_ARTICLE_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_MOST_COMMENT_ARTICLE_DISPLAY_COUNT },
-                    new Object[] { Option.ID_C_MOST_VIEW_ARTICLE_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_MOST_VIEW_ARTICLES_DISPLAY_COUNT },
-                    new Object[] { Option.ID_C_RECENT_COMMENT_DISPLAY_CNT, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_RECENT_COMMENT_DISPLAY_COUNT },
-                    new Object[] { Option.ID_C_COMMENTABLE, Option.CATEGORY_C_PREFERENCE, Option.DefaultPreference.DEFAULT_COMMENTABLE }
-                );
-        for (Object[] i : optList) {
-            saveOption(i, optionRepository);
-        }
-        transaction.commit();
         version = 420;
     }
 

@@ -4,16 +4,45 @@ admin.logs = {
   through: null,
   requests: {},
   render: function (rows, target) {
-    var escape = function (value) { return $('<span>').text(String(value == null ? '' : value)).html() }
-    var markup = rows.map(function (entry) {
+    var escape = function (value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+    var formatDate = function (value) {
+      if (value === null || value === undefined || typeof value === 'boolean') return '—'
+      if (typeof value === 'string') {
+        value = value.trim()
+        if (!value) return '—'
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) return value.slice(0, 19)
+        if (/^\d+$/.test(value)) value = Number(value)
+      }
+      if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+        return Util.formatDate(value, 1)
+      }
+      var d = value instanceof Date ? value : new Date(value)
+      var time = d.getTime()
+      if (!Number.isFinite(time) || time < 0) return '—'
+      var pad = function (n) { return (n < 10 ? '0' : '') + n }
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+        ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    }
+    if (!Array.isArray(rows) || !rows.length) {
+      $('#' + target).html('<tbody><tr><td colspan="3">暂无日志。</td></tr></tbody>')
+      return
+    }
+    var markup = '<tbody>' + rows.map(function (entry) {
       var level = ['INFO','WARN','ERROR','FATAL','DEBUG','TRACE'].includes(entry.level) ? entry.level.toLowerCase() : 'other'
       var details = entry.throwable
-      return '<tbody><tr><td><span class="console-log-level console-log-level--' + level + '">' + escape(entry.level) + '</span></td>' +
-        '<td><time class="console-log-time">' + escape(String(entry.date || '').slice(0,19)) + '</time></td>' +
+      return '<tr><td><span class="console-log-level console-log-level--' + level + '">' + escape(entry.level) + '</span></td>' +
+        '<td><time class="console-log-time">' + escape(formatDate(entry.date)) + '</time></td>' +
         '<td><span class="console-log-source">' + escape(entry.name + ':' + entry.lineNumber) + '</span><p>' + escape(entry.message) + '</p>' +
-        (details ? '<details><summary>' + escape(details.class + ': ' + details.message) + '</summary><pre>' + (details.stackTrace || []).map(escape).join('\n') + '</pre></details>' : '') + '</td></tr></tbody>'
-    }).join('')
-    $('#' + target).html(markup || '<tbody><tr><td>暂无日志。</td></tr></tbody>')
+        (details ? '<details><summary>' + escape(details.class + ': ' + details.message) + '</summary><pre>' + (details.stackTrace || []).map(escape).join('\n') + '</pre></details>' : '') + '</td></tr>'
+    }).join('') + '</tbody>'
+    $('#' + target).html(markup)
   },
   load: function (recent, refresh) {
     var target = recent ? 'recentLogs' : 'logList', host = document.getElementById(target), that = this

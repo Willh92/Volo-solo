@@ -21,26 +21,38 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.Level;
+import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.BeanManager;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.repository.jdbc.JdbcRepository;
+import org.b3log.latke.util.Stopwatchs;
 import org.b3log.solo.bolo.pic.util.UploadUtil;
+import org.b3log.solo.cache.PublicViewCache;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.OptionRepository;
+import org.b3log.solo.service.InstantSearchService;
+import org.b3log.solo.service.SyndicationCacheService;
+import org.b3log.solo.util.Images;
 import org.b3log.solo.util.Uploads;
 import org.json.JSONObject;
 
 /** Runs one image migration at a time without retaining a database connection during downloads. */
 public class PBThread {
     private static final Logger LOGGER = Logger.getLogger(PBThread.class);
+    private static final int ARTICLE_PAGE_SIZE = 100;
     private static final Pattern IMAGE = Pattern.compile("(?<=\\]\\()https://(?:img\\.hacpai\\.com|b3logfile\\.com)/[^\\s)]+(?=\\))");
     private final AtomicBoolean running = new AtomicBoolean();
     private volatile String status = "空闲";
@@ -64,11 +76,12 @@ public class PBThread {
 
     private void convert() {
         int failures = 0;
+        boolean anyUpdated = false;
+        BeanManager beans = null;
         try {
-            final BeanManager beans = BeanManager.getInstance();
+            beans = BeanManager.getInstance();
             final ArticleRepository articles = beans.getReference(ArticleRepository.class);
             final OptionRepository options = beans.getReference(OptionRepository.class);
-            final List<JSONObject> records = articles.getList(new Query());
             final JSONObject option = options.get(Option.ID_C_TUCHUANG_CONFIG);
             final String config = option == null ? "hacpai" : option.optString(Option.OPTION_VALUE);
             JdbcRepository.dispose();
@@ -76,45 +89,88 @@ public class PBThread {
                 status = "未开始：请先选择其他图床";
                 return;
             }
-            for (JSONObject article : records) {
-                final String original = article.optString(Article.ARTICLE_CONTENT);
-                String content = original;
-                final List<String> urls = IMAGE.matcher(original).results().map(match -> match.group()).distinct().toList();
-                for (String source : urls) {
-                    try {
-                        final File temporary = download(source);
+
+            String lastId = "";
+            while (true) {
+                final Query pageQuery = new Query()
+                        .select(Keys.OBJECT_ID, Article.ARTICLE_CONTENT, Article.ARTICLE_IMG1_URL)
+                        .addSort(Keys.OBJECT_ID, SortDirection.ASCENDING)
+                        .setPage(1, ARTICLE_PAGE_SIZE)
+                        .setPageCount(1);
+                if (!lastId.isEmpty()) {
+                    pageQuery.setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.GREATER_THAN, lastId));
+                }
+                final List<JSONObject> records = articles.getList(pageQuery);
+                JdbcRepository.dispose();
+                if (records == null || records.isEmpty()) {
+                    break;
+                }
+
+                String pageMaxId = lastId;
+                for (JSONObject article : records) {
+                    if (article == null) {
+                        continue;
+                    }
+                    final String id = article.optString(Keys.OBJECT_ID);
+                    if (!id.isEmpty()) {
+                        pageMaxId = id;
+                    }
+                    final String original = article.optString(Article.ARTICLE_CONTENT);
+                    String content = original;
+                    final List<String> urls = IMAGE.matcher(original).results().map(match -> match.group()).distinct().toList();
+                    if (urls.isEmpty()) {
+                        continue;
+                    }
+                    final Map<String, String> migratedUrls = new LinkedHashMap<>();
+                    for (String source : urls) {
                         try {
-                            final String uploaded = UploadUtil.upload(config, temporary);
-                            if (uploaded == null || uploaded.isBlank()) throw new IOException("Empty upload result");
-                            content = content.replace(source, uploaded);
-                        } finally {
-                            Files.deleteIfExists(temporary.toPath());
-                            JdbcRepository.dispose();
+                            final File temporary = download(source);
+                            try {
+                                final String uploaded = UploadUtil.upload(config, temporary);
+                                if (uploaded == null || uploaded.isBlank()) throw new IOException("Empty upload result");
+                                content = content.replace(source, uploaded);
+                                migratedUrls.put(source, uploaded);
+                            } finally {
+                                Files.deleteIfExists(temporary.toPath());
+                                JdbcRepository.dispose();
+                            }
+                        } catch (Exception exception) {
+                            failures++;
+                            status = "运行中，部分图片处理失败，请查看日志";
+                            LOGGER.log(Level.WARN, "An image could not be migrated; its original URL is retained");
                         }
-                    } catch (Exception exception) {
-                        failures++;
-                        status = "运行中，部分图片处理失败，请查看日志";
-                        LOGGER.log(Level.WARN, "An image could not be migrated; its original URL is retained");
+                        // Respect the upstream image service request limit without holding a JDBC connection.
+                        Thread.sleep(60_000);
                     }
-                    // Respect the upstream image service request limit without holding a JDBC connection.
-                    Thread.sleep(60_000);
-                }
-                if (content.equals(original)) continue;
-                final Transaction transaction = articles.beginTransaction();
-                try {
-                    final String id = article.optString("oId");
-                    final JSONObject current = articles.get(id);
-                    if (current == null || !original.equals(current.optString(Article.ARTICLE_CONTENT))) {
-                        failures++;
-                        continue; // An author edited the article while downloads were in progress.
+                    if (content.equals(original)) continue;
+                    final Transaction transaction = articles.beginTransaction();
+                    try {
+                        final JSONObject current = articles.get(id);
+                        if (current == null || !original.equals(current.optString(Article.ARTICLE_CONTENT))) {
+                            failures++;
+                            continue; // An author edited the article while downloads were in progress.
+                        }
+                        current.put(Article.ARTICLE_CONTENT, content);
+                        final String oldImg1Url = current.optString(Article.ARTICLE_IMG1_URL, "");
+                        final String newImg1Url = rewriteMigratedCoverUrl(oldImg1Url, migratedUrls);
+                        if (!newImg1Url.equals(oldImg1Url)) {
+                            current.put(Article.ARTICLE_IMG1_URL, newImg1Url);
+                            articles.update(id, current, Article.ARTICLE_CONTENT, Article.ARTICLE_IMG1_URL);
+                        } else {
+                            articles.update(id, current, Article.ARTICLE_CONTENT);
+                        }
+                        transaction.commit();
+                        anyUpdated = true;
+                    } finally {
+                        if (transaction.isActive()) transaction.rollback();
+                        JdbcRepository.dispose();
                     }
-                    current.put(Article.ARTICLE_CONTENT, content);
-                    articles.update(id, current, Article.ARTICLE_CONTENT);
-                    transaction.commit();
-                } finally {
-                    if (transaction.isActive()) transaction.rollback();
-                    JdbcRepository.dispose();
                 }
+
+                if (records.size() < ARTICLE_PAGE_SIZE || pageMaxId.equals(lastId)) {
+                    break;
+                }
+                lastId = pageMaxId;
             }
             status = failures == 0 ? "空闲" : "已完成，部分图片未转换，请查看日志";
         } catch (InterruptedException exception) {
@@ -124,7 +180,66 @@ public class PBThread {
             status = "转换失败，请查看日志";
             LOGGER.log(Level.ERROR, "Image migration failed");
         } finally {
-            try { JdbcRepository.dispose(); } finally { running.set(false); }
+            try {
+                if (anyUpdated && beans != null) {
+                    invalidateContentCaches(beans);
+                }
+            } finally {
+                try {
+                    JdbcRepository.dispose();
+                } finally {
+                    try {
+                        Stopwatchs.release();
+                    } finally {
+                        running.set(false);
+                    }
+                }
+            }
+        }
+    }
+
+    private static String rewriteMigratedCoverUrl(final String oldImg1Url, final Map<String, String> migratedUrls) {
+        if (oldImg1Url == null || oldImg1Url.isEmpty() || migratedUrls.isEmpty()) {
+            return oldImg1Url == null ? "" : oldImg1Url;
+        }
+        final String oldBase = stripQuery(oldImg1Url);
+        for (final Map.Entry<String, String> entry : migratedUrls.entrySet()) {
+            final String source = entry.getKey();
+            final String sourceBase = stripQuery(source);
+            if (oldImg1Url.equals(source) || oldBase.equals(source) || oldBase.equals(sourceBase)) {
+                return Images.imageSize(entry.getValue(),
+                        Article.ARTICLE_THUMB_IMG_WIDTH, Article.ARTICLE_THUMB_IMG_HEIGHT);
+            }
+        }
+        return oldImg1Url;
+    }
+
+    private static String stripQuery(final String url) {
+        final int qIdx = url.indexOf('?');
+        return qIdx >= 0 ? url.substring(0, qIdx) : url;
+    }
+
+    private static void invalidateContentCaches(final BeanManager beans) {
+        try {
+            final PublicViewCache publicViewCache = beans.getReference(PublicViewCache.class);
+            if (publicViewCache != null) {
+                publicViewCache.invalidateAllArticles();
+            }
+        } catch (final Exception ignored) {
+        }
+        try {
+            final SyndicationCacheService syndicationCacheService = beans.getReference(SyndicationCacheService.class);
+            if (syndicationCacheService != null) {
+                syndicationCacheService.invalidate();
+            }
+        } catch (final Exception ignored) {
+        }
+        try {
+            final InstantSearchService instantSearchService = beans.getReference(InstantSearchService.class);
+            if (instantSearchService != null) {
+                instantSearchService.invalidate();
+            }
+        } catch (final Exception ignored) {
         }
     }
 

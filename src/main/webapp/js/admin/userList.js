@@ -41,29 +41,25 @@ admin.userList = {
   init: function (page) {
     this.tablePagination.buildTable([
       {
-        style: 'padding-left: 12px;',
         text: Label.userNameLabel,
         index: 'userName',
-        width: 180,
+        minWidth: 140,
       }, {
-        style: 'padding-left: 12px;',
         text: '验证邮箱',
         index: 'userEmail',
-        width: 210,
+        width: 200,
       }, {
-        style: 'padding-left: 12px;',
         text: Label.roleLabel,
         index: 'isAdmin',
-        width: 110,
+        width: 96,
       }, {
-        style: 'padding-left: 12px;',
         text: '状态',
         index: 'statusText',
-        width: 90,
+        width: 84,
       }, {
         text: '操作',
         index: 'actions',
-        width: 250,
+        width: 216,
       }])
 
     this.tablePagination.initPagination()
@@ -103,16 +99,16 @@ admin.userList = {
           return
         }
 
-        var users = result.users
+        var users = Array.isArray(result.users) ? result.users : []
         var userData = []
+        var pageInfo = result.pagination || {paginationPageCount: 1}
         admin.userList.pageInfo.currentCount = users.length
-        admin.userList.pageInfo.pageCount = result.pagination.paginationPageCount
+        admin.userList.pageInfo.pageCount = pageInfo.paginationPageCount || 1
         if (users.length < 1) {
-          $('#tipMsg').text('No user  ' + Label.reportIssueLabel)
+          that.tablePagination.updateTablePagination([], pageNum, pageInfo)
           $('#loadMsg').text('')
           return
         }
-        $('#tipMsg').text(Label.uploadMsg)
 
         var escapeHtml = (typeof Util !== 'undefined' && Util.escapeHtml) || function (v) {
           return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -128,15 +124,15 @@ admin.userList = {
           var encodedName = encodeQuote(users[i].userName)
           var emailVal = users[i].userEmail ? escapeHtml(users[i].userEmail) : '<span style="opacity:.55">—</span>'
           if (users[i].userEmail && users[i].userEmailVerified) {
-            emailVal += ' <span class="console-badge" style="font-size:11px;padding:1px 6px;border-radius:99px;background:rgba(45,106,91,.12);color:#2d6a5b;">已验证</span>'
+            emailVal += ' <span class="console-badge" style="font-size:11px;padding:1px 6px;border-radius:99px;background:color-mix(in srgb, var(--bolo-accent) 14%, transparent);color:var(--bolo-accent);">已验证</span>'
           }
           var disabled = Number(users[i].userStatus || 0) === 1
           userData[i] = {}
           userData[i].userName = escapeHtml(typeof Util !== 'undefined' && Util.htmlDecode ? Util.htmlDecode(users[i].userName) : users[i].userName)
           userData[i].userEmail = emailVal
           userData[i].statusText = disabled
-            ? '<span style="color:#b42318;font-weight:600;">已禁用</span>'
-            : '<span style="color:#2d6a5b;">正常</span>'
+            ? '<span style="color:var(--bolo-danger);font-weight:600;">已禁用</span>'
+            : '<span style="color:var(--bolo-accent);">正常</span>'
 
           if ('adminRole' === users[i].userRole) {
             userData[i].isAdmin = '&nbsp;' + Label.administratorLabel

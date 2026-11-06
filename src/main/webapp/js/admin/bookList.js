@@ -27,22 +27,33 @@ admin.bookList = {
             .replace(/'/g, '&#39;')
     },
 
-    formatTime: function (ms) {
-        if (!ms || Number(ms) <= 0) return '尚未同步'
-        var d = new Date(Number(ms))
-        if (isNaN(d.getTime())) return '尚未同步'
-        var pad = function (n) { return n < 10 ? '0' + n : String(n) }
+    formatTime: function (value) {
+        if (value === null || value === undefined || typeof value === 'boolean' || value === '') return '尚未同步'
+        if (typeof value === 'number' && value <= 0) return '尚未同步'
+        if (typeof value === 'string') {
+            value = value.trim()
+            if (!value || (/^\d+$/.test(value) && Number(value) <= 0)) return '尚未同步'
+        }
+        if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+            var formatted = Util.formatDate(value, 2)
+            return formatted === '—' ? '尚未同步' : formatted
+        }
+        if (typeof value === 'string' && /^\d+$/.test(value)) value = Number(value)
+        var d = value instanceof Date ? value : new Date(value)
+        var time = d.getTime()
+        if (!isFinite(time) || time <= 0) return '尚未同步'
+        var pad = function (n) { return (n < 10 ? '0' : '') + n }
         return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
             ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
     },
 
     init: function () {
-        this.loadArticlesCatalog()
         this.refresh()
     },
 
     refresh: function () {
         var that = this
+        this.loadArticleCatalog()
         $('#loadMsg').text(Label.loadingLabel || 'Loading...')
         $.ajax({
             url: Label.servePath + '/console/books',
@@ -65,10 +76,10 @@ admin.bookList = {
         })
     },
 
-    loadArticlesCatalog: function () {
+    loadArticleCatalog: function () {
         var that = this
         $.ajax({
-            url: Label.servePath + '/console/articles/status/published/1/100/10',
+            url: Label.servePath + '/console/articles/status/published/1/500/10',
             type: 'GET',
             cache: false,
             success: function (res) {
@@ -85,6 +96,10 @@ admin.bookList = {
                 that.renderSeriesArticleOrder()
             }
         })
+    },
+
+    loadArticlesCatalog: function () {
+        return this.loadArticleCatalog()
     },
 
     populateSeriesSelect: function () {
@@ -134,7 +149,7 @@ admin.bookList = {
                 '<td style="word-break: break-all;"><span style="opacity:0.8;">[' + srcLabel + ']</span> ' + srcDetail + '</td>' +
                 '<td>' + modeLabel + '</td>' +
                 '<td>' + Number(b.chapterCount || 0) + ' 章</td>' +
-                '<td style="font-size: 12px;">' + this.escape(this.formatTime(b.syncedAt)) + '</td>' +
+                '<td style="font-size: 12px;">' + this.escape(this.formatTime(b.lastSyncedAt != null ? b.lastSyncedAt : b.syncedAt)) + '</td>' +
                 '<td class="is-right"><div class="console-row-actions is-right">' +
                 '<a href="javascript:void(0)" data-id="' + safeId + '" onclick="admin.bookList.syncBook(this.dataset.id)">同步目录</a>' +
                 '<a href="javascript:void(0)" data-id="' + safeId + '" onclick="admin.bookList.copyBookShortcode(this.dataset.id)">复制短代码</a>' +

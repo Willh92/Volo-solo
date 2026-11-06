@@ -1243,8 +1243,10 @@ div.code-toolbar > .toolbar span:focus {
   color: var(--code-line-numbers-rows-color);
 }
 
-.content table thead td,
-.content table thead th {
+$bolo-fantastic-excluded-table: '.hljs-ln, .rouge-table, .lntable, .volo-github-repos-table, .nexmoe-album';
+$bolo-fantastic-excluded-table-ancestors: '.highlight, .gist, .rouge-table, .lntable, .syntaxhighlighter, .code-toolbar, .hljs-ln, .volo-github-repos-table, .nexmoe-album, pre';
+
+.content table:not(#{$bolo-fantastic-excluded-table}) :is(thead td, thead th):not(:is(#{$bolo-fantastic-excluded-table-ancestors}) *) {
   color: var(--color);
 }
 
@@ -1286,23 +1288,9 @@ body > .navbar {
   backdrop-filter: blur(20px);
 }
 
-.content table thead td,
-.content table thead th {
-  border: 1px solid var(--background);
-
-}
-
-.content table td,
-.content table th {
-  border: 1px solid var(--background);
-}
-
-table {
-  border: 2px solid var(--btn-hover-color);
-}
-
-thead, tbody, tr, th {
-  border: 1px solid var(--background);
+.content table:not(#{$bolo-fantastic-excluded-table}):not(:is(#{$bolo-fantastic-excluded-table-ancestors}) *),
+.content table:not(#{$bolo-fantastic-excluded-table}) :is(thead, tbody, tr, th, td):not(:is(#{$bolo-fantastic-excluded-table-ancestors}) *) {
+  border: 1px solid rgba(127, 140, 154, 0.28);
 }
 
 footer .title {

@@ -16,22 +16,54 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 admin.about = {
+  _cleanup: null,
   init: function () {
+    var self = admin.about
+    if (this && typeof this._cleanup === 'function') this._cleanup()
+    if (self && typeof self._cleanup === 'function') self._cleanup()
     admin.clearTip()
     var node = document.getElementById('projectSyncStatus')
     if (!node) return
     var controller = new AbortController()
     var timer
-    if (window.BoloNavigation) BoloNavigation.onLeave(function () { controller.abort(); clearTimeout(timer) })
+    var disposed = false
+    var target = this || self
+    var cleanup = function () {
+      if (disposed) return
+      disposed = true
+      controller.abort()
+      clearTimeout(timer)
+      if (self && self._cleanup === cleanup) self._cleanup = null
+      if (target && target._cleanup === cleanup) target._cleanup = null
+    }
+    if (self) self._cleanup = cleanup
+    if (target) target._cleanup = cleanup
+    if (window.BoloNavigation) BoloNavigation.onLeave(cleanup)
     function text (id, value) { var element = document.getElementById(id); if (element) element.textContent = value || '—' }
-    function date (value) { var parsed = new Date(value); return isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString() }
+    function date (value) {
+      if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+        return Util.formatDate(value, 1)
+      }
+      if (value === null || value === undefined || typeof value === 'boolean') return '—'
+      if (typeof value === 'string') {
+        value = value.trim()
+        if (!value) return '—'
+        if (/^\d+$/.test(value)) value = Number(value)
+      }
+      var parsed = value instanceof Date ? value : new Date(value)
+      var time = parsed.getTime()
+      if (!isFinite(time) || time < 0) return '—'
+      var pad = function (n) { return (n < 10 ? '0' : '') + n }
+      return parsed.getFullYear() + '-' + pad(parsed.getMonth() + 1) + '-' + pad(parsed.getDate()) +
+        ' ' + pad(parsed.getHours()) + ':' + pad(parsed.getMinutes()) + ':' + pad(parsed.getSeconds())
+    }
     async function load (remaining) {
-      if (!node.isConnected) return
+      if (disposed || !node.isConnected) return
       try {
         var response = await fetch(Label.servePath + '/console/project-info', {credentials: 'same-origin', signal: controller.signal})
         if (!response.ok) throw new Error('GitHub information is unavailable')
         var info = await response.json()
-        if (!node.isConnected) return
+        if (disposed || !node.isConnected) return
         if (info.available) {
           text('projectDescription', info.description || 'Volo — 从 Bolo 分支开发的 Java 博客系统。')
           text('projectStars', String(info.stars)); text('projectForks', String(info.forks)); text('projectIssues', String(info.issues))
@@ -55,7 +87,7 @@ admin.about = {
           text('projectRelease', '发布信息暂不可用')
           text('projectSyncStatus', '暂时无法连接 GitHub，可通过仓库链接查看。')
         }
-        if (info.loading && remaining > 0) timer = setTimeout(function () { load(remaining - 1) }, 1000)
+        if (!disposed && info.loading && remaining > 0) timer = setTimeout(function () { load(remaining - 1) }, 1000)
         else if (!info.available && info.loading) text('projectSyncStatus', '读取耗时较长，可稍后重新打开关于页。')
       } catch (error) {
         if (error.name !== 'AbortError') text('projectSyncStatus', '项目信息暂不可用，可通过仓库链接查看。')

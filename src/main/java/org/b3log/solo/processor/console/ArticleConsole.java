@@ -151,27 +151,16 @@ public class ArticleConsole {
         final JSONObject result = new JSONObject();
         renderer.setJSONObject(result);
         result.put(org.b3log.solo.model.Common.STATUS_CODE, true);
-        final Request request = context.getRequest();
-        String strN = context.param("n");
-        if (!Strings.isNumeric(strN)) {
-            strN = "6";
-        }
-
-        final int n = Math.min(20, Math.max(1, Integer.valueOf(strN)));
+        final int parsedN = org.apache.commons.lang3.math.NumberUtils.toInt(context.param("n"), 6);
+        final int n = Math.min(20, Math.max(1, parsedN));
         final List<String> urls = Images.randomImages(n);
 
-        final String wStr = context.param("w");
-        int w = Article.ARTICLE_THUMB_IMG_WIDTH;
-        if (Strings.isNumeric(wStr)) {
-            w = Integer.valueOf(wStr);
-        }
-        final int width = w;
-        final String hStr = context.param("h");
-        int h = Article.ARTICLE_THUMB_IMG_HEIGHT;
-        if (Strings.isNumeric(hStr)) {
-            h = Integer.valueOf(hStr);
-        }
-        final int height = h;
+        final int parsedW = org.apache.commons.lang3.math.NumberUtils.toInt(
+                context.param("w"), Article.ARTICLE_THUMB_IMG_WIDTH);
+        final int width = Math.min(4096, Math.max(1, parsedW));
+        final int parsedH = org.apache.commons.lang3.math.NumberUtils.toInt(
+                context.param("h"), Article.ARTICLE_THUMB_IMG_HEIGHT);
+        final int height = Math.min(4096, Math.max(1, parsedH));
 
         result.put("data", urls.stream().map(url -> Images.imageSize(url, width, height)).collect(Collectors.toList()));
     }
@@ -253,10 +242,22 @@ public class ArticleConsole {
 
             final JSONArray excludes = new JSONArray();
             excludes.put(Article.ARTICLE_CONTENT);
+            excludes.put(Article.ARTICLE_ABSTRACT);
+            excludes.put(Article.ARTICLE_ABSTRACT_TEXT);
+            excludes.put(Article.ARTICLE_IMG1_URL);
+            excludes.put(Article.ARTICLE_AUDIO_URL);
+            excludes.put(Article.ARTICLE_AUDIO_DURATION);
+            excludes.put(Article.ARTICLE_AUDIO_SIZE);
+            excludes.put(Article.ARTICLE_SIGN_ID);
+            excludes.put(Article.ARTICLE_VIEW_PWD);
+            excludes.put(Article.ARTICLE_COMMENTABLE);
             excludes.put(Article.ARTICLE_UPDATED);
             excludes.put(Article.ARTICLE_CREATED);
             excludes.put(Article.ARTICLE_AUTHOR_ID);
             excludes.put(Article.ARTICLE_RANDOM_DOUBLE);
+            if (!"published".equals(status)) {
+                excludes.put("articleCategory");
+            }
             requestJSONObject.put(Keys.EXCLUDES, excludes);
 
             final String keyword = StringUtils.trim(context.param("k"));
@@ -304,10 +305,6 @@ public class ArticleConsole {
 
                 return;
             }
-
-            final Transaction transaction = categoryTagRepository.beginTransaction();
-            categoryTagRepository.removeByTagId(articleId);
-            transaction.commit();
 
             articleMgmtService.removeArticle(articleId);
 
@@ -433,12 +430,20 @@ public class ArticleConsole {
         final JSONObject ret = new JSONObject();
         try {
             final JSONObject requestJSONObject = context.requestJSON();
-            final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
-            final String articleId = article.getString(Keys.OBJECT_ID);
+            if (null == requestJSONObject) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final JSONObject article = requestJSONObject.optJSONObject(Article.ARTICLE);
+            if (null == article || article.optString(Keys.OBJECT_ID).isBlank()) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "文章参数不正确。");
+                return;
+            }
+            final String articleId = article.optString(Keys.OBJECT_ID);
             renderer.setJSONObject(ret);
 
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+            if (null == currentUser || !articleQueryService.canAccessArticle(articleId, currentUser)) {
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
                 ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
 
@@ -446,10 +451,12 @@ public class ArticleConsole {
             }
             article.put("_operatorName", currentUser.optString(User.USER_NAME));
             articleMgmtService.updateArticle(requestJSONObject);
-            LOGGER.log(Level.INFO, "Article updated [id={0}]", requestJSONObject.getJSONObject(Article.ARTICLE).optString(Keys.OBJECT_ID));
+            LOGGER.log(Level.INFO, "Article updated [id={0}]", article.optString(Keys.OBJECT_ID));
 
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
@@ -468,9 +475,21 @@ public class ArticleConsole {
         final JSONObject ret = new JSONObject();
         try {
             final JSONObject requestJSONObject = context.requestJSON();
+            if (null == requestJSONObject) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final JSONObject article = requestJSONObject.optJSONObject(Article.ARTICLE);
+            if (null == article) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "文章参数不正确。");
+                return;
+            }
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            final JSONObject article = requestJSONObject.getJSONObject(Article.ARTICLE);
-            article.put(Article.ARTICLE_AUTHOR_ID, currentUser.getString(Keys.OBJECT_ID));
+            if (null == currentUser || currentUser.optString(Keys.OBJECT_ID).isBlank()) {
+                org.b3log.solo.util.AdminRequests.reject(context, 401, "请先登录管理后台。");
+                return;
+            }
+            article.put(Article.ARTICLE_AUTHOR_ID, currentUser.optString(Keys.OBJECT_ID));
             article.put("_operatorName", currentUser.optString(User.USER_NAME));
 
             final String articleId = articleMgmtService.addArticle(requestJSONObject);
@@ -480,6 +499,8 @@ public class ArticleConsole {
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
 
             renderer.setJSONObject(ret);
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             final JSONObject jsonObject = new JSONObject().put(org.b3log.solo.model.Common.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
@@ -498,11 +519,15 @@ public class ArticleConsole {
         try {
             final String articleId = context.pathVar("id");
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+            if (null == currentUser || !articleQueryService.canAccessArticle(articleId, currentUser)) {
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
                 return;
             }
             final JSONObject req = context.requestJSON();
+            if (null == req) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             final String action = req.optString("action", "create");
             if ("revoke".equalsIgnoreCase(action)) {
                 if (!Solos.isAdminLoggedIn(context)) {
@@ -527,6 +552,8 @@ public class ArticleConsole {
             ret.put("shareUrl", shareUrl);
             ret.put("expiresInSeconds", ttl);
             ret.put(Keys.MSG, "已生成限时免密预览链接");
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Creates article share token failed", e);
             ret.put(Keys.MSG, "生成预览链接失败");
@@ -597,7 +624,7 @@ public class ArticleConsole {
             final String articleId = context.pathVar("id");
             final String revId = context.pathVar("revId");
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
-            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+            if (null == currentUser || !articleQueryService.canAccessArticle(articleId, currentUser)) {
                 ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
                 return;
             }

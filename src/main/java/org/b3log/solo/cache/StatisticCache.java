@@ -64,7 +64,7 @@ public class StatisticCache {
      * @return statistic
      */
     public JSONObject getStatistic() {
-        return cache.get(Option.CATEGORY_C_STATISTIC);
+        return JsonCloneHelper.deepCloneObject(cache.get(Option.CATEGORY_C_STATISTIC));
     }
 
     /**
@@ -73,7 +73,11 @@ public class StatisticCache {
      * @param statistic the specified statistic
      */
     public void putStatistic(final JSONObject statistic) {
-        cache.put(Option.CATEGORY_C_STATISTIC, statistic);
+        if (null == statistic) {
+            cache.remove(Option.CATEGORY_C_STATISTIC);
+            return;
+        }
+        cache.put(Option.CATEGORY_C_STATISTIC, JsonCloneHelper.deepCloneObject(statistic));
     }
 
     /**

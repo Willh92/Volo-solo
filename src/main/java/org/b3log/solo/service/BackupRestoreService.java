@@ -8,6 +8,7 @@ package org.b3log.solo.service;
 
 import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
+import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.model.Plugin;
@@ -158,6 +159,9 @@ public class BackupRestoreService {
     @Inject
     private InstantSearchService instantSearchService;
 
+    @Inject
+    private BacklinkService backlinkService;
+
     /**
      * Safely inspects a Volo (`volo-backup-*.zip`) or Solo (`solo-json-*.zip`) backup archive
      * without modifying the database.
@@ -230,12 +234,14 @@ public class BackupRestoreService {
             throw new IllegalArgumentException("备份包中不包含有效管理员账号，无法覆盖账号凭证。");
         }
 
-        // 4. Snapshot current protected state when !overwriteAuth.
+        // 4. Snapshot current protected state when !overwriteAuth (or masked secret sources when overwriteAuth).
         final List<JSONObject> preservedAdmins = new ArrayList<>();
         final List<JSONObject> preservedProtectedOptions = new ArrayList<>();
+        String preRestoreWebhooksJson = "";
+        String preRestoreRemoteBackupJson = "";
         if (!overwriteAuth) {
             if (userRepository != null) {
-                final JSONArray currentUsers = QueryResults.array(userRepository.get(new Query()));
+                final JSONArray currentUsers = QueryResults.array(userRepository.get(new Query().setPageCount(1)));
                 for (int i = 0; i < currentUsers.length(); i++) {
                     final JSONObject u = currentUsers.optJSONObject(i);
                     if (u != null && Role.ADMIN_ROLE.equals(u.optString(User.USER_ROLE))) {
@@ -244,7 +250,7 @@ public class BackupRestoreService {
                 }
             }
             if (optionRepository != null) {
-                final JSONArray currentOptions = QueryResults.array(optionRepository.get(new Query()));
+                final JSONArray currentOptions = QueryResults.array(optionRepository.get(new Query().setPageCount(1)));
                 for (int i = 0; i < currentOptions.length(); i++) {
                     final JSONObject o = currentOptions.optJSONObject(i);
                     if (o != null && isProtectedOptionId(o.optString(Keys.OBJECT_ID))) {
@@ -252,6 +258,9 @@ public class BackupRestoreService {
                     }
                 }
             }
+        } else {
+            preRestoreWebhooksJson = readStoredOptionDocument(Option.ID_C_VOLO_WEBHOOKS);
+            preRestoreRemoteBackupJson = readStoredOptionDocument(Option.ID_C_VOLO_REMOTE_BACKUP);
         }
 
         // Clear caches prior to transactional delete/insert so OptionCache missingIds do not skip deletes.
@@ -285,6 +294,8 @@ public class BackupRestoreService {
             final int optionCount = restoreOptions(
                     optTableArray(data, Option.OPTIONS),
                     preservedProtectedOptions,
+                    preRestoreWebhooksJson,
+                    preRestoreRemoteBackupJson,
                     overwriteAuth);
             restoredCounts.put("options", optionCount);
 
@@ -359,7 +370,9 @@ public class BackupRestoreService {
                 || Option.ID_C_VOLO_PASSKEY_AUTH.equals(optId)
                 || optId.startsWith(Option.ID_C_VOLO_PASSKEY_AUTH + ".")
                 || Option.ID_C_VOLO_REMOTE_BACKUP.equals(optId)
-                || optId.startsWith(Option.ID_C_VOLO_REMOTE_BACKUP + ".");
+                || optId.startsWith(Option.ID_C_VOLO_REMOTE_BACKUP + ".")
+                || Option.ID_C_VOLO_WEBHOOKS.equals(optId)
+                || optId.startsWith(Option.ID_C_VOLO_WEBHOOKS + ".");
     }
 
     private record ParsedBackup(String entryName, JSONObject data) { }
@@ -537,7 +550,12 @@ public class BackupRestoreService {
         if (repository == null) {
             return;
         }
-        final JSONArray existing = QueryResults.array(repository.get(new Query().select(Keys.OBJECT_ID)));
+        if (Latkes.getRuntimeDatabase() != Latkes.RuntimeDatabase.NONE
+                && repository.getClass().getEnclosingClass() == null) {
+            repository.remove(new Query());
+            return;
+        }
+        final JSONArray existing = QueryResults.array(repository.get(new Query().select(Keys.OBJECT_ID).setPageCount(1)));
         for (int i = 0; i < existing.length(); i++) {
             final JSONObject row = existing.optJSONObject(i);
             if (row != null) {
@@ -563,12 +581,11 @@ public class BackupRestoreService {
 
         if (!overwriteAuth) {
             for (final JSONObject admin : preservedAdmins) {
-                final JSONObject copy = org.b3log.solo.util.Solos.clone(admin);
-                sanitizeUser(copy);
-                final String id = userRepository.add(copy);
+                sanitizeUser(admin);
+                final String id = userRepository.add(admin);
                 usedIds.add(id);
-                addNormalizedIfNotBlank(usedNames, copy.optString(User.USER_NAME));
-                addNormalizedIfNotBlank(usedEmails, copy.optString(UserExt.USER_EMAIL));
+                addNormalizedIfNotBlank(usedNames, admin.optString(User.USER_NAME));
+                addNormalizedIfNotBlank(usedEmails, admin.optString(UserExt.USER_EMAIL));
                 if (primaryAdminId.isEmpty()) {
                     primaryAdminId = id;
                 }
@@ -578,6 +595,7 @@ public class BackupRestoreService {
 
         for (int i = 0; i < backupUsers.length(); i++) {
             final JSONObject raw = backupUsers.optJSONObject(i);
+            backupUsers.put(i, (Object) null);
             if (raw == null) {
                 continue;
             }
@@ -585,18 +603,17 @@ public class BackupRestoreService {
             if (!overwriteAuth && Role.ADMIN_ROLE.equals(role)) {
                 continue;
             }
-            final JSONObject copy = org.b3log.solo.util.Solos.clone(raw);
-            sanitizeUser(copy);
-            final String oId = copy.optString(Keys.OBJECT_ID);
-            final String lowerName = copy.optString(User.USER_NAME).strip().toLowerCase(Locale.ROOT);
-            final String lowerEmail = copy.optString(UserExt.USER_EMAIL).strip().toLowerCase(Locale.ROOT);
+            sanitizeUser(raw);
+            final String oId = raw.optString(Keys.OBJECT_ID);
+            final String lowerName = raw.optString(User.USER_NAME).strip().toLowerCase(Locale.ROOT);
+            final String lowerEmail = raw.optString(UserExt.USER_EMAIL).strip().toLowerCase(Locale.ROOT);
 
             if ((!oId.isEmpty() && usedIds.contains(oId))
                     || (!lowerName.isEmpty() && usedNames.contains(lowerName))
                     || (!lowerEmail.isEmpty() && usedEmails.contains(lowerEmail))) {
                 continue;
             }
-            final String addedId = userRepository.add(copy);
+            final String addedId = userRepository.add(raw);
             usedIds.add(addedId);
             if (!lowerName.isEmpty()) {
                 usedNames.add(lowerName);
@@ -615,6 +632,8 @@ public class BackupRestoreService {
 
     private int restoreOptions(final JSONArray backupOptions,
                                final List<JSONObject> preservedProtectedOptions,
+                               final String preRestoreWebhooksJson,
+                               final String preRestoreRemoteBackupJson,
                                final boolean overwriteAuth) throws Exception {
         if (optionRepository == null) {
             return 0;
@@ -623,6 +642,7 @@ public class BackupRestoreService {
 
         for (int i = 0; i < backupOptions.length(); i++) {
             final JSONObject raw = backupOptions.optJSONObject(i);
+            backupOptions.put(i, (Object) null);
             if (raw == null) {
                 continue;
             }
@@ -633,24 +653,43 @@ public class BackupRestoreService {
             if (!overwriteAuth && isProtectedOptionId(optId)) {
                 continue;
             }
-            final JSONObject copy = org.b3log.solo.util.Solos.clone(raw);
-            sanitizeAndNormalizeOption(copy);
-            toInsert.put(optId, copy);
+            sanitizeAndNormalizeOption(raw);
+            toInsert.put(optId, raw);
         }
 
         if (!overwriteAuth) {
             for (final JSONObject protectedOpt : preservedProtectedOptions) {
                 final String optId = protectedOpt.optString(Keys.OBJECT_ID);
                 if (!optId.isEmpty()) {
-                    final JSONObject copy = org.b3log.solo.util.Solos.clone(protectedOpt);
-                    if (copy.isNull(Option.OPTION_CATEGORY)) {
-                        copy.put(Option.OPTION_CATEGORY, "");
+                    if (protectedOpt.isNull(Option.OPTION_CATEGORY)) {
+                        protectedOpt.put(Option.OPTION_CATEGORY, "");
                     }
-                    if (copy.isNull(Option.OPTION_VALUE)) {
-                        copy.put(Option.OPTION_VALUE, "");
+                    if (protectedOpt.isNull(Option.OPTION_VALUE)) {
+                        protectedOpt.put(Option.OPTION_VALUE, "");
                     }
-                    toInsert.put(optId, copy);
+                    toInsert.put(optId, protectedOpt);
                 }
+            }
+        } else {
+            final JSONObject webhooksOpt = toInsert.get(Option.ID_C_VOLO_WEBHOOKS);
+            if (webhooksOpt != null) {
+                webhooksOpt.put(Option.OPTION_VALUE, mergeWebhooksSecrets(
+                        webhooksOpt.optString(Option.OPTION_VALUE, ""),
+                        preRestoreWebhooksJson));
+            }
+            final JSONObject remoteBackupOpt = toInsert.get(Option.ID_C_VOLO_REMOTE_BACKUP);
+            if (remoteBackupOpt != null) {
+                remoteBackupOpt.put(Option.OPTION_VALUE, mergeRemoteBackupSecrets(
+                        remoteBackupOpt.optString(Option.OPTION_VALUE, ""),
+                        preRestoreRemoteBackupJson));
+            }
+        }
+
+        final JSONObject finalRemoteBackupOpt = toInsert.get(Option.ID_C_VOLO_REMOTE_BACKUP);
+        if (finalRemoteBackupOpt != null) {
+            final String cat = finalRemoteBackupOpt.optString(Option.OPTION_CATEGORY, "");
+            if (cat.isEmpty() || Option.CATEGORY_C_PREFERENCE.equals(cat)) {
+                finalRemoteBackupOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_REMOTE_BACKUP);
             }
         }
 
@@ -673,6 +712,140 @@ public class BackupRestoreService {
         return count;
     }
 
+    private String readStoredOptionDocument(final String rootId) {
+        try {
+            if (optionQueryService != null) {
+                final String val = org.b3log.solo.util.OptionDocuments.read(optionQueryService, rootId, "");
+                if (!val.isEmpty()) {
+                    return val;
+                }
+            }
+            if (optionRepository == null) {
+                return "";
+            }
+            JSONObject root = optionRepository.get(rootId);
+            Map<String, JSONObject> fallbackById = null;
+            if (root == null) {
+                final JSONArray all = QueryResults.array(optionRepository.get(new Query().setPageCount(1)));
+                fallbackById = new HashMap<>();
+                for (int i = 0; i < all.length(); i++) {
+                    final JSONObject o = all.optJSONObject(i);
+                    if (o != null) {
+                        final String id = o.optString(Keys.OBJECT_ID, "");
+                        if (!id.isEmpty()) {
+                            fallbackById.put(id, o);
+                        }
+                    }
+                }
+                root = fallbackById.get(rootId);
+            }
+            if (root == null) {
+                return "";
+            }
+            final String value = root.optString(Option.OPTION_VALUE, "");
+            if (!value.startsWith("{\"storage\":\"chunks\"")) {
+                return value;
+            }
+            final JSONObject manifest = new JSONObject(value);
+            final String generation = manifest.optString("generation", "");
+            final int count = manifest.optInt("count", 0);
+            if (!generation.matches("[a-f0-9]{32}") || count < 1 || count > 128) {
+                return "";
+            }
+            final StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < count; i++) {
+                final String chunkId = rootId + "." + generation + "." + i;
+                JSONObject chunk = optionRepository.get(chunkId);
+                if (chunk == null && fallbackById != null) {
+                    chunk = fallbackById.get(chunkId);
+                }
+                if (chunk == null) {
+                    return "";
+                }
+                sb.append(chunk.optString(Option.OPTION_VALUE, ""));
+            }
+            return sb.toString();
+        } catch (final Exception ignored) {
+            return "";
+        }
+    }
+
+    private static String mergeRemoteBackupSecrets(final String incomingRaw, final String preRestoreRaw) {
+        if (incomingRaw == null || incomingRaw.startsWith("{\"storage\":\"chunks\"")) {
+            return incomingRaw == null ? "" : incomingRaw;
+        }
+        try {
+            final JSONObject inObj = incomingRaw.isBlank() ? new JSONObject() : new JSONObject(incomingRaw);
+            inObj.remove("secretSet");
+            if (preRestoreRaw == null || preRestoreRaw.isBlank()) {
+                return inObj.toString();
+            }
+            final JSONObject oldObj = new JSONObject(preRestoreRaw);
+            for (final String secretKey : new String[]{"webdavPassword", "s3SecretKey", "secret"}) {
+                final String inSecret = inObj.optString(secretKey, "");
+                final String oldSecret = oldObj.optString(secretKey, "");
+                if (inSecret.isBlank() && !oldSecret.isBlank()) {
+                    inObj.put(secretKey, oldSecret);
+                }
+            }
+            return inObj.toString();
+        } catch (final Exception ignored) {
+            return incomingRaw;
+        }
+    }
+
+    private static String mergeWebhooksSecrets(final String incomingRaw, final String preRestoreRaw) {
+        if (incomingRaw == null || incomingRaw.isBlank() || incomingRaw.startsWith("{\"storage\":\"chunks\"")) {
+            return incomingRaw == null ? "" : incomingRaw;
+        }
+        try {
+            final JSONArray inArr = new JSONArray(incomingRaw);
+            final Map<String, String> secretById = new HashMap<>();
+            final Map<String, String> secretByUrl = new HashMap<>();
+            if (preRestoreRaw != null && !preRestoreRaw.isBlank()) {
+                final JSONArray oldArr = new JSONArray(preRestoreRaw);
+                for (int i = 0; i < oldArr.length(); i++) {
+                    final JSONObject oldItem = oldArr.optJSONObject(i);
+                    if (oldItem == null) {
+                        continue;
+                    }
+                    final String oldSecret = oldItem.optString("secret", "");
+                    if (oldSecret.isBlank()) {
+                        continue;
+                    }
+                    final String id = oldItem.optString("id", "").strip();
+                    if (!id.isEmpty()) {
+                        secretById.put(id, oldSecret);
+                    }
+                    final String url = oldItem.optString("url", "").strip();
+                    if (!url.isEmpty()) {
+                        secretByUrl.putIfAbsent(url, oldSecret);
+                    }
+                }
+            }
+            for (int i = 0; i < inArr.length(); i++) {
+                final JSONObject item = inArr.optJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                item.remove("secretSet");
+                final String inSecret = item.optString("secret", "");
+                if (inSecret.isBlank()) {
+                    String restored = secretById.get(item.optString("id", "").strip());
+                    if (restored == null || restored.isBlank()) {
+                        restored = secretByUrl.get(item.optString("url", "").strip());
+                    }
+                    if (restored != null && !restored.isBlank()) {
+                        item.put("secret", restored);
+                    }
+                }
+            }
+            return inArr.toString();
+        } catch (final Exception ignored) {
+            return incomingRaw;
+        }
+    }
+
     private int restoreArticles(final JSONArray backupArticles,
                                 final Set<String> restoredUserIds,
                                 final String primaryAdminId,
@@ -684,22 +857,22 @@ public class BackupRestoreService {
         int count = 0;
         for (int i = 0; i < backupArticles.length(); i++) {
             final JSONObject raw = backupArticles.optJSONObject(i);
+            backupArticles.put(i, (Object) null);
             if (raw == null) {
                 continue;
             }
-            final JSONObject copy = org.b3log.solo.util.Solos.clone(raw);
-            final String id = copy.optString(Keys.OBJECT_ID);
+            final String id = raw.optString(Keys.OBJECT_ID);
             if (!id.isEmpty() && !seenIds.add(id)) {
                 continue;
             }
-            sanitizeArticle(copy);
+            sanitizeArticle(raw);
             if (!overwriteAuth && !primaryAdminId.isEmpty()) {
-                final String authorId = copy.optString(Article.ARTICLE_AUTHOR_ID);
+                final String authorId = raw.optString(Article.ARTICLE_AUTHOR_ID);
                 if (authorId.isEmpty() || (!restoredUserIds.isEmpty() && !restoredUserIds.contains(authorId))) {
-                    copy.put(Article.ARTICLE_AUTHOR_ID, primaryAdminId);
+                    raw.put(Article.ARTICLE_AUTHOR_ID, primaryAdminId);
                 }
             }
-            articleRepository.add(copy);
+            articleRepository.add(raw);
             count++;
         }
         return count;
@@ -715,18 +888,18 @@ public class BackupRestoreService {
         int count = 0;
         for (int i = 0; i < rows.length(); i++) {
             final JSONObject raw = rows.optJSONObject(i);
+            rows.put(i, (Object) null);
             if (raw == null) {
                 continue;
             }
-            final JSONObject copy = org.b3log.solo.util.Solos.clone(raw);
-            final String id = copy.optString(Keys.OBJECT_ID);
+            final String id = raw.optString(Keys.OBJECT_ID);
             if (!id.isEmpty() && !seenIds.add(id)) {
                 continue;
             }
             if (sanitizer != null) {
-                sanitizer.sanitize(copy);
+                sanitizer.sanitize(raw);
             }
-            repository.add(copy);
+            repository.add(raw);
             count++;
         }
         return count;
@@ -793,8 +966,11 @@ public class BackupRestoreService {
 
     private void refreshRuntimeState() {
         clearAllCaches();
+        if (backlinkService != null) {
+            clearCacheSafe(backlinkService::invalidateAll);
+        }
         if (instantSearchService != null) {
-            clearCacheSafe(instantSearchService::invalidate);
+            clearCacheSafe(instantSearchService::invalidateAll);
         }
         clearCacheSafe(Markdowns::clearCache);
         clearCacheSafe(MailService::loadMailSettings);
@@ -837,11 +1013,19 @@ public class BackupRestoreService {
                     clearCacheSafe(() -> AdminPaths.configureLogin(preference.optString("adminLoginPath", "")));
                 }
             }
+            if (backlinkService == null) {
+                clearCacheSafe(() -> {
+                    final BacklinkService backlink = optBean(bm, BacklinkService.class);
+                    if (backlink != null) {
+                        backlink.invalidateAll();
+                    }
+                });
+            }
             if (instantSearchService == null) {
                 clearCacheSafe(() -> {
                     final InstantSearchService search = optBean(bm, InstantSearchService.class);
                     if (search != null) {
-                        search.invalidate();
+                        search.invalidateAll();
                     }
                 });
             }
@@ -866,7 +1050,6 @@ public class BackupRestoreService {
             clearCacheSafe(org.b3log.solo.util.Skins::clearTemplateCache);
 
             invokeOptionalBeanNoArg(bm, "org.b3log.solo.service.SyndicationCacheService", "invalidate");
-            invokeOptionalBeanNoArg(bm, "org.b3log.solo.service.BacklinkService", "invalidate");
             invokeOptionalBeanFirstAvailable(bm, "org.b3log.solo.service.AnalyticsTrendService", "reloadFromStorage", "reload", "invalidate");
             invokeOptionalBeanFirstAvailable(bm, "org.b3log.solo.service.SeriesAndBookshelfService", "reloadFromStorage", "reload", "invalidate");
             invokeOptionalBeanFirstAvailable(bm, "org.b3log.solo.service.PasskeyService", "reloadFromStorage", "reload", "invalidate");
@@ -978,6 +1161,11 @@ public class BackupRestoreService {
         ensureString(user, UserExt.USER_AVATAR, "");
         ensureString(user, UserExt.USER_B3_KEY, "");
         ensureString(user, UserExt.USER_GITHUB_ID, "");
+        ensureString(user, UserExt.USER_EMAIL, "");
+        ensureBoolean(user, UserExt.USER_EMAIL_VERIFIED, false);
+        ensureString(user, UserExt.USER_PASSWORD_HASH, "");
+        ensureInt(user, UserExt.USER_STATUS, UserExt.USER_STATUS_C_VALID);
+        ensureLong(user, UserExt.USER_CREATED, 0L);
     }
 
     private static void sanitizeAndNormalizeOption(final JSONObject opt) {
@@ -994,52 +1182,40 @@ public class BackupRestoreService {
     private static void sanitizeArticle(final JSONObject article) {
         ensureString(article, Article.ARTICLE_TITLE, "Untitled");
         ensureString(article, Article.ARTICLE_CONTENT, "");
+        ensureString(article, Article.ARTICLE_VIEW_PWD, "");
         final String abs = article.isNull(Article.ARTICLE_ABSTRACT)
-                ? Article.getAbstractText(article.optString(Article.ARTICLE_CONTENT, ""))
+                ? Article.getAbstractText(article)
                 : article.optString(Article.ARTICLE_ABSTRACT, "");
         article.put(Article.ARTICLE_ABSTRACT, abs);
         if (article.isNull(Article.ARTICLE_ABSTRACT_TEXT)) {
-            article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(abs));
+            article.put(Article.ARTICLE_ABSTRACT_TEXT, Article.getAbstractText(article));
         }
         ensureString(article, Article.ARTICLE_TAGS_REF, "");
         ensureString(article, Article.ARTICLE_AUTHOR_ID, "");
         ensureString(article, Article.ARTICLE_PERMALINK, "");
         ensureString(article, Article.ARTICLE_SIGN_ID, "1");
-        ensureString(article, Article.ARTICLE_VIEW_PWD, "");
         ensureString(article, Article.ARTICLE_IMG1_URL, "");
-        if (!article.has(Article.ARTICLE_COMMENT_COUNT)) {
-            article.put(Article.ARTICLE_COMMENT_COUNT, 0);
-        }
-        if (!article.has(Article.ARTICLE_VIEW_COUNT)) {
-            article.put(Article.ARTICLE_VIEW_COUNT, 0);
-        }
-        if (!article.has(Article.ARTICLE_PUT_TOP)) {
-            article.put(Article.ARTICLE_PUT_TOP, false);
-        }
-        if (!article.has(Article.ARTICLE_COMMENTABLE)) {
-            article.put(Article.ARTICLE_COMMENTABLE, true);
-        }
-        if (!article.has(Article.ARTICLE_RANDOM_DOUBLE)) {
+        ensureLong(article, Article.ARTICLE_SCHEDULE_TIME, 0L);
+        ensureString(article, Article.ARTICLE_AUDIO_URL, "");
+        ensureInt(article, Article.ARTICLE_AUDIO_DURATION, 0);
+        ensureLong(article, Article.ARTICLE_AUDIO_SIZE, 0L);
+        ensureInt(article, Article.ARTICLE_COMMENT_COUNT, 0);
+        ensureInt(article, Article.ARTICLE_VIEW_COUNT, 0);
+        ensureBoolean(article, Article.ARTICLE_PUT_TOP, false);
+        ensureBoolean(article, Article.ARTICLE_COMMENTABLE, true);
+        if (article.isNull(Article.ARTICLE_RANDOM_DOUBLE)) {
             article.put(Article.ARTICLE_RANDOM_DOUBLE, Math.random());
         }
         final long now = System.currentTimeMillis();
-        if (!article.has(Article.ARTICLE_CREATED)) {
-            article.put(Article.ARTICLE_CREATED, now);
-        }
-        if (!article.has(Article.ARTICLE_UPDATED)) {
-            article.put(Article.ARTICLE_UPDATED, article.optLong(Article.ARTICLE_CREATED, now));
-        }
-        if (!article.has(Article.ARTICLE_STATUS)) {
-            article.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
-        }
+        ensureLong(article, Article.ARTICLE_CREATED, now);
+        ensureLong(article, Article.ARTICLE_UPDATED, article.optLong(Article.ARTICLE_CREATED, now));
+        ensureInt(article, Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
     }
 
     private static void sanitizeRevision(final JSONObject rev) {
         ensureString(rev, "articleOId", "");
         ensureString(rev, "revisionTitle", "");
-        if (!rev.has("revisionCreated")) {
-            rev.put("revisionCreated", System.currentTimeMillis());
-        }
+        ensureLong(rev, "revisionCreated", System.currentTimeMillis());
     }
 
     private static void sanitizeComment(final JSONObject cmt) {
@@ -1049,9 +1225,15 @@ public class BackupRestoreService {
         ensureString(cmt, Comment.COMMENT_SHARP_URL, "");
         ensureString(cmt, Comment.COMMENT_THUMBNAIL_URL, "");
         ensureString(cmt, Comment.COMMENT_URL, "");
-        if (!cmt.has(Comment.COMMENT_CREATED)) {
-            cmt.put(Comment.COMMENT_CREATED, System.currentTimeMillis());
-        }
+        ensureString(cmt, Comment.COMMENT_ORIGINAL_COMMENT_ID, "");
+        ensureString(cmt, Comment.COMMENT_ORIGINAL_COMMENT_NAME, "");
+        ensureString(cmt, Comment.COMMENT_USER_ID, "");
+        ensureString(cmt, "commentClientIP", "");
+        ensureString(cmt, "commentNotifyEmail", "");
+        ensureString(cmt, "commentGuestKeyHash", "");
+        ensureInt(cmt, Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED);
+        ensureBoolean(cmt, "commentDeleted", false);
+        ensureLong(cmt, Comment.COMMENT_CREATED, System.currentTimeMillis());
     }
 
     private static void sanitizeCategory(final JSONObject cat) {
@@ -1109,6 +1291,41 @@ public class BackupRestoreService {
 
     private static void ensureString(final JSONObject obj, final String key, final String fallback) {
         if (obj.isNull(key)) {
+            obj.put(key, fallback);
+        }
+    }
+
+    private static void ensureInt(final JSONObject obj, final String key, final int fallback) {
+        if (obj.isNull(key)) {
+            obj.put(key, fallback);
+        }
+    }
+
+    private static void ensureLong(final JSONObject obj, final String key, final long fallback) {
+        if (obj.isNull(key)) {
+            obj.put(key, fallback);
+        }
+    }
+
+    private static void ensureBoolean(final JSONObject obj, final String key, final boolean fallback) {
+        if (!obj.has(key) || obj.isNull(key)) {
+            obj.put(key, fallback);
+            return;
+        }
+        final Object raw = obj.opt(key);
+        if (raw instanceof Boolean) {
+            return;
+        }
+        if (raw instanceof Number num) {
+            obj.put(key, num.intValue() != 0);
+            return;
+        }
+        final String s = String.valueOf(raw).strip();
+        if ("true".equalsIgnoreCase(s) || "1".equals(s)) {
+            obj.put(key, true);
+        } else if ("false".equalsIgnoreCase(s) || "0".equals(s) || s.isEmpty()) {
+            obj.put(key, false);
+        } else {
             obj.put(key, fallback);
         }
     }

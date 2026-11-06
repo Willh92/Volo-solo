@@ -71,6 +71,102 @@ for (const [stored,hour,dark,expected] of [['light',23,true,'light'],['dark',12,
   cases+=6;
 }
 
+// Round 5: wrapArticleTables code-table/album exclusions, post-script PJAX timing, data-theme skin scoping & bolo:themechange dispatch.
+{
+  let currentSkin='volo-studio';
+  const dispatched=[];
+  const listeners={};
+  const dataset={};
+  let pjaxLoading=false;
+  const root={dataset,style:{},hasAttribute:name=>name==='data-bolo-loading'&&pjaxLoading};
+  let tables=[];
+  const makeTable=({classes=[],ancestor=''}={})=>{
+    const cls=new Set(classes);
+    const parentNode={
+      children:[],
+      insertBefore(wrapper,ref){wrapper.parentNode=this;this.wrappedWith=wrapper;this.wrappedRef=ref;}
+    };
+    const tbl={
+      parentNode,
+      classList:{contains:c=>cls.has(c),add:c=>cls.add(c)},
+      closest(sel){
+        if(tbl.parentNode&&tbl.parentNode.className==='volo-table-scroll'&&sel.includes('.volo-table-scroll'))return tbl.parentNode;
+        if(!ancestor)return null;
+        return sel.split(',').map(s=>s.trim()).includes(ancestor)?{}:null;
+      }
+    };
+    return tbl;
+  };
+  const document={
+    documentElement:root,readyState:'complete',hidden:false,
+    body:{classList:{contains:()=>false}},
+    createElement:()=>({className:'',appendChild(child){child.parentNode=this;this.child=child;}}),
+    querySelector:sel=>sel.includes('bolo-accent')?{content:'forest'}:sel==='.bolo-appearance'?{}:sel.includes('bolo-skin')?{content:currentSkin}:null,
+    querySelectorAll:sel=>sel.includes('table')?tables:[],
+    addEventListener(type,fn){listeners['document:'+type]=fn;}
+  };
+  const window={
+    matchMedia:()=>({matches:false,addEventListener(){}}),
+    addEventListener(type,fn){listeners['window:'+type]=fn;},
+    dispatchEvent(ev){dispatched.push(ev);}
+  };
+  vm.runInNewContext(source,{
+    window,document,location:{pathname:'/articles/1.html'},
+    localStorage:{getItem:()=>'light',setItem(){}},
+    Date,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init?.detail;}},
+    MutationObserver:class{observe(){}},setInterval:()=>1
+  });
+
+  // 1) data-theme only set on bolo-butterfly; bolo:themechange dispatched on theme change
+  assert.equal(dataset.theme,undefined,'Non-Butterfly skins must not set html[data-theme]');
+  currentSkin='bolo-butterfly';
+  window.BoloTheme.refresh();
+  assert.equal(dataset.theme,'light','bolo-butterfly must sync html[data-theme]');
+  dispatched.length=0;
+  window.BoloTheme.set('dark');
+  assert.equal(dataset.theme,'dark');
+  assert(dispatched.some(e=>e.type==='bolo:themechange'&&e.detail?.theme==='dark'),'apply() must dispatch bolo:themechange');
+  currentSkin='bolo-nexmoe';
+  window.BoloTheme.refresh();
+  assert.equal(dataset.theme,undefined,'Leaving bolo-butterfly must remove html[data-theme]');
+
+  // 2) Pre-script PJAX shell refresh must NOT wrap unmarked album tables before app.js marks .nexmoe-album
+  const pendingAlbum=makeTable();
+  const markdownTable=makeTable();
+  const highlightTable=makeTable({ancestor:'.highlight'});
+  const hljsTable=makeTable({classes:['hljs-ln']});
+  const rougeTable=makeTable({classes:['rouge-table']});
+  const lntable=makeTable({classes:['lntable']});
+  const repoTable=makeTable({classes:['volo-github-repos-table']});
+  const commentTable=makeTable({ancestor:'.comments'});
+  const preTable=makeTable({ancestor:'pre'});
+  tables=[pendingAlbum,markdownTable,highlightTable,hljsTable,rougeTable,lntable,repoTable,commentTable,preTable];
+
+  pjaxLoading=true;
+  listeners['window:bolo:before-navigate']();
+  window.BoloTheme.refresh();
+  assert.equal(pendingAlbum.parentNode.className,undefined,'Pre-script shell refresh must not wrap tables before skin scripts run');
+
+  pendingAlbum.classList.add('nexmoe-album');
+  listeners['window:bolo:after-navigate']();
+  pjaxLoading=false;
+
+  assert.equal(markdownTable.parentNode.className,'volo-table-scroll','Regular article data tables must be wrapped on bolo:after-navigate');
+  for(const [label,excluded] of [
+    ['nexmoe-album',pendingAlbum],
+    ['.highlight table',highlightTable],
+    ['.hljs-ln',hljsTable],
+    ['.rouge-table',rougeTable],
+    ['.lntable',lntable],
+    ['.volo-github-repos-table',repoTable],
+    ['.comments table',commentTable],
+    ['pre table',preTable]
+  ]){
+    assert.notEqual(excluded.parentNode.className,'volo-table-scroll',`${label} must be excluded from .volo-table-scroll wrapping`);
+  }
+  cases+=4;
+}
+
 // Execute the real login handler with synthetic DOM elements and fetch responses.
 const account = fs.readFileSync('src/main/webapp/js/account-login.js','utf8');
 function loginEnvironment(response, captchaPayload={captchaId:"test-id"}) {

@@ -359,7 +359,7 @@ public class AnalyticsTrendService {
             return null;
         }
         try {
-            final JSONObject article = articleRepository.get(articleId);
+            final JSONObject article = articleRepository.getBriefForAccessCheck(articleId);
             if (article == null) {
                 return null;
             }

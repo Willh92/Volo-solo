@@ -72,8 +72,9 @@ public class CommentEditProcessor {
         if (comment.optInt(Comment.COMMENT_STATUS, Comment.COMMENT_STATUS_C_APPROVED) != Comment.COMMENT_STATUS_C_APPROVED) {
             return false;
         }
-        final JSONObject article = articleRepository.get(comment.optString(Comment.COMMENT_ON_ID));
+        final JSONObject article = articleRepository.getBriefForAccessCheck(comment.optString(Comment.COMMENT_ON_ID));
         if (article == null || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED
+                || Solos.needViewPwd(context, article)
                 || (!allowWhenCommentsClosed && !article.optBoolean(Article.ARTICLE_COMMENTABLE))) {
             return false;
         }
@@ -97,9 +98,10 @@ public class CommentEditProcessor {
             final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
             final String address = LoginThrottle.clientAddress(context.getRequest()), key = context.header("X-Volo-Visitor-Key");
             if (!administrator) {
-                final JSONObject article = articleRepository.get(articleId);
+                final JSONObject article = articleRepository.getBriefForAccessCheck(articleId);
                 if ((currentUser == null && CommentOwnership.hash(key).isEmpty()) || article == null || !article.optBoolean(Article.ARTICLE_COMMENTABLE)
                         || article.optInt(Article.ARTICLE_STATUS) != Article.ARTICLE_STATUS_C_PUBLISHED
+                        || Solos.needViewPwd(context, article)
                         || !canNonAdminEditByAccessMode(currentUser)) {
                     context.renderJSON(new JSONObject().put("sc", true).put("editable", ids)); return;
                 }
@@ -146,10 +148,12 @@ public class CommentEditProcessor {
         try {
             final JSONObject comment = commentRepository.get(context.pathVar("id"));
             if (comment == null || !owns(context, comment, delete)) { AdminRequests.reject(context, 403, "当前身份或 IP 无法修改这条评论。"); return; }
+            final JSONObject payload = delete ? null : context.requestJSON();
+            if (!delete && payload == null) { AdminRequests.reject(context, 400, "评论请求格式不正确。"); return; }
             final String articleId = comment.optString(Comment.COMMENT_ON_ID);
             if (!adminLoggedIn) {
                 final var attempt = edits.acquire(LoginThrottle.clientAddress(context.getRequest()), articleId,
-                        context.method() + context.pathVar("id") + (delete ? "" : context.requestJSON().optString("commentContent")));
+                        context.method() + context.pathVar("id") + (delete ? "" : payload.optString("commentContent")));
                 if (!attempt.allowed()) { context.setHeader("Retry-After", String.valueOf(attempt.retryAfter())); AdminRequests.reject(context, 429, "修改操作过于频繁，请稍后再试。"); return; }
             }
             if (delete) {
@@ -160,7 +164,6 @@ public class CommentEditProcessor {
                 invalidateCaches(articleId);
                 context.renderJSON(new JSONObject().put("sc", true));
             } else {
-                final JSONObject payload = context.requestJSON();
                 if (org.b3log.solo.service.RiskControlService.rejectCommentXss(context, payload)) return;
                 if (!CommentProcessor.checkCommentCaptcha(context, payload, adminLoggedIn)) return;
                 final String content = payload.optString("commentContent");

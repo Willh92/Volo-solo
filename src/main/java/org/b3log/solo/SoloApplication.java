@@ -36,6 +36,7 @@ import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Strings;
+import org.b3log.latke.util.StaticResources;
 import org.b3log.solo.bolo.prop.MailService;
 import org.b3log.solo.bolo.waf.WAF;
 import org.b3log.solo.event.B3ArticleSender;
@@ -128,9 +129,15 @@ public final class SoloApplication {
             });
     private static final org.b3log.solo.web.WebResources WEB_RESOURCES = new org.b3log.solo.web.WebResources(
             java.nio.file.Path.of(System.getProperty("bolo.webRoot", java.nio.file.Files.isDirectory(java.nio.file.Path.of("src/main/webapp")) ? "src/main/webapp" : ".")));
+
+    static {
+        javax.imageio.ImageIO.setUseCache(false);
+    }
+
     public static org.b3log.solo.web.WebResources getWebResources() { return WEB_RESOURCES; }
 
     public void initialize() {
+        javax.imageio.ImageIO.setUseCache(false);
         Latkes.setScanPath("org.b3log.solo");
         Latkes.init();
         org.b3log.latke.http.Dispatcher.startRequestHandler = context -> {
@@ -214,6 +221,7 @@ public final class SoloApplication {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
         }
+        Stopwatchs.release();
 
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
         cronMgmtService.start();
@@ -230,9 +238,10 @@ public final class SoloApplication {
         } catch (JSONException ignored) {
         }
     }
+
     public void shutdown() {
         final CronMgmtService cronMgmtService = beanManager.getReference(CronMgmtService.class);
-        cronMgmtService.stop();
+        cronMgmtService.shutdown();
         try {
             if (null != beanManager) {
                 try {
@@ -268,6 +277,7 @@ public final class SoloApplication {
         }
         org.b3log.solo.service.ImportService.shutdown();
         org.b3log.solo.service.RemoteBackupSyncService.shutdown();
+        org.b3log.solo.bolo.pic.util.UploadUtil.shutdown();
         org.b3log.solo.service.IndexNowService.shutdown();
         org.b3log.solo.service.WebhookNotifyService.shutdown();
         org.b3log.solo.service.LinkHealthService.shutdown();
@@ -281,6 +291,7 @@ public final class SoloApplication {
 
         LOGGER.info("Destroyed the context");
     }
+
     public static boolean hasIncomingSessionCookie(final String rawCookieHeader, final String sessionId) {
         if (rawCookieHeader == null || rawCookieHeader.isEmpty() || sessionId == null || sessionId.isEmpty()) {
             return false;
@@ -362,6 +373,12 @@ public final class SoloApplication {
         return false;
     }
 
+    public static void untrackSession(final String sessionId) {
+        if (sessionId != null && !sessionId.isEmpty()) {
+            SESSION_TRACKED.remove(sessionId);
+        }
+    }
+
     public static void evictTransientSession(final Request request) {
         if (request == null) return;
         final org.b3log.latke.http.Session session = request.getSession();
@@ -389,16 +406,18 @@ public final class SoloApplication {
         }
         while (org.b3log.latke.http.Sessions.CACHE.size() > MAX_SESSIONS) {
             final String oldest = SESSION_ORDER.poll();
-            if (oldest != null) {
-                SESSION_TRACKED.remove(oldest);
-                org.b3log.latke.http.Sessions.CACHE.remove(oldest);
-            } else {
+            if (oldest == null) {
                 SESSION_TRACKED.clear();
                 org.b3log.latke.http.Sessions.CACHE.clear();
                 break;
             }
+            if (!SESSION_TRACKED.remove(oldest)) {
+                continue;
+            }
+            org.b3log.latke.http.Sessions.CACHE.remove(oldest);
         }
     }
+
     public void requestInitialized(final Request httpServletRequest) {
         httpServletRequest.setAttribute(Keys.HttpRequest.START_TIME_MILLIS, System.currentTimeMillis());
         if (LOGGER.isDebugEnabled()) {
@@ -406,9 +425,13 @@ public final class SoloApplication {
         }
 
         final String requestURI = httpServletRequest.getRequestURI();
-        Stopwatchs.start("Request Initialized [requestURI=" + requestURI + "]");
-        if (org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)) {
+        if (httpServletRequest.isStaticResource()
+                || org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)
+                || StaticResources.isStatic(httpServletRequest)) {
             return;
+        }
+        if (LOGGER.isTraceEnabled()) {
+            Stopwatchs.start("Request Initialized [requestURI=" + requestURI + "]");
         }
         fillBotAttrs(httpServletRequest);
         if (!Solos.isBot(httpServletRequest)) {
@@ -418,13 +441,26 @@ public final class SoloApplication {
 
         resolveSkinDir(httpServletRequest);
     }
-    public void requestDestroyed(final Request request) {
-        Stopwatchs.end();
 
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.log(Level.DEBUG, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+    public void requestDestroyed(final Request request) {
+        try {
+            if (null != request && (request.isStaticResource()
+                    || org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(request.getRequestURI()))) {
+                return;
+            }
+            if (LOGGER.isTraceEnabled()) {
+                Stopwatchs.end();
+                LOGGER.log(Level.TRACE, "Stopwatch: {0}{1}", Strings.LINE_SEPARATOR, Stopwatchs.getTimingStat());
+                Stopwatchs.release();
+            } else {
+                Stopwatchs.release();
+            }
+        } finally {
+            try {
+                org.b3log.latke.repository.jdbc.JdbcRepository.dispose();
+            } catch (final Exception ignored) {
+            }
         }
-        Stopwatchs.release();
     }
 
     /**
@@ -514,17 +550,16 @@ public final class SoloApplication {
         String skin = Skins.getSkinDirNameFromQuery(httpServletRequest);
         if (StringUtils.isBlank(skin)) {
             final OptionQueryService optionQueryService = beanManager.getReference(OptionQueryService.class);
-            final JSONObject skinOpt = optionQueryService.getSkin();
             if (Solos.isMobile(httpServletRequest)) {
-                if (null != skinOpt) {
-                    skin = skinOpt.optString(Option.ID_C_MOBILE_SKIN_DIR_NAME);
-                } else {
+                skin = optionQueryService.getSkinString(Option.ID_C_MOBILE_SKIN_DIR_NAME,
+                        Option.DefaultPreference.DEFAULT_MOBILE_SKIN_DIR_NAME);
+                if (StringUtils.isBlank(skin)) {
                     skin = Option.DefaultPreference.DEFAULT_MOBILE_SKIN_DIR_NAME;
                 }
             } else {
-                if (null != skinOpt) {
-                    skin = skinOpt.optString(Option.ID_C_SKIN_DIR_NAME);
-                } else {
+                skin = optionQueryService.getSkinString(Option.ID_C_SKIN_DIR_NAME,
+                        Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
+                if (StringUtils.isBlank(skin)) {
                     skin = Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME;
                 }
             }

@@ -39,22 +39,19 @@ admin.followList = {
         this.tablePagination.buildTable([{
             text: "",
             index: "followOrder",
-            width: 60
+            width: 68
         }, {
-            style: "padding-left: 12px;",
             text: Label.linkTitle1Label,
             index: "followTitle",
-            width: 230
+            width: 168
         }, {
-            style: "padding-left: 12px;",
             text: Label.urlLabel,
             index: "followAddress",
             minWidth: 180
         }, {
-            style: "padding-left: 12px;",
             text: Label.linkDescription1Label,
             index: "followDescription",
-            width: 360
+            width: 190
         }]);
 
         this.tablePagination.initPagination();
@@ -278,7 +275,7 @@ admin.followList = {
      * @title 链接标题
      */
     del: function (id, title) {
-        var isDelete = confirm(Label.confirmRemoveLabel + Label.permafollowLabel + '"' + Util.htmlDecode(title) + '"?');
+        var isDelete = confirm(Label.confirmRemoveLabel + (Label.followLabel || '关注') + '"' + Util.htmlDecode(title) + '"?');
         if (isDelete) {
             $("#loadMsg").text(Label.loadingLabel);
             $("#tipMsg").text("");

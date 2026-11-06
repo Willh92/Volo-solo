@@ -29,6 +29,15 @@ var Skin = {
     init: function () {
         Skin._initToc()
         Skin._initBackToTop()
+        if (window.mdui && typeof window.mdui.mutation === 'function') {
+            window.mdui.mutation()
+        }
+        window.BoloNavigation?.onLeave(function () {
+            document.querySelectorAll('.mdui-overlay').forEach(function (el) { el.remove() })
+            if (document.body && document.body.classList) {
+                document.body.classList.remove('mdui-locked', 'mdui-drawer-body-left', 'mdui-drawer-body-right')
+            }
+        })
         Util.initPjax(function () {
             if ($('.post__fix').length === 0) {
                 $('body').addClass('body--gray')
@@ -44,6 +53,9 @@ var Skin = {
             })
 
             Skin._initToc()
+            if (window.mdui && typeof window.mdui.mutation === 'function') {
+                window.mdui.mutation()
+            }
         })
 
         $('.header__nav a').each(function () {

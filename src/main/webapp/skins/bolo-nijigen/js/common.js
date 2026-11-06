@@ -56,9 +56,24 @@ var Skin = {
     $(window).on('scroll.boloNijigen', onScroll)
     if (window.BoloNavigation) {
       BoloNavigation.onLeave(function () {
-        $(window).off('scroll.boloNijigen')
+        $(window).off('scroll.boloNijigen resize.boloNijigen')
+        if (window.imageIntersectionObserver && typeof window.imageIntersectionObserver.disconnect === 'function') {
+          window.imageIntersectionObserver.disconnect()
+          window.imageIntersectionObserver = null
+        }
+        Skin._clearArticleInlineLayout()
       })
     }
+  },
+  _clearArticleInlineLayout: function () {
+    $('#articlePage').css('width', '')
+    $('.side').css({
+      right: '',
+      position: '',
+      overflow: '',
+      height: '',
+      top: '',
+    })
   },
   _initAnimation: function () {
     if (!('IntersectionObserver' in window)) {
@@ -116,28 +131,42 @@ var Skin = {
       $('.header__nav a, .header__m a').removeClass('current')
     })
   },
-  _initArticleCommon: function () {
-    if ($(window).width() > 768) {
-      Skin._lastSideFixed = null
-      if ($('.article__toc li').length === 0) {
-        $('.side').css({
-          height: 'auto',
-          position: 'initial',
-        })
-        return
-      }
-
-      $('#articlePage').width($('.main').width() - 310)
+  _syncArticleLayout: function (resetScroll) {
+    Skin._lastSideFixed = null
+    if ($(window).width() <= 768) {
+      Skin._clearArticleInlineLayout()
+      return
+    }
+    if ($('.article__toc li').length === 0) {
+      $('#articlePage').css('width', '')
       $('.side').css({
-        right: ($(window).width() - $('.main').width()) / 2,
-        position: 'fixed',
-        overflow: 'auto',
-        height: $(window).height() - 30,
-        top: 30,
+        right: '',
+        overflow: '',
+        top: '',
+        height: 'auto',
+        position: 'initial',
       })
-      $(window).scroll()
+      return
+    }
+
+    $('#articlePage').width($('.main').width() - 310)
+    $('.side').css({
+      right: ($(window).width() - $('.main').width()) / 2,
+      position: 'fixed',
+      overflow: 'auto',
+      height: $(window).height() - 30,
+      top: 30,
+    })
+    $(window).scroll()
+    if (resetScroll) {
       $('.side').scrollTop(0)
     }
+  },
+  _initArticleCommon: function () {
+    this._syncArticleLayout(true)
+    $(window).off('resize.boloNijigen').on('resize.boloNijigen', function () {
+      Skin._syncArticleLayout(false)
+    })
   },
   initArticle: function () {
     this._initArticleCommon()

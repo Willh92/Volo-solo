@@ -33,6 +33,11 @@ import org.b3log.solo.web.WebResources;
 /** Bounded favicon conversion. The built-in vector mark is also rendered as PNG for PWA icons. */
 public final class Favicons {
     private static final int MAX_BYTES = 2 * 1024 * 1024;
+
+    static {
+        ImageIO.setUseCache(false);
+    }
+
     private Favicons() { }
 
     public static byte[] render(final String source, final int width, final int height, final WebResources resources) throws Exception {

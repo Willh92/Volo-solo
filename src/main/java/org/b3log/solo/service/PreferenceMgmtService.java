@@ -155,6 +155,10 @@ public class PreferenceMgmtService {
      * @throws ServiceException service exception
      */
     public synchronized void updatePreference(final JSONObject preference) throws ServiceException {
+        if (null == preference) {
+            throw new IllegalArgumentException("请求参数不正确。");
+        }
+        preference.remove(Option.ID_C_VOLO_REMOTE_BACKUP);
         preference.put(Option.ID_C_HELP_IMPROVE_PLAN, "false");
         final JSONObject fetchedOldPreference = optionQueryService.getPreference();
         final JSONObject oldPreference = fetchedOldPreference == null ? new JSONObject() : fetchedOldPreference;
@@ -349,6 +353,9 @@ public class PreferenceMgmtService {
 
             List<String> optionList = Options.loadOptions();
             for (String i : optionList) {
+                if (Option.ID_C_VOLO_REMOTE_BACKUP.equals(i)) {
+                    continue;
+                }
                 if (preference.has(i)) {
                     touchedKeys.add(i);
                     emptyPreferenceOptSave(i, preference.optString(i));

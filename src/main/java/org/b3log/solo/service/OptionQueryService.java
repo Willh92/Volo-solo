@@ -78,6 +78,52 @@ public class OptionQueryService {
     }
 
     /**
+     * Reads a scalar preference string without cloning the entire preference {@link JSONObject}.
+     *
+     * @param key          preference key
+     * @param defaultValue fallback value when absent
+     * @return preference string value or {@code defaultValue}
+     */
+    public String getPreferenceString(final String key, final String defaultValue) {
+        if (null == key) {
+            return defaultValue;
+        }
+        try {
+            if (null != optionRepository) {
+                return optionRepository.getCategoryOptionString(Option.CATEGORY_C_PREFERENCE, key, defaultValue);
+            }
+            final JSONObject preference = getPreference();
+            return null == preference ? defaultValue : preference.optString(key, defaultValue);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Gets preference string failed", e);
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Reads a scalar skin option string without cloning the entire skin {@link JSONObject}.
+     *
+     * @param key          skin option key
+     * @param defaultValue fallback value when absent
+     * @return skin option string value or {@code defaultValue}
+     */
+    public String getSkinString(final String key, final String defaultValue) {
+        if (null == key) {
+            return defaultValue;
+        }
+        try {
+            if (null != optionRepository) {
+                return optionRepository.getCategoryOptionString(Option.CATEGORY_C_SKIN, key, defaultValue);
+            }
+            final JSONObject skin = getSkin();
+            return null == skin ? defaultValue : skin.optString(key, defaultValue);
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Gets skin string failed", e);
+            return defaultValue;
+        }
+    }
+
+    /**
      * Checks whether allow comment globally.
      *
      * @return {@code true} to allow comment, returns {@code false} otherwise

@@ -138,6 +138,28 @@ public class StatisticMgmtService {
     }
 
     /**
+     * Computes a compact 11-character unpadded Base64URL token (64-bit SHA-256 prefix) for a request URI.
+     * <p>
+     * Uses only URL-safe ASCII characters ({@code A-Za-z0-9_-}) requiring zero percent-encoding expansion,
+     * keeping 64 visited entries well under 1 KiB even for long CJK permalinks.
+     * </p>
+     *
+     * @param requestURI request URI
+     * @return 11-character Base64URL digest token
+     */
+    public static String hashVisitedToken(final String requestURI) {
+        final String normalized = null == requestURI ? "/" : requestURI;
+        try {
+            final byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            final byte[] prefix = java.util.Arrays.copyOf(digest, 8);
+            return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(prefix);
+        } catch (final java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    /**
      * Determines whether the specified request has been served.
      * <p>
      * Memoizes the parsed {@code visited} cookie outcome per {@link Request} so repeated invocations within
@@ -159,6 +181,8 @@ public class StatisticMgmtService {
             return served;
         }
 
+        final String requestURI = null == request.getRequestURI() ? "/" : request.getRequestURI();
+        final String visitedToken = hashVisitedToken(requestURI);
         final var rawCookies = request.getCookies();
         boolean needToCreate = true;
         boolean needToAppend = true;
@@ -176,10 +200,9 @@ public class StatisticMgmtService {
                     needToCreate = false;
                     request.setAttribute(ATTR_VISITED_CHECKED, cookieJSONArray.length() > 0);
 
-                    final String requestURI = request.getRequestURI();
                     for (int j = 0; j < cookieJSONArray.length(); j++) {
                         final String visitedURL = cookieJSONArray.optString(j);
-                        if (requestURI.equals(visitedURL)) {
+                        if (visitedToken.equals(visitedURL) || requestURI.equals(visitedURL)) {
                             needToAppend = false;
                             request.setAttribute(ATTR_HAS_BEEN_SERVED, Boolean.TRUE);
                             return true;
@@ -191,7 +214,7 @@ public class StatisticMgmtService {
 
             if (needToCreate) {
                 request.setAttribute(ATTR_VISITED_CHECKED, Boolean.FALSE);
-                final JSONArray initial = new JSONArray().put(request.getRequestURI());
+                final JSONArray initial = new JSONArray().put(visitedToken);
                 final Cookie c = new Cookie("visited", URLs.encode(initial.toString()));
                 c.setMaxAge(COOKIE_EXPIRY);
                 c.setPath("/");
@@ -199,12 +222,18 @@ public class StatisticMgmtService {
                 c.setSameSite("Lax");
                 writeVisitedCookie(response, c);
             } else if (needToAppend) {
-                while (cookieJSONArray.length() >= 64) {
-                    cookieJSONArray.remove(0);
+                final JSONArray compacted = new JSONArray();
+                final int startIdx = Math.max(0, cookieJSONArray.length() - 63);
+                for (int j = startIdx; j < cookieJSONArray.length(); j++) {
+                    final String existing = cookieJSONArray.optString(j);
+                    if (existing.isEmpty()) {
+                        continue;
+                    }
+                    compacted.put(existing.startsWith("/") ? hashVisitedToken(existing) : existing);
                 }
-                cookieJSONArray.put(request.getRequestURI());
+                compacted.put(visitedToken);
 
-                final Cookie c = new Cookie("visited", URLs.encode(cookieJSONArray.toString()));
+                final Cookie c = new Cookie("visited", URLs.encode(compacted.toString()));
                 c.setMaxAge(COOKIE_EXPIRY);
                 c.setPath("/");
                 c.setHttpOnly(true);

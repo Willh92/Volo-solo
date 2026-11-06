@@ -17,14 +17,14 @@
  */
 package org.b3log.solo.service;
 
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.cache.PublicViewCache;
-import org.b3log.solo.logging.Logger;
 import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
+import org.b3log.solo.cache.PublicViewCache;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.repository.CategoryTagRepository;
 import org.b3log.solo.repository.TagArticleRepository;
 import org.b3log.solo.repository.TagRepository;
@@ -81,7 +81,7 @@ public class TagMgmtService {
     private SyndicationCacheService syndicationCacheService;
 
     /**
-     * Removes all unused tags.
+     * Removes all unused tags using a single {@code NOT EXISTS} query without N+1 per-tag count lookups.
      *
      * @throws ServiceException if get tags failed, or remove failed
      */
@@ -90,12 +90,10 @@ public class TagMgmtService {
         boolean removed = false;
 
         try {
-            final List<JSONObject> tags = tagQueryService.getTags();
-            for (int i = 0; i < tags.size(); i++) {
-                final JSONObject tag = tags.get(i);
+            final List<JSONObject> unusedTags = tagRepository.getUnusedTags();
+            for (final JSONObject tag : unusedTags) {
                 final String tagId = tag.optString(Keys.OBJECT_ID);
-                final int articleCount = tagArticleRepository.getArticleCount(tagId);
-                if (1 > articleCount) {
+                if (!tagId.isEmpty()) {
                     categoryTagRepository.removeByTagId(tagId);
                     tagRepository.remove(tagId);
                     removed = true;

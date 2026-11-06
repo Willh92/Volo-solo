@@ -56,13 +56,22 @@ admin.others = {
       else if (window.location.hash.indexOf('#tools/others/webhooks') === 0) admin.others.loadWebhooks();
     }
     this._bindBatchDropzone();
-    clearInterval(this.pollTimer);
-    const pollTimer = setInterval(function () {
+    if (this.logTimer) {
+      clearInterval(this.logTimer);
+      this.logTimer = null;
+    }
+    var that = this;
+    var logTimer = setInterval(function () {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (admin.logs.page === 1) admin.others.getLog();
     }, 15000);
-    this.pollTimer = pollTimer;
-    if (window.BoloNavigation) window.BoloNavigation.onLeave(function () { clearInterval(pollTimer); });
+    this.logTimer = logTimer;
+    if (typeof window !== 'undefined' && window.BoloNavigation && typeof window.BoloNavigation.onLeave === 'function') {
+      window.BoloNavigation.onLeave(function () {
+        clearInterval(logTimer);
+        if (that.logTimer === logTimer) that.logTimer = null;
+      });
+    }
   },
 
   getLog: function (refresh) { admin.logs.load(false, refresh === true) },
@@ -318,15 +327,16 @@ admin.others = {
 
   _renderBackupsTable: function (items) {
     var that = this;
+    var head = '<thead><tr><th>归档文件名</th><th>大小</th><th>生成时间</th><th class="is-right">操作</th></tr></thead>';
     if (!items.length) {
-      $('#localBackupsTable').html('<tbody><tr><td colspan="4" class="console-simple-table__empty">当前目录下暂无归档文件。</td></tr></tbody>');
+      $('#localBackupsTable').html(head + '<tbody><tr><td colspan="4" class="console-simple-table__empty">当前目录下暂无归档文件。</td></tr></tbody>');
       return;
     }
-    var html = '<thead><tr><th>归档文件名</th><th>大小</th><th>生成时间</th><th class="is-right">操作</th></tr></thead><tbody>';
+    var html = head + '<tbody>';
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var safeName = that._escape(it.name);
-      var dt = it.lastModified ? $.bowknot.getDate(it.lastModified, 1) : '-';
+      var dt = it.lastModified ? $.bowknot.getDate(it.lastModified, 1) : '—';
       var dlUrl = Label.servePath + '/console/backups/local/download?name=' + encodeURIComponent(it.name);
       html += '<tr>' +
         '<td style="font-family:monospace;">' + safeName + '</td>' +
@@ -417,11 +427,12 @@ admin.others = {
 
   _renderWebhooksTable: function (list) {
     var that = this;
+    var head = '<thead><tr><th>名称</th><th>平台</th><th>订阅事件</th><th>密钥/状态</th><th class="is-right">操作</th></tr></thead>';
     if (!list.length) {
-      $('#webhooksTable').html('<tbody><tr><td colspan="5" class="console-simple-table__empty">暂未配置任何 Webhook 推送通道。</td></tr></tbody>');
+      $('#webhooksTable').html(head + '<tbody><tr><td colspan="5" class="console-simple-table__empty">暂未配置任何 Webhook 推送通道。</td></tr></tbody>');
       return;
     }
-    var html = '<thead><tr><th>名称</th><th>平台</th><th>订阅事件</th><th>密钥/状态</th><th class="is-right">操作</th></tr></thead><tbody>';
+    var html = head + '<tbody>';
     for (var i = 0; i < list.length; i++) {
       var w = list[i];
       var safeId = that._escape(w.id);

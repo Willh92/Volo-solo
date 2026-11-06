@@ -6,6 +6,7 @@
  */
 package org.b3log.solo.web;
 
+import io.netty.util.concurrent.FastThreadLocalThread;
 import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.http.Response;
@@ -38,6 +39,10 @@ public final class HttpCompression {
         final CRC32 crc32 = new CRC32();
         final byte[] utf8Buf = new byte[8192];
         final byte[] deflateBuf = new byte[4096];
+    }
+
+    private static boolean isReusableEventLoopThread() {
+        return Thread.currentThread() instanceof FastThreadLocalThread;
     }
 
     private HttpCompression() {
@@ -95,12 +100,22 @@ public final class HttpCompression {
         if (raw == null || raw.length == 0) {
             return EMPTY_BYTES;
         }
-        final GzipState state = GZIP_STATE.get();
-        final Deflater deflater = state.deflater;
-        final CRC32 crc32 = state.crc32;
-        final byte[] deflateBuf = state.deflateBuf;
-        deflater.reset();
-        crc32.reset();
+        final boolean reuse = isReusableEventLoopThread();
+        final Deflater deflater;
+        final CRC32 crc32;
+        final byte[] deflateBuf;
+        if (reuse) {
+            final GzipState state = GZIP_STATE.get();
+            deflater = state.deflater;
+            crc32 = state.crc32;
+            deflateBuf = state.deflateBuf;
+            deflater.reset();
+            crc32.reset();
+        } else {
+            deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+            crc32 = new CRC32();
+            deflateBuf = new byte[4096];
+        }
         try {
             final ByteArrayOutputStream out = new ByteArrayOutputStream(
                     Math.max(64, Math.min(raw.length, raw.length / 3 + 32)));
@@ -120,9 +135,13 @@ public final class HttpCompression {
             writeIntLE(out, raw.length);
             return out.toByteArray();
         } finally {
-            deflater.setInput(EMPTY_BYTES);
-            deflater.reset();
-            crc32.reset();
+            if (reuse) {
+                deflater.setInput(EMPTY_BYTES);
+                deflater.reset();
+                crc32.reset();
+            } else {
+                deflater.end();
+            }
         }
     }
 
@@ -252,13 +271,25 @@ public final class HttpCompression {
     }
 
     private static byte[] gzipUtf8(final String text, final int expectedUtf8Len) {
-        final GzipState state = GZIP_STATE.get();
-        final Deflater deflater = state.deflater;
-        final CRC32 crc32 = state.crc32;
-        final byte[] utf8Buf = state.utf8Buf;
-        final byte[] deflateBuf = state.deflateBuf;
-        deflater.reset();
-        crc32.reset();
+        final boolean reuse = isReusableEventLoopThread();
+        final Deflater deflater;
+        final CRC32 crc32;
+        final byte[] utf8Buf;
+        final byte[] deflateBuf;
+        if (reuse) {
+            final GzipState state = GZIP_STATE.get();
+            deflater = state.deflater;
+            crc32 = state.crc32;
+            utf8Buf = state.utf8Buf;
+            deflateBuf = state.deflateBuf;
+            deflater.reset();
+            crc32.reset();
+        } else {
+            deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+            crc32 = new CRC32();
+            utf8Buf = new byte[Math.min(8192, Math.max(256, expectedUtf8Len))];
+            deflateBuf = new byte[4096];
+        }
         try {
             final ByteArrayOutputStream out = new ByteArrayOutputStream(
                     Math.max(64, Math.min(expectedUtf8Len, expectedUtf8Len / 3 + 32)));
@@ -315,9 +346,13 @@ public final class HttpCompression {
             writeIntLE(out, totalBytes);
             return out.toByteArray();
         } finally {
-            deflater.setInput(EMPTY_BYTES);
-            deflater.reset();
-            crc32.reset();
+            if (reuse) {
+                deflater.setInput(EMPTY_BYTES);
+                deflater.reset();
+                crc32.reset();
+            } else {
+                deflater.end();
+            }
         }
     }
 

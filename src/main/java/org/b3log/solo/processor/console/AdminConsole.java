@@ -17,25 +17,30 @@
  */
 package org.b3log.solo.processor.console;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.apache.commons.io.FileUtils;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.io.FileUtils;
 import org.b3log.latke.http.Response;
+import org.b3log.solo.web.NettyFileSender;
+import org.owasp.encoder.Encode;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.b3log.latke.Keys;
@@ -70,8 +75,6 @@ import org.b3log.solo.util.AdminPaths;
 import org.b3log.solo.util.PluginUtil;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
-
-import jodd.io.ZipUtil;
 
 /**
  * Admin console render processing.
@@ -213,7 +216,8 @@ public class AdminConsole {
      */
     public void showAdminFunctions(final RequestContext context) {
         final String requestURI = context.requestURI();
-        final String templateName = StringUtils.substringBeforeLast(StringUtils.substringAfterLast(requestURI, "/"), ".") + ".ftl";
+        final String func = StringUtils.substringBeforeLast(StringUtils.substringAfterLast(requestURI, "/"), ".");
+        final String templateName = func + ".ftl";
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer(context, templateName);
 
         final Locale locale = Latkes.getLocale();
@@ -227,13 +231,17 @@ public class AdminConsole {
         dataModel.put(Option.ID_C_LOCALE_STRING, locale.toString());
         dataModel.put(Option.ID_C_VERSION, SoloApplication.VERSION);
 
-        try {
-            // Bolo categories
-            final int mostUsedCategoryDisplayCnt = Integer.MAX_VALUE;
-            final List<JSONObject> categories = categoryRepository.getMostUsedCategories(mostUsedCategoryDisplayCnt);
-            dataModel.put("categories", categories);
-        } catch (RepositoryException RE) {
-            RE.printStackTrace();
+        if ("admin-article".equals(func) || "admin-preference".equals(func)) {
+            try {
+                // Bolo categories
+                final List<JSONObject> categories = categoryRepository.getMostUsedCategories(Integer.MAX_VALUE);
+                dataModel.put("categories", categories);
+            } catch (final RepositoryException e) {
+                LOGGER.log(Level.ERROR, "Loads categories for admin function [" + func + "] failed", e);
+                dataModel.put("categories", Collections.emptyList());
+            }
+        } else {
+            dataModel.put("categories", Collections.emptyList());
         }
 
         // Bolo version
@@ -263,15 +271,18 @@ public class AdminConsole {
 
         final JSONObject preference = optionQueryService.getPreference();
         final StringBuilder timeZoneIdOptions = new StringBuilder();
+        final String selectedTimeZoneId = preference.optString(Option.ID_C_TIME_ZONE_ID);
         final String[] availableIDs = TimeZone.getAvailableIDs();
         for (int i = 0; i < availableIDs.length; i++) {
             final String id = availableIDs[i];
-            String option;
+            final String escapedAttr = Encode.forHtmlAttribute(id);
+            final String escapedLabel = Encode.forHtml(id);
+            final String option;
 
-            if (id.equals(preference.optString(Option.ID_C_TIME_ZONE_ID))) {
-                option = "<option value=\"" + id + "\" selected=\"true\">" + id + "</option>";
+            if (id.equals(selectedTimeZoneId)) {
+                option = "<option value=\"" + escapedAttr + "\" selected=\"true\">" + escapedLabel + "</option>";
             } else {
-                option = "<option value=\"" + id + "\">" + id + "</option>";
+                option = "<option value=\"" + escapedAttr + "\">" + escapedLabel + "</option>";
             }
 
             timeZoneIdOptions.append(option);
@@ -326,18 +337,40 @@ public class AdminConsole {
             return;
         }
 
-        final byte[] zipData = exportService.exportSQL();
-        if (null == zipData) {
-            context.sendError(500);
-
-            return;
-        }
-
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-        response.setContentType("application/zip");
-        final String fileName = "solo-sql-" + date + ".zip";
-        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-        response.sendBytes(zipData);
+        Path tempDir = null;
+        boolean handedOff = false;
+        try {
+            tempDir = Files.createTempDirectory("volo-export-sql-");
+            final Path dirToDelete = tempDir;
+            final AtomicBoolean cleaned = new AtomicBoolean(false);
+            final Runnable cleanup = () -> {
+                if (cleaned.compareAndSet(false, true)) {
+                    FileUtils.deleteQuietly(dirToDelete.toFile());
+                }
+            };
+            final String fileName = "solo-sql-" + date + ".zip";
+            final Path zipFile = tempDir.resolve(fileName);
+            if (!exportService.exportSQLToZipFile(zipFile)) {
+                cleanup.run();
+                context.sendError(500);
+                return;
+            }
+            sendZipArchiveResponse(context, zipFile, fileName, cleanup);
+            handedOff = true;
+        } catch (final Exception e) {
+            if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+            LOGGER.log(Level.ERROR, "Export SQL failed", e);
+            if (response == null || !response.isCommitted()) {
+                context.sendError(500);
+            }
+        } finally {
+            if (!handedOff && tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+        }
     }
 
     /**
@@ -356,28 +389,39 @@ public class AdminConsole {
 
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
         Path tempDir = null;
+        boolean handedOff = false;
         try {
             tempDir = Files.createTempDirectory("volo-export-json-");
-            final File localFile = tempDir.resolve("solo-" + date + ".json").toFile();
-            final JSONObject json = exportService.getJSONs();
-            final byte[] data = json.toString(4).getBytes(StandardCharsets.UTF_8);
-
-            try (final OutputStream output = new FileOutputStream(localFile)) {
-                IOUtils.write(data, output);
+            final Path dirToDelete = tempDir;
+            final AtomicBoolean cleaned = new AtomicBoolean(false);
+            final Runnable cleanup = () -> {
+                if (cleaned.compareAndSet(false, true)) {
+                    FileUtils.deleteQuietly(dirToDelete.toFile());
+                }
+            };
+            final String fileName = "solo-json-" + date + ".zip";
+            final Path zipFile = tempDir.resolve(fileName);
+            try (final OutputStream fos = new BufferedOutputStream(Files.newOutputStream(zipFile));
+                 final ZipOutputStream zos = new ZipOutputStream(fos, StandardCharsets.UTF_8)) {
+                zos.putNextEntry(new ZipEntry("solo-" + date + ".json"));
+                final BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(zos, StandardCharsets.UTF_8), 32768);
+                exportService.writeJSONsToStream(writer);
+                writer.flush();
+                zos.closeEntry();
             }
 
-            try (final FileInputStream inputStream = new FileInputStream(ZipUtil.zip(localFile))) {
-                final byte[] zipData = IOUtils.toByteArray(inputStream);
-                response.setContentType("application/zip");
-                final String fileName = "solo-json-" + date + ".zip";
-                response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-                response.sendBytes(zipData);
-            }
+            sendZipArchiveResponse(context, zipFile, fileName, cleanup);
+            handedOff = true;
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Export failed", e);
-            org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
-        } finally {
             if (tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
+            LOGGER.log(Level.ERROR, "Export failed", e);
+            if (response == null || !response.isCommitted()) {
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
+            }
+        } finally {
+            if (!handedOff && tempDir != null) {
                 FileUtils.deleteQuietly(tempDir.toFile());
             }
         }
@@ -399,50 +443,54 @@ public class AdminConsole {
 
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
         Path tempDir = null;
+        boolean handedOff = false;
         try {
             tempDir = Files.createTempDirectory("volo-export-hexo-");
-            final File localFile = tempDir.resolve("solo-hexo-" + date).toFile();
-            final String localFilePath = localFile.getPath();
-            final File postDir = new File(localFilePath + File.separator + "posts");
-            final File passwordDir = new File(localFilePath + File.separator + "passwords");
-            final File draftDir = new File(localFilePath + File.separator + "drafts");
-
-            if (!postDir.mkdirs()) {
-                throw new Exception("Create dir [" + postDir.getPath() + "] failed");
-            }
-            if (!passwordDir.mkdirs()) {
-                throw new Exception("Create dir [" + passwordDir.getPath() + "] failed");
-            }
-            if (!draftDir.mkdirs()) {
-                throw new Exception("Create dir [" + draftDir.getPath() + "] failed");
+            final Path dirToDelete = tempDir;
+            final AtomicBoolean cleaned = new AtomicBoolean(false);
+            final Runnable cleanup = () -> {
+                if (cleaned.compareAndSet(false, true)) {
+                    FileUtils.deleteQuietly(dirToDelete.toFile());
+                }
+            };
+            final String fileName = "solo-hexo-" + date + ".zip";
+            final Path zipFile = tempDir.resolve(fileName);
+            try (final OutputStream fos = new BufferedOutputStream(Files.newOutputStream(zipFile));
+                 final ZipOutputStream zos = new ZipOutputStream(fos, StandardCharsets.UTF_8)) {
+                exportService.writeHexoMDsToZip(zos);
             }
 
-            final JSONObject result = exportService.exportHexoMDs();
-            final List<JSONObject> posts = (List<JSONObject>) result.opt("posts");
-            exportService.exportHexoMd(posts, postDir.getPath());
-            final List<JSONObject> passwords = (List<JSONObject>) result.opt("passwords");
-            exportService.exportHexoMd(passwords, passwordDir.getPath());
-            final List<JSONObject> drafts = (List<JSONObject>) result.opt("drafts");
-            exportService.exportHexoMd(drafts, draftDir.getPath());
-
-            final File zipFile = ZipUtil.zip(localFile);
-            byte[] zipData;
-            try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                zipData = IOUtils.toByteArray(inputStream);
-                response.setContentType("application/zip");
-                final String fileName = "solo-hexo-" + date + ".zip";
-                response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-            }
-
-            response.sendBytes(zipData);
+            sendZipArchiveResponse(context, zipFile, fileName, cleanup);
+            handedOff = true;
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Export failed", e);
-            org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
-        } finally {
             if (tempDir != null) {
                 FileUtils.deleteQuietly(tempDir.toFile());
             }
+            LOGGER.log(Level.ERROR, "Export failed", e);
+            if (response == null || !response.isCommitted()) {
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("Export failed, please check log");
+            }
+        } finally {
+            if (!handedOff && tempDir != null) {
+                FileUtils.deleteQuietly(tempDir.toFile());
+            }
         }
+    }
+
+    private static void sendZipArchiveResponse(final RequestContext context,
+                                               final Path zipFile,
+                                               final String fileName,
+                                               final Runnable cleanup) throws IOException {
+        final long size = Files.size(zipFile);
+        if (size < 0L) {
+            throw new IOException("Invalid export zip size: " + size);
+        }
+        final Response response = context.getResponse();
+        response.setContentType("application/zip");
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        NettyFileSender.sendFile(context, zipFile, 0L, size, cleanup);
     }
 
     /**

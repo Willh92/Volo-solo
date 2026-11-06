@@ -157,6 +157,7 @@ public class WAF {
                         // Loading one page may need dozens of scripts, styles and font files.
                         // PublicResourceHandler still checks methods, extensions and filesystem containment.
                         requestURL.startsWith("/js/") ||
+                        requestURL.startsWith("/css/") ||
                         requestURL.startsWith("/scss/") ||
                         requestURL.startsWith("/skins/") ||
                         requestURL.equals("/sw.js") ||

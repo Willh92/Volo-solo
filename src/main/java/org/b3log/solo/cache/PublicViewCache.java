@@ -16,6 +16,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Bounded, mutation-invalidated read cache for public header/sidebar widgets and rendered article views.
@@ -137,6 +138,14 @@ public class PublicViewCache {
 
     private final LinkedHashMap<String, RenderedArticleView> renderedArticles = new LinkedHashMap<>(64, 0.75f, true);
     private long renderedChars = 0L;
+    private final AtomicLong generation = new AtomicLong(0L);
+
+    /**
+     * Returns monotonically increasing invalidation generation counter.
+     */
+    public long getGeneration() {
+        return generation.get();
+    }
 
     private static Object[] createLocks(final int count) {
         final Object[] arr = new Object[count];
@@ -223,6 +232,7 @@ public class PublicViewCache {
                 return cloneList(recheck.items);
             }
             try {
+                final long genBefore = generation.get();
                 final List<JSONObject> loaded = loader.get();
                 if (loaded == null) {
                     return Collections.emptyList();
@@ -230,7 +240,9 @@ public class PublicViewCache {
                 final List<JSONObject> frozen = freezeList(loaded);
                 final long expiresAt = ttlMillis > 0L ? (nowLocked + ttlMillis) : 0L;
                 synchronized (widgetMapLock) {
-                    widgetLists.put(key, new ListSlot(frozen, expiresAt));
+                    if (generation.get() == genBefore) {
+                        widgetLists.put(key, new ListSlot(frozen, expiresAt));
+                    }
                 }
                 return cloneList(frozen);
             } catch (final Exception e) {
@@ -333,15 +345,28 @@ public class PublicViewCache {
     }
 
     public void invalidateCommon() {
+        generation.incrementAndGet();
         synchronized (widgetMapLock) {
             widgetLists.clear();
         }
     }
 
-    public synchronized void invalidateAll() {
-        invalidateCommon();
+    /**
+     * Invalidates all cached rendered articles and public widget/listing caches, bumping the cache generation so
+     * adjacent articles' {@code nextArticle}, {@code previousArticle}, {@code seriesBox}, and {@code backlinksBox}
+     * HTML never serve stale links.
+     */
+    public synchronized void invalidateAllArticles() {
+        generation.incrementAndGet();
+        synchronized (widgetMapLock) {
+            widgetLists.clear();
+        }
         renderedArticles.clear();
         renderedChars = 0L;
+    }
+
+    public synchronized void invalidateAll() {
+        invalidateAllArticles();
     }
 
     private static List<JSONObject> freezeList(final List<JSONObject> raw) {

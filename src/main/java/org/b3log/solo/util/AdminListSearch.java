@@ -30,36 +30,73 @@ import org.json.JSONObject;
 
 /** Add a bounded, parameterized keyword filter before counting and paging a console list. */
 public final class AdminListSearch {
-    private AdminListSearch() { }
+
+    public static final int MAX_KEYWORD_CODE_POINTS = 200;
+
+    private AdminListSearch() {
+    }
 
     public static void apply(final Query query, final JSONObject request, final String... fields) {
         if (null == query || null == request || null == fields || 0 == fields.length) {
             return;
         }
-        String keyword = request.optString(Common.KEYWORD).strip();
+        final String keyword = normalizeKeyword(request.optString(Common.KEYWORD));
         if (keyword.isEmpty()) {
             return;
         }
-        if (keyword.codePointCount(0, keyword.length()) > 200) {
-            keyword = keyword.substring(0, keyword.offsetByCodePoints(0, 200));
+        final Filter search = likeAny(keyword, fields);
+        if (null == search) {
+            return;
         }
-        final String escaped = escapeLikeLiteral(keyword);
-        final String pattern = "%" + escaped + "%";
-        final ArrayList<Filter> filters = new ArrayList<>(fields.length);
-        for (final String field : fields) {
-            filters.add(new PropertyFilter(field, FilterOperator.LIKE, pattern));
-        }
-        final Filter search = new CompositeFilter(CompositeFilterOperator.OR, filters);
         final Filter existing = query.getFilter();
         query.setFilter(existing == null ? search : CompositeFilterOperator.and(existing, search));
     }
 
     /**
-     * Escapes SQL {@code LIKE} wildcard characters ({@code %} and {@code _}) using the default
-     * backslash escape understood by both H2 and MySQL/MariaDB, leaving strings without wildcards untouched.
+     * Strips surrounding whitespace and caps keyword length at {@value #MAX_KEYWORD_CODE_POINTS} Unicode code points.
+     */
+    public static String normalizeKeyword(final String raw) {
+        if (null == raw) {
+            return "";
+        }
+        String keyword = raw.strip();
+        if (keyword.isEmpty()) {
+            return "";
+        }
+        if (keyword.codePointCount(0, keyword.length()) > MAX_KEYWORD_CODE_POINTS) {
+            keyword = keyword.substring(0, keyword.offsetByCodePoints(0, MAX_KEYWORD_CODE_POINTS));
+        }
+        return keyword;
+    }
+
+    /**
+     * Builds a parameterized {@code OR} {@code LIKE} filter across {@code fields} with escaped wildcards.
+     */
+    public static Filter likeAny(final String normalizedKeyword, final String... fields) {
+        if (null == normalizedKeyword || normalizedKeyword.isEmpty() || null == fields || 0 == fields.length) {
+            return null;
+        }
+        final String pattern = "%" + escapeLikeLiteral(normalizedKeyword) + "%";
+        final ArrayList<Filter> filters = new ArrayList<>(fields.length);
+        for (final String field : fields) {
+            filters.add(new PropertyFilter(field, FilterOperator.LIKE, pattern));
+        }
+        return new CompositeFilter(CompositeFilterOperator.OR, filters);
+    }
+
+    /**
+     * Returns {@code true} if {@code raw} contains SQL {@code LIKE} metacharacters ({@code %}, {@code _}, or {@code \}).
+     */
+    public static boolean containsLikeMeta(final String raw) {
+        return null != raw && (raw.indexOf('%') >= 0 || raw.indexOf('_') >= 0 || raw.indexOf('\\') >= 0);
+    }
+
+    /**
+     * Escapes SQL {@code LIKE} wildcard characters ({@code %}, {@code _}, and {@code \}) using backslash escaping,
+     * leaving strings without wildcards or backslashes untouched.
      */
     public static String escapeLikeLiteral(final String raw) {
-        if (null == raw || (raw.indexOf('%') < 0 && raw.indexOf('_') < 0)) {
+        if (null == raw || (raw.indexOf('%') < 0 && raw.indexOf('_') < 0 && raw.indexOf('\\') < 0)) {
             return raw;
         }
         final StringBuilder sb = new StringBuilder(raw.length() + 8);

@@ -17,15 +17,24 @@
  */
 package org.b3log.solo.repository;
 
+import org.apache.commons.lang3.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
-import org.b3log.solo.logging.Logger;
-import org.b3log.latke.repository.*;
+import org.b3log.latke.repository.AbstractRepository;
+import org.b3log.latke.repository.CompositeFilterOperator;
+import org.b3log.latke.repository.FilterOperator;
+import org.b3log.latke.repository.PropertyFilter;
+import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.RepositoryException;
+import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.cache.ArticleCache;
+import org.b3log.solo.cache.StatisticCache;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.service.ArticleMgmtService;
 import org.b3log.solo.service.ArticleQueryService;
+import org.b3log.solo.service.HiddenContentService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.util.QueryResults;
 import org.b3log.solo.util.Solos;
@@ -34,7 +43,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Article repository.
@@ -71,7 +84,8 @@ public class ArticleRepository extends AbstractRepository {
             Article.ARTICLE_ABSTRACT,
             Article.ARTICLE_ABSTRACT_TEXT,
             Article.ARTICLE_PERMALINK,
-            Article.ARTICLE_IMG1_URL
+            Article.ARTICLE_IMG1_URL,
+            Article.ARTICLE_VIEW_PWD
     };
 
     /**
@@ -81,7 +95,7 @@ public class ArticleRepository extends AbstractRepository {
     private ArticleCache articleCache;
 
     @Inject
-    private org.b3log.solo.cache.StatisticCache statisticCache;
+    private StatisticCache statisticCache;
 
     @Inject
     private OptionQueryService optionQueryService;
@@ -132,22 +146,87 @@ public class ArticleRepository extends AbstractRepository {
 
     @Override
     public JSONObject get(final String id) throws RepositoryException {
-        JSONObject ret = null == articleCache ? null : articleCache.getArticle(id);
-        if (null != ret) {
-            return ret;
+        final JSONObject cached = null == articleCache ? null : articleCache.getArticle(id);
+        if (null != cached) {
+            return cached;
         }
 
-        ret = super.get(id);
-        if (null == ret) {
+        final JSONObject raw = super.get(id);
+        if (null == raw) {
             return null;
         }
 
-        overlayPendingViewDelta(ret);
         if (null != articleCache) {
-            articleCache.putArticle(ret);
+            articleCache.putArticle(raw);
         }
 
-        return Solos.clone(ret);
+        final JSONObject ret = Solos.clone(raw);
+        overlayPendingViewDelta(ret);
+        return ret;
+    }
+
+    /**
+     * Gets the persisted DB baseline snapshot of an article without overlaying un-flushed write-behind view deltas.
+     *
+     * @param id article ID
+     * @return isolated clone of persisted article, or {@code null} if not found
+     * @throws RepositoryException repository exception
+     */
+    public JSONObject getPersisted(final String id) throws RepositoryException {
+        if (null == id || id.isEmpty()) {
+            return null;
+        }
+        if (null != articleCache) {
+            final JSONObject cached = articleCache.getPersistedArticle(id);
+            if (null != cached) {
+                return cached;
+            }
+        }
+        if (getClass() != ArticleRepository.class) {
+            return get(id);
+        }
+        final JSONObject raw = super.get(id);
+        if (null == raw) {
+            return null;
+        }
+        if (null != articleCache) {
+            articleCache.putArticle(raw);
+        }
+        return Solos.clone(raw);
+    }
+
+    /**
+     * Loads narrow article metadata for access, status, commentability, and password checks without loading
+     * {@code articleContent} or {@code articleAbstract} CLOBs on cache misses.
+     *
+     * @param articleId article ID
+     * @return narrow article JSON object (or cached snapshot), or {@code null} if not found
+     * @throws RepositoryException repository exception
+     */
+    public JSONObject getBriefForAccessCheck(final String articleId) throws RepositoryException {
+        if (null == articleId || articleId.isEmpty()) {
+            return null;
+        }
+        if (null != articleCache) {
+            final JSONObject cached = articleCache.getPersistedArticle(articleId);
+            if (null != cached) {
+                return cached;
+            }
+        }
+        if (getClass() != ArticleRepository.class) {
+            return get(articleId);
+        }
+        return getFirst(new Query()
+                .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.EQUAL, articleId))
+                .select(Keys.OBJECT_ID,
+                        Article.ARTICLE_STATUS,
+                        Article.ARTICLE_COMMENTABLE,
+                        Article.ARTICLE_VIEW_PWD,
+                        Article.ARTICLE_TITLE,
+                        Article.ARTICLE_PERMALINK,
+                        Article.ARTICLE_AUTHOR_ID)
+                .setPage(1, 1)
+                .setPageCount(1));
     }
 
     @Override
@@ -159,19 +238,14 @@ public class ArticleRepository extends AbstractRepository {
                 && propertyNames.length == 1
                 && Article.ARTICLE_VIEW_COUNT.equals(propertyNames[0]);
         if (null != articleCache) {
-            if (null != propertyNames && propertyNames.length > 0 && !article.has(Article.ARTICLE_CONTENT)) {
-                final JSONObject cached = articleCache.getArticle(id);
+            if (viewCountOnly) {
+                articleCache.setPersistedViewCount(id, article.optInt(Article.ARTICLE_VIEW_COUNT));
+            } else if (null != propertyNames && propertyNames.length > 0 && !article.has(Article.ARTICLE_CONTENT)) {
+                final JSONObject cached = articleCache.getPersistedArticle(id);
                 if (null != cached) {
-                    if (viewCountOnly) {
-                        final long liveCount = article.optLong(Article.ARTICLE_VIEW_COUNT, 0L)
-                                + ArticleMgmtService.peekPendingViewDelta(id);
-                        cached.put(Article.ARTICLE_VIEW_COUNT,
-                                (int) Math.min(Integer.MAX_VALUE, Math.max(0L, liveCount)));
-                    } else {
-                        for (final String prop : propertyNames) {
-                            if (article.has(prop)) {
-                                cached.put(prop, article.opt(prop));
-                            }
+                    for (final String prop : propertyNames) {
+                        if (article.has(prop)) {
+                            cached.put(prop, article.opt(prop));
                         }
                     }
                     articleCache.putArticle(cached);
@@ -179,9 +253,7 @@ public class ArticleRepository extends AbstractRepository {
                     articleCache.removeArticle(id);
                 }
             } else {
-                final JSONObject toCache = Solos.clone(article);
-                overlayPendingViewDelta(toCache);
-                articleCache.putArticle(toCache);
+                articleCache.putArticle(article);
             }
         }
         if (!viewCountOnly && null != statisticCache) {
@@ -218,6 +290,7 @@ public class ArticleRepository extends AbstractRepository {
                     + " ORDER BY articleRandomDouble, oId LIMIT ?";
             ret.addAll(select(wrapQuery, Article.ARTICLE_STATUS_C_PUBLISHED, pivot, fetchSize - ret.size()));
         }
+        overlayPendingViewDeltas(ret);
         return ret;
     }
 
@@ -231,12 +304,13 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByAuthorId(final String authorId, final int currentPageNum, final int pageSize) throws RepositoryException {
-        final Query query = new Query().
-                setFilter(CompositeFilterOperator.and(
+        final Query query = new Query()
+                .setFilter(CompositeFilterOperator.and(
                         new PropertyFilter(Article.ARTICLE_AUTHOR_ID, FilterOperator.EQUAL, authorId),
-                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
-                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).addSort(Article.ARTICLE_PUT_TOP, SortDirection.DESCENDING).
-                setPage(currentPageNum, pageSize);
+                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)))
+                .addSort(Article.ARTICLE_PUT_TOP, SortDirection.DESCENDING)
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                .setPage(currentPageNum, pageSize);
 
         if (null != optionQueryService) {
             final JSONObject preference = optionQueryService.getPreference();
@@ -256,17 +330,18 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getByPermalink(final String permalink) throws RepositoryException {
-        JSONObject ret = null == articleCache ? null : articleCache.getArticleByPermalink(permalink);
-        if (null != ret) {
-            return ret;
+        final JSONObject cached = null == articleCache ? null : articleCache.getArticleByPermalink(permalink);
+        if (null != cached) {
+            return cached;
         }
         if (null != articleCache && articleCache.isMissingPermalink(permalink)) {
             return null;
         }
 
-        final Query query = new Query().
-                setFilter(new PropertyFilter(Article.ARTICLE_PERMALINK, FilterOperator.EQUAL, permalink)).
-                setPageCount(1);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Article.ARTICLE_PERMALINK, FilterOperator.EQUAL, permalink))
+                .setPage(1, 1)
+                .setPageCount(1);
 
         final JSONObject result = get(query);
         final JSONArray array = QueryResults.array(result);
@@ -277,13 +352,17 @@ public class ArticleRepository extends AbstractRepository {
             return null;
         }
 
-        ret = array.optJSONObject(0);
-        overlayPendingViewDelta(ret);
+        final JSONObject raw = array.optJSONObject(0);
+        if (null == raw) {
+            return null;
+        }
         if (null != articleCache) {
-            articleCache.putArticle(ret);
+            articleCache.putArticle(raw);
         }
 
-        return Solos.clone(ret);
+        final JSONObject ret = Solos.clone(raw);
+        overlayPendingViewDelta(ret);
+        return ret;
     }
 
     /**
@@ -294,11 +373,11 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getRecentArticlesRaw(final int fetchSize) throws RepositoryException {
-        final Query query = new Query().
-                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
-                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
-                setPage(1, fetchSize).setPageCount(1).
-                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
+        final Query query = new Query()
+                .setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                .setPage(1, fetchSize).setPageCount(1)
+                .select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
 
         return getList(query);
     }
@@ -324,12 +403,12 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostCommentArticlesRaw(final int num) throws RepositoryException {
-        final Query query = new Query().
-                addSort(Article.ARTICLE_COMMENT_COUNT, SortDirection.DESCENDING).
-                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
-                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
-                setPage(1, num).setPageCount(1).
-                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
+        final Query query = new Query()
+                .addSort(Article.ARTICLE_COMMENT_COUNT, SortDirection.DESCENDING)
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                .setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))
+                .setPage(1, num).setPageCount(1)
+                .select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
 
         return getList(query);
     }
@@ -355,12 +434,12 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public List<JSONObject> getMostViewCountArticlesRaw(final int num) throws RepositoryException {
-        final Query query = new Query().
-                addSort(Article.ARTICLE_VIEW_COUNT, SortDirection.DESCENDING).
-                addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING).
-                setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)).
-                setPage(1, num).setPageCount(1).
-                select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
+        final Query query = new Query()
+                .addSort(Article.ARTICLE_VIEW_COUNT, SortDirection.DESCENDING)
+                .addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING)
+                .setFilter(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))
+                .setPage(1, num).setPageCount(1)
+                .select(Keys.OBJECT_ID, SIDEBAR_PROJECTIONS);
 
         return getList(query);
     }
@@ -386,12 +465,12 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getPreviousArticle(final String articleId) throws RepositoryException {
-        final JSONObject currentArticle = get(articleId);
-        if (null == currentArticle) {
+        final Long created = resolveArticleCreated(articleId);
+        if (null == created) {
             return null;
         }
 
-        return getPreviousArticle(articleId, currentArticle.optLong(Article.ARTICLE_CREATED));
+        return getPreviousArticle(articleId, created);
     }
 
     /**
@@ -403,13 +482,13 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getPreviousArticle(final String articleId, final long created) throws RepositoryException {
-        final Query query = new Query().
-                setFilter(CompositeFilterOperator.and(
+        final Query query = new Query()
+                .setFilter(CompositeFilterOperator.and(
                         new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.LESS_THAN, created),
-                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
-                addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).
-                setPage(1, 1).setPageCount(1).
-                select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
+                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)))
+                .addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING)
+                .setPage(1, 1).setPageCount(1)
+                .select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
 
         final JSONObject result = get(query);
         final JSONArray array = QueryResults.array(result);
@@ -428,12 +507,12 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getNextArticle(final String articleId) throws RepositoryException {
-        final JSONObject currentArticle = get(articleId);
-        if (null == currentArticle) {
+        final Long created = resolveArticleCreated(articleId);
+        if (null == created) {
             return null;
         }
 
-        return getNextArticle(articleId, currentArticle.optLong(Article.ARTICLE_CREATED));
+        return getNextArticle(articleId, created);
     }
 
     /**
@@ -445,13 +524,13 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public JSONObject getNextArticle(final String articleId, final long created) throws RepositoryException {
-        final Query query = new Query().
-                setFilter(CompositeFilterOperator.and(
+        final Query query = new Query()
+                .setFilter(CompositeFilterOperator.and(
                         new PropertyFilter(Article.ARTICLE_CREATED, FilterOperator.GREATER_THAN, created),
-                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED))).
-                addSort(Article.ARTICLE_CREATED, SortDirection.ASCENDING).
-                setPage(1, 1).setPageCount(1).
-                select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
+                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED)))
+                .addSort(Article.ARTICLE_CREATED, SortDirection.ASCENDING)
+                .setPage(1, 1).setPageCount(1)
+                .select(Keys.OBJECT_ID, ADJACENT_SUMMARY_PROJECTIONS);
 
         final JSONObject result = get(query);
         final JSONArray array = QueryResults.array(result);
@@ -460,6 +539,28 @@ public class ArticleRepository extends AbstractRepository {
         }
 
         return toAdjacentSummary(array.optJSONObject(0));
+    }
+
+    private Long resolveArticleCreated(final String articleId) throws RepositoryException {
+        if (null == articleId || articleId.isEmpty()) {
+            return null;
+        }
+        if (null != articleCache) {
+            final JSONObject cached = articleCache.getPersistedArticle(articleId);
+            if (null != cached && cached.has(Article.ARTICLE_CREATED)) {
+                return cached.optLong(Article.ARTICLE_CREATED);
+            }
+        }
+        if (getClass() != ArticleRepository.class) {
+            final JSONObject current = get(articleId);
+            return null == current ? null : current.optLong(Article.ARTICLE_CREATED);
+        }
+        final JSONObject row = getFirst(new Query()
+                .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.EQUAL, articleId))
+                .select(Keys.OBJECT_ID, Article.ARTICLE_CREATED)
+                .setPage(1, 1)
+                .setPageCount(1));
+        return null == row ? null : row.optLong(Article.ARTICLE_CREATED);
     }
 
     private static JSONObject toAdjacentSummary(final JSONObject article) throws RepositoryException {
@@ -471,11 +572,22 @@ public class ArticleRepository extends AbstractRepository {
             ret.put(Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
             ret.put(Article.ARTICLE_TITLE, article.getString(Article.ARTICLE_TITLE));
             ret.put(Article.ARTICLE_PERMALINK, article.getString(Article.ARTICLE_PERMALINK));
-            final String abstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
-            ret.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
-            ret.put(Article.ARTICLE_ABSTRACT,
-                    !abstractText.isEmpty() ? abstractText : article.optString(Article.ARTICLE_ABSTRACT));
-            ret.put(Article.ARTICLE_IMG1_URL, article.optString(Article.ARTICLE_IMG1_URL));
+            if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+                ret.put(Article.ARTICLE_ABSTRACT, "");
+                ret.put(Article.ARTICLE_ABSTRACT_TEXT, "");
+                ret.put(Article.ARTICLE_IMG1_URL, "");
+            } else {
+                final String rawAbstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
+                final String safeAbstractText = HiddenContentService.containsLockSyntax(rawAbstractText)
+                        ? HiddenContentService.stripForExcerptOrImage(rawAbstractText)
+                        : rawAbstractText;
+                ret.put(Article.ARTICLE_ABSTRACT_TEXT, safeAbstractText);
+                final String fallbackAbstract = HiddenContentService.stripForExcerptOrImage(
+                        article.optString(Article.ARTICLE_ABSTRACT));
+                ret.put(Article.ARTICLE_ABSTRACT,
+                        !safeAbstractText.isEmpty() ? safeAbstractText : fallbackAbstract);
+                ret.put(Article.ARTICLE_IMG1_URL, article.optString(Article.ARTICLE_IMG1_URL));
+            }
         } catch (final JSONException e) {
             throw new RepositoryException(e);
         }
@@ -490,12 +602,25 @@ public class ArticleRepository extends AbstractRepository {
      * @throws RepositoryException repository exception
      */
     public boolean isPublished(final String articleId) throws RepositoryException {
-        final JSONObject article = get(articleId);
-        if (null == article) {
+        if (null == articleId || articleId.isEmpty()) {
             return false;
         }
-
-        return Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS);
+        if (null != articleCache) {
+            final JSONObject cached = articleCache.getPersistedArticle(articleId);
+            if (null != cached) {
+                return Article.ARTICLE_STATUS_C_PUBLISHED == cached.optInt(Article.ARTICLE_STATUS);
+            }
+        }
+        if (getClass() != ArticleRepository.class) {
+            final JSONObject article = get(articleId);
+            return null != article && Article.ARTICLE_STATUS_C_PUBLISHED == article.optInt(Article.ARTICLE_STATUS);
+        }
+        final JSONObject row = getFirst(new Query()
+                .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.EQUAL, articleId))
+                .select(Keys.OBJECT_ID, Article.ARTICLE_STATUS)
+                .setPage(1, 1)
+                .setPageCount(1));
+        return null != row && Article.ARTICLE_STATUS_C_PUBLISHED == row.optInt(Article.ARTICLE_STATUS);
     }
 
     /**
@@ -506,18 +631,18 @@ public class ArticleRepository extends AbstractRepository {
      * @return set of published article IDs
      * @throws RepositoryException repository exception
      */
-    public java.util.Set<String> filterPublishedArticleIds(final java.util.Collection<String> articleIds)
+    public Set<String> filterPublishedArticleIds(final Collection<String> articleIds)
             throws RepositoryException {
         if (null == articleIds || articleIds.isEmpty()) {
-            return java.util.Collections.emptySet();
+            return Collections.emptySet();
         }
-        final java.util.Set<String> publishedIds = new java.util.HashSet<>();
+        final Set<String> publishedIds = new HashSet<>();
         final List<String> uncachedIds = new ArrayList<>();
         for (final String id : articleIds) {
             if (null == id || id.isBlank()) {
                 continue;
             }
-            final JSONObject cached = null == articleCache ? null : articleCache.getArticle(id);
+            final JSONObject cached = null == articleCache ? null : articleCache.getPersistedArticle(id);
             if (null != cached) {
                 if (Article.ARTICLE_STATUS_C_PUBLISHED == cached.optInt(Article.ARTICLE_STATUS)) {
                     publishedIds.add(id);
@@ -527,7 +652,7 @@ public class ArticleRepository extends AbstractRepository {
             }
         }
         if (!uncachedIds.isEmpty()) {
-            final String placeholders = String.join(",", java.util.Collections.nCopies(uncachedIds.size(), "?"));
+            final String placeholders = String.join(",", Collections.nCopies(uncachedIds.size(), "?"));
             final Object[] params = new Object[uncachedIds.size() + 1];
             int idx = 0;
             for (final String id : uncachedIds) {
@@ -559,7 +684,7 @@ public class ArticleRepository extends AbstractRepository {
     }
 
     private static void overlayPendingViewDelta(final JSONObject article) {
-        if (null == article) {
+        if (null == article || !article.has(Article.ARTICLE_VIEW_COUNT)) {
             return;
         }
         final long delta = ArticleMgmtService.peekPendingViewDelta(article.optString(Keys.OBJECT_ID));

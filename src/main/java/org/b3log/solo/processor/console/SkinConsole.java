@@ -32,8 +32,10 @@ import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.SkinMgmtService;
+import org.b3log.solo.util.AdminRequests;
 import org.b3log.solo.util.Skins;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import org.b3log.latke.http.Cookie;
@@ -77,8 +79,18 @@ public class SkinConsole {
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "请求来源不正确。"));
             return;
         }
-        final JSONObject payload = context.requestJSON();
-        final String accent = payload == null ? "" : payload.optString("accent");
+        final JSONObject payload;
+        try {
+            payload = context.requestJSON();
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
+            return;
+        }
+        if (null == payload) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
+            return;
+        }
+        final String accent = payload.optString("accent");
         if (!org.b3log.solo.util.SiteAppearance.valid(accent)) {
             context.setStatus(400);
             context.renderJSON(new JSONObject().put("sc", false).put("msg", "请选择有效的强调色。"));
@@ -193,24 +205,36 @@ public class SkinConsole {
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
-            final JSONObject skin = requestJSONObject.getJSONObject(Option.CATEGORY_C_SKIN);
+            if (null == requestJSONObject) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
+            final JSONObject skin = requestJSONObject.optJSONObject(Option.CATEGORY_C_SKIN);
+            if (null == skin) {
+                AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             final JSONObject ret = new JSONObject();
             renderer.setJSONObject(ret);
 
             skinMgmtService.updateSkin(skin);
 
             final Response response = context.getResponse();
-            final Cookie skinDirNameCookie = new Cookie(Common.COOKIE_NAME_SKIN, "");
-            skinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
-            skinDirNameCookie.setPath("/");
-            response.addCookie(skinDirNameCookie);
-            final Cookie mobileSkinDirNameCookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, "");
-            mobileSkinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
-            mobileSkinDirNameCookie.setPath("/");
-            response.addCookie(mobileSkinDirNameCookie);
+            if (null != response) {
+                final Cookie skinDirNameCookie = new Cookie(Common.COOKIE_NAME_SKIN, "");
+                skinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
+                skinDirNameCookie.setPath("/");
+                response.addCookie(skinDirNameCookie);
+                final Cookie mobileSkinDirNameCookie = new Cookie(Common.COOKIE_NAME_MOBILE_SKIN, "");
+                mobileSkinDirNameCookie.setMaxAge(0); // Discard preview cookies created by older releases.
+                mobileSkinDirNameCookie.setPath("/");
+                response.addCookie(mobileSkinDirNameCookie);
+            }
 
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
+        } catch (final JSONException | IllegalArgumentException invalid) {
+            AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 

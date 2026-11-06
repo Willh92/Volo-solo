@@ -17,9 +17,8 @@
  */
 package org.b3log.solo.service;
 
-import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.plugin.AbstractPlugin;
@@ -28,11 +27,13 @@ import org.b3log.latke.repository.RepositoryException;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Paginator;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.repository.PluginRepository;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -65,26 +66,8 @@ public class PluginQueryService {
     /**
      * Gets plugins by the specified request json object.
      *
-     * @param requestJSONObject the specified request json object, for example,
-     *                          "paginationCurrentPageNum": 1,
-     *                          "paginationPageSize": 20,
-     *                          "paginationWindowSize": 10,
-     *                          see {@link Pagination} for more details
-     * @return for example,
-     * <pre>
-     * {
-     *     "pagination": {
-     *         "paginationPageCount": 100,
-     *         "paginationPageNums": [1, 2, 3, 4, 5]
-     *     },
-     *     "plugins": [{
-     *         "name": "",
-     *         "version": "",
-     *         "author": "",
-     *         "status": "", // Enumeration name of {@link org.b3log.latke.plugin.PluginStatus}
-     *      }, ....]
-     * }
-     * </pre>
+     * @param requestJSONObject the specified request json object
+     * @return paginated plugins
      * @throws ServiceException service exception
      * @see Pagination
      */
@@ -97,7 +80,7 @@ public class PluginQueryService {
             final int pageSize = requestJSONObject.getInt(Pagination.PAGINATION_PAGE_SIZE);
             final int windowSize = requestJSONObject.getInt(Pagination.PAGINATION_WINDOW_SIZE);
 
-            final List<JSONObject> pluginJSONObjects = new ArrayList<JSONObject>();
+            final List<JSONObject> pluginJSONObjects = new ArrayList<>();
             final List<AbstractPlugin> plugins = pluginManager.getPlugins();
 
             for (final AbstractPlugin plugin : plugins) {
@@ -106,7 +89,7 @@ public class PluginQueryService {
                 pluginJSONObjects.add(jsonObject);
             }
 
-            final int pageCount = (int) Math.ceil((double) pluginJSONObjects.size() / (double) pageSize);
+            final int pageCount = pageSize <= 0 ? 0 : (int) Math.ceil((double) pluginJSONObjects.size() / (double) pageSize);
             final JSONObject pagination = new JSONObject();
 
             ret.put(Pagination.PAGINATION, pagination);
@@ -116,10 +99,12 @@ public class PluginQueryService {
             pagination.put(Pagination.PAGINATION_PAGE_NUMS, pageNums);
 
             final int start = pageSize * (currentPageNum - 1);
-            int end = start + pageSize;
-
-            end = end > pluginJSONObjects.size() ? pluginJSONObjects.size() : end;
-            ret.put(Plugin.PLUGINS, pluginJSONObjects.subList(start, end));
+            if (start < 0 || start >= pluginJSONObjects.size() || pageSize <= 0) {
+                ret.put(Plugin.PLUGINS, Collections.emptyList());
+            } else {
+                final int end = Math.min(start + pageSize, pluginJSONObjects.size());
+                ret.put(Plugin.PLUGINS, pluginJSONObjects.subList(start, end));
+            }
 
             return ret;
         } catch (final Exception e) {

@@ -109,6 +109,10 @@ public class UserConsole {
 
         try {
             final JSONObject requestJSONObject = context.requestJSON();
+            if (null == requestJSONObject) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             final String password = requestJSONObject.optString(UserExt.USER_B3_KEY);
             if (!password.isEmpty()) {
                 requestJSONObject.put(UserExt.USER_PASSWORD_HASH, org.b3log.solo.util.PasswordHashes.hash(password));
@@ -123,6 +127,8 @@ public class UserConsole {
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             renderer.setJSONObject(ret);
+        } catch (final org.json.JSONException | IllegalArgumentException invalid) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
@@ -322,10 +328,16 @@ public class UserConsole {
         try {
             final String userId = context.pathVar("id");
             final JSONObject body = context.requestJSON();
+            if (null == body) {
+                org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
+                return;
+            }
             final int status = body.optInt(UserExt.USER_STATUS, -1);
             userMgmtService.setUserStatus(userId, status);
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, true);
             ret.put(Keys.MSG, status == UserExt.USER_STATUS_C_DISABLED ? "该账号已禁用。" : "该账号已恢复正常。");
+        } catch (final org.json.JSONException | IllegalArgumentException invalid) {
+            org.b3log.solo.util.AdminRequests.reject(context, 400, "请求数据格式不正确。");
         } catch (final ServiceException e) {
             ret.put(org.b3log.solo.model.Common.STATUS_CODE, false);
             ret.put(Keys.MSG, e.getMessage());

@@ -12,7 +12,32 @@ import org.b3log.solo.util.Solos;
 /** Public request risk assessment. Authenticated administrators never enter the counters. */
 @Service
 public class RiskControlService {
+    private static final org.b3log.solo.logging.Logger LOGGER =
+            org.b3log.solo.logging.Logger.getLogger(RiskControlService.class);
     private static final String PATH = "volo.risk.path", SKIP = "volo.risk.skip", FAILED = "volo.risk.failed";
+    private static final String[] COMMENT_XSS_FIELDS = {
+            "boloUser", "boloSite", "email", "commentName", "commentURL",
+            "commentOriginalCommentName", "commentOriginalCommentId", "oId"
+    };
+
+    private record CachedService(BeanManager owner, RiskControlService service) {
+    }
+
+    private static volatile CachedService cachedService;
+
+    private static RiskControlService resolveService() {
+        final BeanManager beanManager = BeanManager.getInstance();
+        final CachedService cached = cachedService;
+        if (cached != null && cached.owner == beanManager) {
+            return cached.service;
+        }
+        final RiskControlService resolved = beanManager.getReference(RiskControlService.class);
+        if (resolved != null) {
+            cachedService = new CachedService(beanManager, resolved);
+        }
+        return resolved;
+    }
+
     private final AttackTracker tracker = new AttackTracker();
     @Inject private IpBanService ipBanService;
     @Inject private OptionQueryService optionQueryService;
@@ -57,18 +82,17 @@ public class RiskControlService {
     public static boolean rejectCommentXss(final RequestContext context, final org.json.JSONObject data) {
         if (data == null || Solos.isAdminLoggedIn(context)) return false;
         String field = null;
-        for (final String key : new String[]{"boloUser", "boloSite", "email", "commentName", "commentURL", "commentOriginalCommentName", "commentOriginalCommentId", "oId"}) {
+        for (final String key : COMMENT_XSS_FIELDS) {
             if (org.b3log.solo.util.XssPayloads.executable(data.optString(key))) { field = key; break; }
         }
         if (field == null && org.b3log.solo.util.XssPayloads.markdown(data.optString("commentContent"))) field = "commentContent";
         if (field == null) return false;
         final String address = LoginThrottle.clientAddress(context.getRequest());
         try {
-            final var service = BeanManager.getInstance().getReference(RiskControlService.class);
+            final var service = resolveService();
             if (!AttackTracker.internal(address) && service.enabled()) service.ipBanService.automatic(address,
                     new AttackTracker.Trigger("xss_payload", "评论字段 " + field + " 包含可执行 XSS 载荷，永久封禁"));
-        } catch (Exception failure) { org.b3log.solo.logging.Logger.getLogger(RiskControlService.class)
-                .log(org.apache.logging.log4j.Level.WARN, "XSS ban could not be saved", failure); }
+        } catch (Exception failure) { LOGGER.log(org.apache.logging.log4j.Level.WARN, "XSS ban could not be saved", failure); }
         context.setStatus(403);
         context.renderJSON(new org.json.JSONObject().put("sc", false).put("msg", "请求包含不允许的可执行内容。"));
         return true;
@@ -77,8 +101,7 @@ public class RiskControlService {
     /** Failure reporting must never replace the intended application response. */
     public static void recordFailure(final RequestContext context, final int status) {
         if (status != 400 && status != 401 && status != 403 && status != 404 && status != 405 && status != 429) return;
-        try { BeanManager.getInstance().getReference(RiskControlService.class).failure(context, status); }
-        catch (Exception failure) { org.b3log.solo.logging.Logger.getLogger(RiskControlService.class)
-                .log(org.apache.logging.log4j.Level.WARN, "Automatic risk rule could not be saved", failure); }
+        try { resolveService().failure(context, status); }
+        catch (Exception failure) { LOGGER.log(org.apache.logging.log4j.Level.WARN, "Automatic risk rule could not be saved", failure); }
     }
 }

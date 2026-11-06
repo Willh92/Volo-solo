@@ -779,4 +779,436 @@ console.log('Admin checks passed: safe renderers, persistent list actions, pagin
     assert(consoleScss.includes(".bolo-appearance [data-bolo-theme-toggle]:is(:hover, [aria-expanded='true'])"),'Console appearance toggle must override legacy admin.scss teal button:hover');
     assert(consoleScss.includes('.vditor-emojis button:hover'),'Console Vditor emoji buttons must override legacy admin.scss teal button:hover');
   }
+
+  // Real jquery.bowknot.min.js getDate & _buildHeader, 9 *List.js column models,
+  // admin-plugin-setting.ftl escaping, tablePaginate filtered orders, userList empty state,
+  // and blog-enhancements.js safe redirect + single servePath.
+  {
+    const bowknotSrc = fs.readFileSync('src/main/webapp/js/lib/jquery/jquery.bowknot.min.js', 'utf8');
+    assert(!bowknotSrc.includes('$.browser.msie'), 'jquery.bowknot.min.js must not reference removed $.browser.msie');
+    const domHtml = new Map();
+    const jqData = new Map();
+    function jq(sel) {
+      if (sel && typeof sel === 'object' && sel[0]) return sel;
+      const el = typeof sel === 'string' ? { id: sel.replace(/^#/, '') } : (sel || { id: 'host' });
+      return {
+        0: el,
+        length: 1,
+        html(v) { if (v !== undefined) { domHtml.set(el.id, v); return this; } return domHtml.get(el.id) || ''; },
+        each(fn) { fn.call(el, 0, el); return this; },
+        find() { return { length: 0 }; },
+        bind() { return this; },
+        addClass() { return this; },
+        removeClass() { return this; },
+        after() { return this; }
+      };
+    }
+    jq.extend = (target, ...rest) => {
+      if (!rest.length) { Object.assign(jq, target); return jq; }
+      return Object.assign(target, ...rest);
+    };
+    jq.fn = { extend(obj) { Object.assign(jq.fn, obj); } };
+    jq.data = (el, k, v) => {
+      const key = (el.id || 'el') + ':' + k;
+      if (v !== undefined) jqData.set(key, v);
+      return jqData.get(key);
+    };
+    jq.removeData = (el, k) => jqData.delete((el.id || 'el') + ':' + k);
+    jq.trim = s => String(s == null ? '' : s).trim();
+    const bkSandbox = { jQuery: jq, $: jq, window: {}, document: {}, Date, isFinite, Number, parseInt };
+    vm.runInNewContext(bowknotSrc, bkSandbox);
+    const localTs = new Date(2026, 3, 5, 8, 9, 7).getTime();
+    assert.equal(jq.bowknot.getDate(localTs), '2026-04-05');
+    assert.equal(jq.bowknot.getDate(localTs, 1), '2026-04-05 08:09:07');
+    assert.equal(jq.bowknot.getDate(String(localTs), 2), '2026-04-05 08:09');
+    for (const invalid of [null, undefined, '', '   ', true, false, 'not-a-date']) {
+      assert.equal(jq.bowknot.getDate(invalid, 1), '—');
+    }
+    const hostEl = { id: 'articleTable' };
+    jq.data(hostEl, 'table', {
+      id: 'articleTable',
+      settings: { colModel: [{ index: 'title', text: '标题', minWidth: 180 }, { index: 'date', text: '日期', width: 112 }] }
+    });
+    jq.table._buildHeader(hostEl);
+    const headerHtml = domHtml.get('articleTableTableHeader') || '';
+    assert(headerHtml.includes("data-column='title'") && headerHtml.includes("data-column='date'"), '_buildHeader must emit data-column attributes');
+    assert(headerHtml.includes("<span id='articleTable_title'>标题</span></th>"), '_buildHeader must emit intact <span>...</span></th>');
+
+    // Verify all 9 *List.js column models
+    const listFiles = [
+      ['article', 'articleList'],
+      ['draft', 'draftList'],
+      ['comment', 'commentList'],
+      ['page', 'pageList'],
+      ['category', 'categoryList'],
+      ['link', 'linkList'],
+      ['follow', 'followList'],
+      ['user', 'userList'],
+      ['plugin', 'pluginList'],
+    ];
+    const tpSrc = fs.readFileSync('src/main/webapp/js/admin/tablePaginate.js', 'utf8');
+    for (const [tableId, name] of listFiles) {
+      const filePath = `src/main/webapp/js/admin/${name}.js`;
+      const src = fs.readFileSync(filePath, 'utf8');
+      assert(!/padding-left\s*:\s*12px/i.test(src), `${name}.js must not hardcode padding-left: 12px`);
+      let capturedRaw = null;
+      let capturedFinal = null;
+      const $l = () => ({
+        addClass() { return this; },
+        table(cfg) { capturedFinal = cfg.colModel; return this; },
+        dialog() { return this; },
+        data() { return ''; },
+        text() { return this; },
+        val() { return ''; }
+      });
+      $l.extend = Object.assign;
+      $l.trim = s => String(s == null ? '' : s).trim();
+      $l.ajax = () => {};
+      const listSb = {
+        $: $l,
+        admin: { register: {}, pagination: { render() {} }, setHashByPage() {} },
+        Label: { servePath: '', PAGE_SIZE: 20, WINDOW_SIZE: 10 },
+        document: { getElementById: () => null },
+        window: { location: { hash: '' } }
+      };
+      vm.runInNewContext(tpSrc, listSb);
+      const origBuild = listSb.TablePaginate.prototype.buildTable;
+      listSb.TablePaginate.prototype.buildTable = function (colModel, noExpend) {
+        capturedRaw = colModel.slice();
+        return origBuild.call(this, colModel, noExpend);
+      };
+      vm.runInNewContext(src, listSb);
+      listSb.admin[name].tablePagination.id = tableId;
+      listSb.admin[name].init(1);
+      assert(Array.isArray(capturedRaw) && Array.isArray(capturedFinal), `${name}.js must build table column model`);
+      const rawFixedSum = capturedRaw.reduce((sum, col) => sum + (Number(col.width) || 0), 0);
+      const finalFixedSum = capturedFinal.reduce((sum, col) => sum + (Number(col.width) || 0), 0);
+      assert(rawFixedSum <= 704 && finalFixedSum <= 704, `${name}.js fixed width sum (${finalFixedSum}) must be <= 704`);
+      if (name === 'articleList' || name === 'draftList') {
+        const viewCol = capturedRaw.find(c => c.index === 'articleViewCount');
+        const dateCol = capturedRaw.find(c => c.index === 'date');
+        assert(viewCol && viewCol.width >= 80, `${name}.js articleViewCount width must be >= 80`);
+        assert(dateCol && dateCol.width >= 112, `${name}.js date width must be >= 112`);
+      }
+      if (name === 'commentList') {
+        const dateCol = capturedRaw.find(c => c.index === 'date');
+        assert(dateCol && dateCol.width >= 148, 'commentList.js date width must be >= 148');
+      }
+    }
+
+    // admin-plugin-setting.ftl
+    const pluginSettingFtl = fs.readFileSync('src/main/webapp/admin/admin-plugin-setting.ftl', 'utf8');
+    assert(pluginSettingFtl.includes('${setting?html}'), 'admin-plugin-setting.ftl must escape ${setting?html}');
+    assert(pluginSettingFtl.includes("var json = $('#jsoneditor').val()"), 'admin-plugin-setting.ftl must read #jsoneditor value into var json');
+
+    // tablePaginate.js clearing linkOrder, pageOrder, followOrder when filtered
+    {
+      let updatedGroupData = null;
+      const $tp = () => ({
+        table(action, payload) { if (action === 'update') updatedGroupData = payload.data[0].groupData; return this; },
+        text() { return this; }
+      });
+      $tp.extend = Object.assign;
+      const tpSb = {
+        $: $tp,
+        admin: { pagination: { render() {} }, setHashByPage() {} },
+        Label: {},
+        document: { getElementById: () => null }
+      };
+      vm.runInNewContext(tpSrc, tpSb);
+      const tp = new tpSb.TablePaginate('link');
+      const sample = [{ linkOrder: '<a>up</a>', pageOrder: '<a>up</a>', followOrder: '<a>up</a>', linkTitle: 'A' }];
+      tp.keyword = 'bolo';
+      tp.updateTablePagination(sample, 1, { paginationPageCount: 1 });
+      assert.equal(updatedGroupData[0].linkOrder, '');
+      assert.equal(updatedGroupData[0].pageOrder, '');
+      assert.equal(updatedGroupData[0].followOrder, '');
+      tp.keyword = '';
+      tp.updateTablePagination(sample, 1, { paginationPageCount: 1 });
+      assert.equal(updatedGroupData[0].linkOrder, '<a>up</a>');
+    }
+
+    // userList.js clearing stale rows on empty result and not writing Label.uploadMsg to #tipMsg
+    {
+      const userListSrc = fs.readFileSync('src/main/webapp/js/admin/userList.js', 'utf8');
+      assert(!userListSrc.includes('uploadMsg'), 'userList.js must not write Label.uploadMsg to #tipMsg');
+      let updatedRows = ['stale'];
+      const tips = [];
+      const $u = sel => ({
+        text(v) { if (sel === '#tipMsg' && v !== undefined) tips.push(v); return this; },
+        val() { return ''; }
+      });
+      $u.trim = s => String(s == null ? '' : s).trim();
+      $u.ajax = opts => opts.success({ sc: true, msg: '', users: [], pagination: { paginationPageCount: 0 } });
+      const uSb = {
+        $: $u,
+        admin: { register: {} },
+        Label: { servePath: '', PAGE_SIZE: 20, WINDOW_SIZE: 10, uploadMsg: 'DO_NOT_USE' },
+        TablePaginate: function () { this.updateTablePagination = rows => { updatedRows = rows; }; }
+      };
+      vm.runInNewContext(userListSrc, uSb);
+      uSb.admin.userList.getList(1);
+      assert.deepEqual(Array.from(updatedRows), [], 'userList.js must clear stale rows when users array is empty');
+      assert(!tips.includes('DO_NOT_USE'), 'userList.js must never write Label.uploadMsg to #tipMsg');
+    }
+
+    // blog-enhancements.js blocking //evil.example redirect and avoiding double servePath
+    const enhSrc = fs.readFileSync('src/main/webapp/js/blog-enhancements.js', 'utf8');
+    async function runReaderRedirectCase(redirectAttr, servePath) {
+      let submitHandler = null;
+      const alertEl = { textContent: '', hidden: true, classList: { toggle() {} } };
+      const loginForm = {
+        elements: { account: { value: 'reader@example.com' }, password: { value: 'Pass1234' } },
+        querySelector: sel => sel === '[data-reader-msg]' ? alertEl : null,
+        addEventListener(ev, fn) { if (ev === 'submit') submitHandler = fn; }
+      };
+      const standaloneAuth = {
+        dataset: {},
+        getAttribute: k => k === 'data-redirect' ? redirectAttr : null,
+        querySelector: sel => sel === '[data-reader-login-form]' ? loginForm : null,
+        querySelectorAll: () => []
+      };
+      const mockWin = {
+        VoloSiteConfig: { servePath },
+        location: { origin: 'https://blog.example', href: 'https://blog.example/login' },
+        addEventListener() {},
+        removeEventListener() {}
+      };
+      const mockDoc = {
+        readyState: 'loading',
+        documentElement: { classList: { remove() {}, add() {} } },
+        body: { classList: { contains: () => false } },
+        addEventListener() {},
+        querySelector: sel => sel === '[data-volo-reader-page]' ? standaloneAuth : null,
+        querySelectorAll: () => []
+      };
+      mockWin.document = mockDoc;
+      const enhSb = {
+        window: mockWin,
+        document: mockDoc,
+        URL,
+        URLSearchParams,
+        fetch: () => Promise.resolve({ json: () => Promise.resolve({ sc: true }) }),
+        setTimeout: fn => { fn(); return 1; },
+        clearTimeout() {},
+        setInterval: () => 1,
+        clearInterval() {}
+      };
+      vm.runInNewContext(enhSrc, enhSb);
+      mockWin.__voloEnhancementsRefresh();
+      assert.equal(typeof submitHandler, 'function');
+      submitHandler({ preventDefault() {} });
+      await new Promise(r => setImmediate(r));
+      return mockWin.location.href;
+    }
+    assert.equal(await runReaderRedirectCase('//evil.example/phish', '/blog'), '/blog/', 'Protocol-relative redirect must be blocked');
+    assert.equal(await runReaderRedirectCase('/\\evil.example/phish', '/blog'), '/blog/', 'Backslash open redirect must be blocked');
+    assert.equal(await runReaderRedirectCase('/blog/articles/1', '/blog'), '/blog/articles/1', 'Existing servePath prefix must not be doubled');
+    assert.equal(await runReaderRedirectCase('/articles/1?x=1#c', '/blog'), '/blog/articles/1?x=1#c', 'Relative path without servePath must prepend servePath once');
+
+    // Round 5 Console Regressions:
+    // 1) article.js add/update {sc: false, msg} error preservation & updateSuccLabel, plus secondary-edit refresh guard
+    {
+      let tipText = '';
+      let loadText = '';
+      let initedCalls = 0;
+      let nextAjaxResult = { sc: false, msg: '固定链接重复' };
+      const fields = new Map([['#title', '测试文章'], ['#tag', 'Java'], ['#permalink', '/dup']]);
+      const $art = sel => ({
+        length: 1,
+        val(v) { if (v === undefined) return fields.get(sel) ?? ''; fields.set(sel, v); return this; },
+        text(v) {
+          if (v === undefined) return sel === '#tipMsg' ? tipText : sel === '#loadMsg' ? loadText : '';
+          if (sel === '#tipMsg') tipText = String(v);
+          if (sel === '#loadMsg') loadText = String(v);
+          return this;
+        },
+        prop() { return false; },
+        each() { return this; },
+        attr() { return this; },
+        removeAttr() { return this; },
+        show() { return this; },
+        hide() { return this; },
+        focus() { return this; },
+        on() { return this; },
+        off() { return this; },
+        click() { return this; }
+      });
+      $art.trim = s => String(s == null ? '' : s).trim();
+      $art.ajax = opts => {
+        opts.success?.(nextAjaxResult, 'success');
+        opts.complete?.({}, 'success');
+      };
+      let editorBody = '正文A';
+      let abstractBody = '摘要A';
+      const artVm = {
+        $: $art,
+        Label: {
+          servePath: '',
+          loadingLabel: 'Loading...',
+          uploadMsg: 'UPLOAD_DONE',
+          updateSuccLabel: '更新成功'
+        },
+        Date,
+        isNaN,
+        parseInt,
+        encodeURIComponent,
+        setTimeout,
+        clearTimeout,
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {}, key: () => null, length: 0 },
+        window: {},
+        admin: {
+          inited() { initedCalls++; tipText = ''; },
+          selectTab() {},
+          register: {},
+          article: {},
+          editors: {
+            articleEditor: { getContent: () => editorBody, setContent: v => { editorBody = v; } },
+            abstractEditor: { getContent: () => abstractBody, setContent: v => { abstractBody = v; } }
+          }
+        }
+      };
+      artVm.window.localStorage = artVm.localStorage;
+      vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/article.js', 'utf8'), artVm);
+      artVm.admin.article.validate = () => true;
+      artVm.admin.article.status = { id: undefined };
+
+      artVm.admin.article.add(0);
+      assert.equal(initedCalls, 0, 'article.add complete must not call admin.inited() and wipe validation errors');
+      assert.equal(loadText, '', 'article.add complete must clear #loadMsg');
+      assert.equal(tipText, '固定链接重复', 'article.add must preserve backend {sc:false,msg} on #tipMsg');
+
+      artVm.admin.article.status = { id: 'art-99' };
+      nextAjaxResult = { sc: false, msg: '分类不存在' };
+      artVm.admin.article.update(0);
+      assert.equal(initedCalls, 0, 'article.update complete must not call admin.inited()');
+      assert.equal(loadText, '', 'article.update complete must clear #loadMsg');
+      assert.equal(tipText, '分类不存在', 'article.update must preserve backend {sc:false,msg} on #tipMsg');
+
+      nextAjaxResult = { sc: true, msg: '' };
+      artVm.admin.article.update(0);
+      assert.equal(tipText, '更新成功', 'article.update must display Label.updateSuccLabel on success');
+
+      // Secondary-edit refresh race guard
+      artVm.admin.article.status = { id: 'art-100' };
+      editorBody = '正在加载的文章正文';
+      abstractBody = '正在加载的摘要';
+      loadText = 'Loading...';
+      artVm.admin.register.article.refresh();
+      assert.equal(editorBody, '正在加载的文章正文', 'refresh must not wipe articleEditor when status.id is active');
+      assert.equal(abstractBody, '正在加载的摘要', 'refresh must not wipe abstractEditor when status.id is active');
+      assert.equal(loadText, 'Loading...', 'refresh must not wipe #loadMsg while getAndSet is in flight');
+
+      artVm.admin.article.status = { id: undefined };
+      artVm.admin.register.article.refresh();
+      assert.equal(editorBody, '', 'refresh must clear articleEditor for blank new-article tab');
+      assert.equal(abstractBody, '', 'refresh must clear abstractEditor for blank new-article tab');
+    }
+
+    // 2) preference.js conditional onSuccess callback & admin-preference.ftl checkImageBedConfig Promise
+    {
+      let swalShown = 0;
+      let ajaxResponse = { sc: false, msg: '保存失败' };
+      const prefFields = new Map([['#localeString', 'zh_CN'], ["input[name='editorMode']:checked", 'vditor']]);
+      const $pref = sel => ({
+        val(v) { if (v === undefined) return prefFields.get(sel) ?? '1'; prefFields.set(sel, v); return this; },
+        prop() { return false; },
+        attr() { return this; },
+        text() { return ''; },
+        html() { return this; },
+        on() { return this; },
+        off() { return this; }
+      });
+      $pref.trim = s => String(s == null ? '' : s).trim();
+      $pref.ajax = opts => {
+        opts.success?.(ajaxResponse, 'success');
+        opts.complete?.();
+      };
+      const prefVm = {
+        $: $pref,
+        Label: { servePath: '', loadingLabel: 'Loading...' },
+        admin: { register: {}, preference: {}, showNotice() {}, handleRequestError() {}, clearTip() {} },
+        window: { location: { hash: '', reload() { throw new Error('Image bed save callback must not force page reload when locale/editor unchanged'); } } }
+      };
+      vm.runInNewContext(fs.readFileSync('src/main/webapp/js/admin/preference.js', 'utf8'), prefVm);
+      prefVm.admin.preference.loaded = false;
+      prefVm.admin.preference.validate = () => true;
+      assert.equal(prefVm.admin.preference.update(() => { swalShown++; }), false);
+      assert.equal(swalShown, 0, 'save callback must not fire when preference.loaded is false');
+
+      prefVm.admin.preference.loaded = true;
+      prefVm.admin.preference.locale = 'zh_CN';
+      prefVm.admin.preference.editorMode = 'vditor';
+      prefVm.admin.preference.tuChuangRaw = '';
+      prefVm.admin.preference.validate = () => false;
+      assert.equal(prefVm.admin.preference.update(() => { swalShown++; }), false);
+      assert.equal(swalShown, 0, 'save callback must not fire when preference validation fails');
+
+      prefVm.admin.preference.validate = () => true;
+      ajaxResponse = { sc: false, msg: '保存失败' };
+      prefVm.admin.preference.update(() => { swalShown++; });
+      assert.equal(swalShown, 0, 'save callback must not fire when PUT /console/preference/ returns sc:false');
+
+      ajaxResponse = { sc: true, msg: 'OK' };
+      prefVm.admin.preference.update(() => { swalShown++; });
+      assert.equal(swalShown, 1, 'save callback must fire once when PUT /console/preference/ succeeds');
+
+      const prefFtl = fs.readFileSync('src/main/webapp/admin/admin-preference.ftl', 'utf8');
+      assert(/admin\.preference\.update\(\s*function\s*\(\)/.test(prefFtl), 'admin-preference.ftl save() must invoke noBtnSwal inside update onSuccess callback');
+      const checkMatch = prefFtl.match(/function\s+checkImageBedConfig\s*\(\)\s*\{[\s\S]*?(?=\s*function\s+checkImageBedConfigAndAlert)/);
+      assert(checkMatch, 'checkImageBedConfig() must exist in admin-preference.ftl');
+      let mockCheckRes = { msg: 'ok :)' };
+      const checkSb = {
+        encodeURIComponent,
+        Boolean,
+        Label: { servePath: '/blog' },
+        $: Object.assign(() => ({ val: () => '/uploads' }), {
+          ajax: () => Promise.resolve(mockCheckRes)
+        })
+      };
+      vm.runInNewContext(checkMatch[0], checkSb);
+      assert.equal(await checkSb.checkImageBedConfig(), true, 'checkImageBedConfig() must resolve true when msg contains :)');
+      mockCheckRes = { msg: 'invalid path' };
+      assert.equal(await checkSb.checkImageBedConfig(), false, 'checkImageBedConfig() must resolve false when msg lacks :)');
+    }
+
+    // 3) ajaxError.boloConsole global #loadMsg recovery, bowknot Panel_ fix, labels & dark contrast
+    {
+      const adminSrc = fs.readFileSync('src/main/webapp/js/admin/admin.js', 'utf8');
+      assert(adminSrc.includes('ajaxError.boloConsole'), 'admin.js must register namespaced ajaxError.boloConsole handler');
+      assert(pluginSettingFtl.includes("complete: function ()") && pluginSettingFtl.includes("$('#loadMsg').text('')"),
+        'admin-plugin-setting.ftl updatePluginSetting must clear #loadMsg in complete');
+      const labelFtl = fs.readFileSync('src/main/webapp/admin/admin-label.ftl', 'utf8');
+      assert(labelFtl.includes('Label.updateSuccLabel'), 'admin-label.ftl must define Label.updateSuccLabel');
+      const followSrc = fs.readFileSync('src/main/webapp/js/admin/followList.js', 'utf8');
+      assert(!followSrc.includes('permafollowLabel') && followSrc.includes("(Label.followLabel || '关注')"),
+        'followList.js del confirm must use Label.followLabel instead of undefined Label.permafollowLabel');
+      const linkSrc = fs.readFileSync('src/main/webapp/js/admin/linkList.js', 'utf8');
+      assert(!linkSrc.includes('permalinkLabel') && linkSrc.includes("(Label.linkTitleLabel || '链接')"),
+        'linkList.js del confirm must use friend-link label instead of permalinkLabel');
+      const userSrc = fs.readFileSync('src/main/webapp/js/admin/userList.js', 'utf8');
+      assert(!userSrc.includes('#2d6a5b') && !userSrc.includes('#b42318') && userSrc.includes('var(--bolo-accent)') && userSrc.includes('var(--bolo-danger)'),
+        'userList.js must use theme CSS tokens instead of low-contrast hardcoded hex');
+      const adminScss = fs.readFileSync('src/main/webapp/scss/admin.scss', 'utf8');
+      assert(!adminScss.includes('table.tftable'), 'admin.scss must not contain legacy dark table.tftable !important overrides');
+      assert(!bowknotSrc.includes('Pabel_'), 'jquery.bowknot.min.js must fix Pabel_ typo to Panel_ in _removeTabs');
+
+      let removedSelector = '';
+      const bkRemoveJq = sel => ({
+        0: { id: 'tabs' },
+        length: 1,
+        remove() { removedSelector = sel; return this; },
+        find() { return this; },
+        prev() { return { length: 0 }; },
+        next() { return { length: 0 }; },
+        hasClass() { return false; }
+      });
+      bkRemoveJq.extend = jq.extend;
+      bkRemoveJq.fn = { extend(obj) { Object.assign(bkRemoveJq.fn, obj); } };
+      bkRemoveJq.data = () => ({ id: 'tabs', settings: { data: ['custom'] } });
+      vm.runInNewContext(bowknotSrc, { jQuery: bkRemoveJq, $: bkRemoveJq, window: {}, document: {}, Date, isFinite, Number, parseInt });
+      bkRemoveJq.tabs._removeTabs({ id: 'tabs' }, 'custom');
+      assert.equal(removedSelector, '#tabsPanel_custom', '_removeTabs must remove #tabsPanel_<id>');
+    }
+  }
 }

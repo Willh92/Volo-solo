@@ -214,7 +214,7 @@ public class FeedProcessor {
                 : article.optString(Article.ARTICLE_ABSTRACT);
         summary = SeriesAndBookshelfService.stripForFeed(
                 HiddenContentService.stripForFeed(summary));
-        summary = Markdowns.toHTML(EmojiParser.parseToAliases(summary));
+        summary = Markdowns.toHTML(EmojiParser.parseToAliases(summary), false);
         if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
             summary = Markdowns.clean(summary);
         }
@@ -358,7 +358,7 @@ public class FeedProcessor {
                 HiddenContentService.stripForFeed(description));
         final JSONObject author = articleQueryService.getAuthor(article);
         description = EmojiParser.parseToAliases(description);
-        description = Markdowns.toHTML(description);
+        description = Markdowns.toHTML(description, false);
         if (!Role.ADMIN_ROLE.equals(author.optString(User.USER_ROLE))) {
             description = Markdowns.clean(description);
         }

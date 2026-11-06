@@ -264,9 +264,11 @@ public final class Article {
     }
 
     public static String getArticleImg1URL(final JSONObject article) {
+        if (null == article || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+            return Images.imageSize(Images.randImage(), ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
+        }
         final String summary = sanitizePublicMarkdown(article.optString(Article.ARTICLE_ABSTRACT));
-        final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
-                ? "" : sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
+        final String body = sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
         final String html = Markdowns.toHTML(summary + "\n\n" + body);
         final String source = firstSafeImageUrl(html);
         return Images.imageSize(source.isEmpty() ? Images.randImage() : source, ARTICLE_THUMB_IMG_WIDTH, ARTICLE_THUMB_IMG_HEIGHT);
@@ -279,9 +281,11 @@ public final class Article {
      * @return the first image URL, returns {@code ""} if not found
      */
     public static String getArticleImg1URLWithoutSetSize(final JSONObject article) {
+        if (null == article || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+            return Images.randImage();
+        }
         final String summary = sanitizePublicMarkdown(article.optString(Article.ARTICLE_ABSTRACT));
-        final String body = StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))
-                ? "" : sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
+        final String body = sanitizePublicMarkdown(article.optString(Article.ARTICLE_CONTENT));
         final String combined = summary + "\n\n" + body;
         String source = firstSafeImageUrl(combined);
         if (source.isEmpty()) {
@@ -314,12 +318,12 @@ public final class Article {
      * @return the abstract plain text
      */
     public static String getAbstractText(final JSONObject article) {
+        if (null == article || StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
+            return "";
+        }
+
         String content = article.optString(Article.ARTICLE_ABSTRACT);
         if (StringUtils.isBlank(content)) {
-            if (StringUtils.isNotBlank(article.optString(Article.ARTICLE_VIEW_PWD))) {
-                return "";
-            }
-
             content = article.optString(Article.ARTICLE_CONTENT);
         }
 

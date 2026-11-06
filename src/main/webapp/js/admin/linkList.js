@@ -39,27 +39,23 @@ admin.linkList = {
         this.tablePagination.buildTable([{
             text: "",
             index: "linkOrder",
-            width: 60
+            width: 68
         },{
-            style: "padding-left: 12px;",
             text: Label.linkTitleLabel,
             index: "linkTitle",
-            width: 230
+            width: 156
         }, {
-            style: "padding-left: 12px;",
             text: Label.urlLabel,
             index: "linkAddress",
             minWidth: 180
         }, {
-            style: "padding-left: 12px;",
             text: "存活状态",
             index: "linkHealthBadge",
             width: 150
         }, {
-            style: "padding-left: 12px;",
             text: Label.linkDescriptionLabel,
             index: "linkDescription",
-            width: 280
+            width: 140
         }]);
     
         this.tablePagination.initPagination();
@@ -292,7 +288,7 @@ admin.linkList = {
      * @title 链接标题
      */
     del: function (id, title) {
-        var isDelete = confirm(Label.confirmRemoveLabel + Label.permalinkLabel + '"' + Util.htmlDecode(title) + '"?');
+        var isDelete = confirm(Label.confirmRemoveLabel + (Label.linkTitleLabel || '链接') + '"' + Util.htmlDecode(title) + '"?');
         if (isDelete) {
             $("#loadMsg").text(Label.loadingLabel);
             $("#tipMsg").text("");

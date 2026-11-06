@@ -215,6 +215,7 @@ textarea, input {
 .wrapper {
   margin: 0 auto;
   width: 960px;
+  max-width: calc(100% - 24px);
 }
 
 .body {
@@ -226,6 +227,7 @@ textarea, input {
   margin: 16px 0 50px;
   overflow: hidden;
   width: 667px;
+  max-width: 100%;
 }
 
 /* end frame */

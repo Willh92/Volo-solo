@@ -25,13 +25,14 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.util.Ids;
+import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.SoloApplication;
 import org.b3log.solo.bolo.tool.ZipFilterUtils;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.repository.ArticleRepository;
+import org.b3log.solo.util.MonotonicIds;
 import org.b3log.solo.web.WebResources;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -40,12 +41,14 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -77,7 +80,7 @@ public class ImportService {
      */
     private static final String DEFAULT_TAG = "Note";
 
-    private static final long MAX_SINGLE_MD_BYTES = 10L * 1024L * 1024L;
+    private static final long MAX_SINGLE_MD_BYTES = 4L * 1024L * 1024L;
     private static final long MAX_BATCH_ZIP_BYTES = 100L * 1024L * 1024L;
     private static final int MAX_BATCH_ARTICLES = 2000;
 
@@ -172,6 +175,9 @@ public class ImportService {
                     }
 
                     try {
+                        if (md.length() > MAX_SINGLE_MD_BYTES) {
+                            throw new IOException("Markdown file exceeds maximum allowed size (4MB): " + fileName);
+                        }
                         final String fileContent = FileUtils.readFileToString(md, StandardCharsets.UTF_8);
                         final JSONObject article = parseArticle(fileName, fileContent);
                         article.put(Article.ARTICLE_AUTHOR_ID, adminId);
@@ -210,7 +216,11 @@ public class ImportService {
             } catch (final Exception e) {
                 LOGGER.log(Level.ERROR, "Async markdown import failed", e);
             } finally {
-                JdbcRepository.dispose();
+                try {
+                    JdbcRepository.dispose();
+                } finally {
+                    Stopwatchs.release();
+                }
             }
         });
     }
@@ -237,7 +247,7 @@ public class ImportService {
 
         int succCnt = 0, failCnt = 0;
         final Set<String> failSet = new TreeSet<>();
-        final Collection<File> mds = FileUtils.listFiles(new File(markdownsPath), new String[]{"md"}, true);
+        final Collection<File> mds = FileUtils.listFiles(new File(markdownsPath), new String[]{"md", "markdown"}, true);
         if (mds.isEmpty()) {
             return "导入失败";
         }
@@ -249,6 +259,9 @@ public class ImportService {
             }
 
             try {
+                if (md.length() > MAX_SINGLE_MD_BYTES) {
+                    throw new IOException("Markdown file exceeds maximum allowed size (4MB): " + fileName);
+                }
                 final String fileContent = FileUtils.readFileToString(md, StandardCharsets.UTF_8);
                 final JSONObject article = parseArticle(fileName, fileContent);
                 article.put(Article.ARTICLE_AUTHOR_ID, adminId);
@@ -381,7 +394,7 @@ public class ImportService {
                     final long size = Files.size(candidate.path());
                     if (size > MAX_SINGLE_MD_BYTES) {
                         failed++;
-                        appendError(errors, candidate.displayName() + ": 单篇 Markdown 文件超过 10MB 限制。");
+                        appendError(errors, candidate.displayName() + ": 单篇 Markdown 文件超过 4MB 限制。");
                         continue;
                     }
                     final String fileContent = Files.readString(candidate.path(), StandardCharsets.UTF_8);
@@ -551,44 +564,79 @@ public class ImportService {
         return (msg == null || msg.isBlank()) ? t.getClass().getSimpleName() : msg;
     }
 
-    private JSONObject parseArticle(final String fileName, String fileContent) {
-        fileContent = StringUtils.trim(fileContent);
-        String frontMatter = StringUtils.substringBefore(fileContent, "---");
-        if (StringUtils.isBlank(frontMatter)) {
-            fileContent = StringUtils.substringAfter(fileContent, "---");
-            frontMatter = StringUtils.substringBefore(fileContent, "---");
+    private JSONObject parseArticle(final String fileName, final String fileContent) {
+        String raw = fileContent == null ? "" : fileContent;
+        if (raw.startsWith("\uFEFF")) {
+            raw = raw.substring(1);
         }
 
-        final JSONObject ret = new JSONObject();
-        final LoaderOptions options = new LoaderOptions();
-        options.setAllowDuplicateKeys(false);
-        options.setMaxAliasesForCollections(20);
-        options.setNestingDepthLimit(30);
-        options.setCodePointLimit(1024 * 1024);
-        final Yaml yaml = new Yaml(new SafeConstructor(options));
-        Map elems;
-
-        try {
-            final Object loaded = yaml.load(frontMatter);
-            if (!(loaded instanceof Map)) {
-                throw new IllegalArgumentException("Front matter must be a mapping");
+        int openEnd = -1;
+        if (raw.startsWith("---")) {
+            int p = 3;
+            while (p < raw.length() && (raw.charAt(p) == ' ' || raw.charAt(p) == '\t')) {
+                p++;
             }
-            elems = (Map) loaded;
-        } catch (final Exception e) {
-            // treat it as plain markdown
-            final long now = System.currentTimeMillis();
-            ret.put(Keys.OBJECT_ID, Ids.genTimeMillisId());
-            ret.put(Article.ARTICLE_TITLE, StringUtils.substringBeforeLast(fileName, "."));
-            ret.put(Article.ARTICLE_CONTENT, fileContent);
-            ret.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(fileContent));
-            ret.put(Article.ARTICLE_CREATED, now);
-            ret.put(Article.ARTICLE_UPDATED, now);
-            ret.put(Article.ARTICLE_TAGS_REF, DEFAULT_TAG);
-            ret.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
-            ret.put(Article.ARTICLE_COMMENTABLE, true);
-            ret.put(Article.ARTICLE_VIEW_PWD, "");
+            if (p < raw.length() && raw.charAt(p) == '\n') {
+                openEnd = p + 1;
+            } else if (p + 1 < raw.length() && raw.charAt(p) == '\r' && raw.charAt(p + 1) == '\n') {
+                openEnd = p + 2;
+            }
+        }
 
-            return ret;
+        int closeStart = -1;
+        int bodyStart = -1;
+        if (openEnd >= 0) {
+            int pos = openEnd;
+            while (pos <= raw.length()) {
+                final int lineEnd = raw.indexOf('\n', pos);
+                final int contentEnd;
+                final int nextPos;
+                if (lineEnd < 0) {
+                    contentEnd = raw.length();
+                    nextPos = raw.length() + 1;
+                } else {
+                    contentEnd = (lineEnd > pos && raw.charAt(lineEnd - 1) == '\r') ? lineEnd - 1 : lineEnd;
+                    nextPos = lineEnd + 1;
+                }
+                if (isYamlFenceLine(raw, pos, contentEnd)) {
+                    closeStart = pos;
+                    bodyStart = lineEnd < 0 ? raw.length() : lineEnd + 1;
+                    break;
+                }
+                if (lineEnd < 0) {
+                    break;
+                }
+                pos = nextPos;
+            }
+        }
+
+        if (openEnd < 0 || closeStart < 0) {
+            return buildPlainMarkdownArticle(fileName, StringUtils.trim(raw));
+        }
+
+        final String frontMatter = raw.substring(openEnd, closeStart);
+        final String content = StringUtils.trim(raw.substring(bodyStart));
+
+        final JSONObject ret = new JSONObject();
+        final Map elems;
+        if (frontMatter.isBlank()) {
+            elems = Collections.emptyMap();
+        } else {
+            final LoaderOptions options = new LoaderOptions();
+            options.setAllowDuplicateKeys(false);
+            options.setMaxAliasesForCollections(20);
+            options.setNestingDepthLimit(30);
+            options.setCodePointLimit(1024 * 1024);
+            final Yaml yaml = new Yaml(new SafeConstructor(options));
+            try {
+                final Object loaded = yaml.load(frontMatter);
+                if (!(loaded instanceof Map)) {
+                    throw new IllegalArgumentException("Front matter must be a mapping");
+                }
+                elems = (Map) loaded;
+            } catch (final Exception e) {
+                return buildPlainMarkdownArticle(fileName, StringUtils.trim(raw));
+            }
         }
 
         String title = elems.get("title") == null ? null : String.valueOf(elems.get("title"));
@@ -596,12 +644,6 @@ public class ImportService {
             title = StringUtils.substringBeforeLast(fileName, ".");
         }
         ret.put(Article.ARTICLE_TITLE, title);
-
-        String content = StringUtils.substringAfter(fileContent, frontMatter);
-        if (StringUtils.startsWith(content, "---")) {
-            content = StringUtils.substringAfter(content, "---");
-            content = StringUtils.trim(content);
-        }
         ret.put(Article.ARTICLE_CONTENT, content);
 
         final String abs = parseAbstract(elems, content);
@@ -613,7 +655,7 @@ public class ImportService {
         ret.put(Article.ARTICLE_UPDATED, updatedDate.getTime());
 
         // Generate a collision-free unique article oId while preserving ARTICLE_CREATED / ARTICLE_UPDATED timestamps.
-        ret.put(Keys.OBJECT_ID, Ids.genTimeMillisId());
+        ret.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
 
         final Object permalinkObj = elems.get("permalink");
         final String permalink = permalinkObj == null ? null : String.valueOf(permalinkObj);
@@ -633,6 +675,38 @@ public class ImportService {
         ret.put(Article.ARTICLE_COMMENTABLE, true);
         ret.put(Article.ARTICLE_VIEW_PWD, "");
 
+        return ret;
+    }
+
+    private static boolean isYamlFenceLine(final String s, final int start, final int end) {
+        if (end - start < 3
+                || s.charAt(start) != '-'
+                || s.charAt(start + 1) != '-'
+                || s.charAt(start + 2) != '-') {
+            return false;
+        }
+        for (int i = start + 3; i < end; i++) {
+            final char c = s.charAt(i);
+            if (c != ' ' && c != '\t') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static JSONObject buildPlainMarkdownArticle(final String fileName, final String plainContent) {
+        final JSONObject ret = new JSONObject();
+        final long now = System.currentTimeMillis();
+        ret.put(Keys.OBJECT_ID, MonotonicIds.nextMillisId());
+        ret.put(Article.ARTICLE_TITLE, StringUtils.substringBeforeLast(fileName, "."));
+        ret.put(Article.ARTICLE_CONTENT, plainContent);
+        ret.put(Article.ARTICLE_ABSTRACT, Article.getAbstractText(plainContent));
+        ret.put(Article.ARTICLE_CREATED, now);
+        ret.put(Article.ARTICLE_UPDATED, now);
+        ret.put(Article.ARTICLE_TAGS_REF, DEFAULT_TAG);
+        ret.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
+        ret.put(Article.ARTICLE_COMMENTABLE, true);
+        ret.put(Article.ARTICLE_VIEW_PWD, "");
         return ret;
     }
 

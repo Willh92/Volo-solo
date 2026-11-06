@@ -37,6 +37,26 @@ if (typeof window !== 'undefined') {
  * @static
  */
 var Util = {
+  formatDate: function (value, mode) {
+    if (value === null || value === undefined || typeof value === 'boolean') return '—'
+    if (typeof value === 'string') {
+      value = value.trim()
+      if (!value) return '—'
+      if (/^\d+$/.test(value)) value = Number(value)
+    }
+    var d = value instanceof Date ? value : new Date(value)
+    var time = d.getTime()
+    if (!Number.isFinite(time) || time < 0) return '—'
+    var pad = function (n) { return (n < 10 ? '0' : '') + n }
+    var ymd = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    if (mode === 1) {
+      return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+    }
+    if (mode === 2) {
+      return ymd + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+    }
+    return ymd
+  },
   chooseBanDuration: function () {
     if (typeof swal !== 'function') return Promise.resolve(null)
     var label = document.createElement('label'), caption = document.createElement('span'), select = document.createElement('select')

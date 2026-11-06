@@ -26,7 +26,6 @@
     by <a href="https://github.com/zjhch123" target="_blank">Jiahao.Zhang</a>
   </div>
 </footer>
-<script type="text/javascript" src="${staticServePath}/js/lib/jquery/jquery.min.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/skins/${skinDirName}/js/common${miniPostfix}.js?${staticResourceVersion}" charset="utf-8"></script>
 <#include "../../common-template/label.ftl">

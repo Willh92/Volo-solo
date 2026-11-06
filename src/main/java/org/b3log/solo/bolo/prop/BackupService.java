@@ -17,27 +17,24 @@
  */
 package org.b3log.solo.bolo.prop;
 
-import static pers.adlered.blog_platform_export_tool.Launcher.run;
-
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
-import org.b3log.latke.http.Response;
-
-import org.b3log.latke.http.FileUpload;
-import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
-import org.b3log.latke.ioc.Inject;
-import org.b3log.latke.repository.Transaction;
+import org.b3log.latke.http.FileUpload;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.RequestProcessing;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.util.Ids;
 import org.b3log.solo.bolo.tool.ZipFilterUtils;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.UserRepository;
@@ -48,10 +45,12 @@ import org.b3log.solo.service.InitService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.util.Solos;
 import org.b3log.solo.util.Uploads;
-import org.apache.commons.io.FileUtils;
+import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONObject;
 
 import pers.adlered.blog_platform_export_tool.module.TranslateResult;
+import pers.adlered.blog_platform_export_tool.module.cnblogs.CNBLOGSModuleServiceImpl;
+import pers.adlered.blog_platform_export_tool.util.Decompress;
 
 /**
  * <h3>bolo-solo</h3>
@@ -64,6 +63,9 @@ import pers.adlered.blog_platform_export_tool.module.TranslateResult;
  **/
 @Singleton
 public class BackupService {
+
+    private static final Logger LOGGER = Logger.getLogger(BackupService.class);
+
     /**
      * Option query service.
      */
@@ -178,73 +180,69 @@ public class BackupService {
         if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
         Path directory = null;
-        List<FileUpload> itemList = java.util.Collections.emptyList();
         try {
-            directory = Files.createTempDirectory("bolo-cnblogs-");
-            itemList = Uploads.files(context.getRequest());
-            for (FileUpload item : itemList) {
-                Uploads.stage(item, directory, "zip", "xml");
+            final JSONObject admin = userRepository.getAdmin();
+            if (admin == null) {
+                org.b3log.solo.web.JsonResponses.json(context).renderMsg("系统尚未初始化管理员账号。");
+                return;
             }
-            List<TranslateResult> list = run("CNBlogs", directory.toString());
-            for (TranslateResult i : list) {
-                Transaction transaction = null;
-                try {
-                    transaction = userRepository.beginTransaction();
-                    final JSONObject article = new JSONObject();
-                    final String ret = Ids.genTimeMillisId();
-                    article.put(Keys.OBJECT_ID, ret);
-                    article.put(Article.ARTICLE_TITLE, i.getTitle());
-                    String content = i.getArticleContent();
-                    article.put(Article.ARTICLE_ABSTRACT_TEXT, "");
-                    article.put(Article.ARTICLE_ABSTRACT, "");
-                    article.put(Article.ARTICLE_CONTENT, content);
-                    article.put(Article.ARTICLE_TAGS_REF, "待分类");
-                    final String permalink = "/articles/" + DateFormatUtils.format(i.getDate(), "yyyy/MM/dd") + "/"
-                            + article.optString(Keys.OBJECT_ID) + ".html";
-                    article.put(Article.ARTICLE_PERMALINK, permalink);
-                    article.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
-                    article.put(Article.ARTICLE_SIGN_ID, "1");
-                    article.put(Article.ARTICLE_COMMENT_COUNT, 0);
-                    article.put(Article.ARTICLE_VIEW_COUNT, 0);
-                    final JSONObject admin = userRepository.getAdmin();
-                    final long now = System.currentTimeMillis();
-                    article.put(Article.ARTICLE_CREATED, i.getDate().getTime());
-                    article.put(Article.ARTICLE_UPDATED, now);
-                    article.put(Article.ARTICLE_PUT_TOP, false);
-                    article.put(Article.ARTICLE_RANDOM_DOUBLE, Math.random());
-                    article.put(Article.ARTICLE_AUTHOR_ID, admin.optString(Keys.OBJECT_ID));
-                    article.put(Article.ARTICLE_COMMENTABLE, true);
-                    article.put(Article.ARTICLE_VIEW_PWD, "");
-                    final String articleImg1URL = Article.getArticleImg1URL(article);
-                    article.put(Article.ARTICLE_IMG1_URL, articleImg1URL);
-                    long contentLength = content.getBytes(StandardCharsets.UTF_8).length;
-                    System.out.println("========== 正在导入 ==========");
-                    System.out.println("文章标题：" + i.getTitle());
-                    System.out.println("文章长度：" + contentLength);
-                    initService.importArticle(article);
-                    System.out.println("========== 导入完成 ==========");
+            final String adminId = admin.optString(Keys.OBJECT_ID);
 
-                    transaction.commit();
-                } catch (Exception e) {
-                    if (transaction != null && transaction.isActive()) {
-                        transaction.rollback();
-                    }
-                    e.printStackTrace();
-                    continue;
+            directory = Files.createTempDirectory("bolo-cnblogs-");
+            final List<FileUpload> itemList = Uploads.files(context.getRequest());
+            for (int idx = 0; idx < itemList.size(); idx++) {
+                final FileUpload item = itemList.set(idx, null);
+                if (item != null) {
+                    Uploads.stage(item, directory, "zip", "xml");
                 }
             }
-        } catch (Exception e) {
-            org.b3log.solo.web.JsonResponses.json(context).renderMsg("从博客园恢复备份失败，请重试！");
 
+            final String targetDir = Decompress.unpackDirectory(directory.toString());
+            final List<TranslateResult> list = new CNBLOGSModuleServiceImpl().analyze(targetDir);
+            int importedCount = 0;
+            for (final TranslateResult i : list) {
+                if (i == null) {
+                    continue;
+                }
+                try {
+                    final JSONObject article = new JSONObject();
+                    article.put(Keys.OBJECT_ID, Ids.genTimeMillisId());
+                    final String title = (i.getTitle() == null || i.getTitle().isBlank()) ? "Untitled" : i.getTitle().trim();
+                    final String content = i.getArticleContent() == null ? "" : i.getArticleContent();
+                    final String abstractText = Article.getAbstractText(content);
+                    article.put(Article.ARTICLE_TITLE, title);
+                    article.put(Article.ARTICLE_ABSTRACT, abstractText);
+                    article.put(Article.ARTICLE_ABSTRACT_TEXT, abstractText);
+                    article.put(Article.ARTICLE_CONTENT, content);
+                    article.put(Article.ARTICLE_TAGS_REF, "待分类");
+                    article.put(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED);
+                    article.put(Article.ARTICLE_SIGN_ID, "1");
+                    final Date pubDate = i.getDate() != null ? i.getDate() : new Date();
+                    article.put(Article.ARTICLE_CREATED, pubDate.getTime());
+                    article.put(Article.ARTICLE_UPDATED, pubDate.getTime());
+                    article.put(Article.ARTICLE_AUTHOR_ID, adminId);
+                    article.put(Article.ARTICLE_COMMENTABLE, true);
+                    article.put(Article.ARTICLE_VIEW_PWD, "");
+
+                    final JSONObject request = new JSONObject();
+                    request.put(Article.ARTICLE, article);
+                    articleMgmtService.addArticle(request);
+                    importedCount++;
+                } catch (final Exception e) {
+                    LOGGER.log(Level.WARN, "Import CNBlogs article [" + i.getTitle() + "] failed", e);
+                }
+            }
+            LOGGER.log(Level.INFO, "Imported [" + importedCount + "] articles from CNBlogs backup");
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Import from CNBlogs backup failed", e);
+            org.b3log.solo.web.JsonResponses.json(context).renderMsg("从博客园恢复备份失败，请重试！");
             return;
         } finally {
+            Decompress.clearCurrentPath();
             FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
         }
 
-        System.out.println("博客园文章已全部导入。");
         org.b3log.solo.web.JsonResponses.json(context).renderMsg("从博客园恢复备份成功。");
-
-        return;
     }
 
     @RequestProcessing(value = "/import/markdown", method = { HttpMethod.POST })
@@ -252,28 +250,32 @@ public class BackupService {
         if (!org.b3log.solo.util.AdminRequests.allowWrite(context)) return;
 
         Path directory = null;
-        List<FileUpload> itemList = java.util.Collections.emptyList();
         String result = "";
         try {
             directory = Files.createTempDirectory("bolo-markdown-");
             final Path articles = Files.createDirectory(directory.resolve("articles"));
-            itemList = Uploads.files(context.getRequest());
-            for (FileUpload item : itemList) {
+            final List<FileUpload> itemList = Uploads.files(context.getRequest());
+            for (int idx = 0; idx < itemList.size(); idx++) {
+                final FileUpload item = itemList.set(idx, null);
+                if (item == null) {
+                    continue;
+                }
                 final File file = Uploads.stage(item, directory, "zip");
-                ZipFilterUtils.unpackFilteredZip(file, articles.toFile(), null);
-                Files.delete(file.toPath());
+                ZipFilterUtils.unpackFilteredZip(file, articles.toFile(), entry -> {
+                    final String lower = entry.toLowerCase(Locale.ROOT);
+                    return (lower.endsWith(".md") || lower.endsWith(".markdown")) ? entry : null;
+                });
+                Files.deleteIfExists(file.toPath());
             }
             result = importService.importMarkdownsSync(articles.toFile());
-        } catch (Exception e) {
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Import from Markdown zip failed", e);
             org.b3log.solo.web.JsonResponses.json(context).renderMsg("从 Markdown zip 恢复备份失败，请重试！" + result);
-
             return;
         } finally {
             FileUtils.deleteQuietly(directory == null ? null : directory.toFile());
         }
 
         org.b3log.solo.web.JsonResponses.json(context).renderMsg("从 Markdown zip 恢复备份成功。" + result);
-
-        return;
     }
 }

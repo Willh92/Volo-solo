@@ -17,6 +17,7 @@ import org.b3log.latke.repository.CompositeFilterOperator;
 import org.b3log.latke.repository.FilterOperator;
 import org.b3log.latke.repository.PropertyFilter;
 import org.b3log.latke.repository.Query;
+import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Article;
@@ -26,15 +27,19 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.owasp.encoder.Encode;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -56,6 +61,8 @@ public class BacklinkService {
     private static final Logger LOGGER = Logger.getLogger(BacklinkService.class);
 
     private static final int MAX_BACKLINKS_PER_ARTICLE = 10;
+    private static final int SCAN_PAGE_SIZE = 200;
+    private static final int CONTENT_FETCH_BATCH_SIZE = 50;
     private static final Pattern CODE_FENCE_PATTERN = Pattern.compile("^\\s*(`{3,}|~{3,})");
     private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`+[^`\\r\\n]+`+");
     private static final Pattern MD_INLINE_LINK_PATTERN = Pattern.compile("(?<!!)\\[[^\\]\\r\\n]*\\]\\(\\s*([^)\\r\\n]+?)\\s*\\)");
@@ -68,10 +75,20 @@ public class BacklinkService {
     public record BacklinkItem(String oId, String title, String permalink, long updated) {
     }
 
+    /**
+     * Incrementally cached outgoing link targets for a public article keyed by {@code articleUpdated}.
+     */
+    private record CachedOutgoing(long updated, String title, String permalink, Set<String> refs) {
+    }
+
+    private record MetaRow(String oId, String title, String permalink, long updated) {
+    }
+
     @Inject
     private ArticleRepository articleRepository;
 
     private final Object buildLock = new Object();
+    private final ConcurrentHashMap<String, CachedOutgoing> outgoingCache = new ConcurrentHashMap<>();
     private volatile Map<String, List<BacklinkItem>> snapshot;
     private volatile Map<String, List<BacklinkItem>> lastGoodSnapshot = Collections.emptyMap();
     private final AtomicLong generation = new AtomicLong(0L);
@@ -86,6 +103,20 @@ public class BacklinkService {
     public void invalidate() {
         generation.incrementAndGet();
         snapshot = null;
+    }
+
+    /**
+     * Completely resets all backlink caches and snapshots (used after full backup restore or bulk database replacement).
+     */
+    public void invalidateAll() {
+        generation.incrementAndGet();
+        snapshot = null;
+        synchronized (buildLock) {
+            generation.incrementAndGet();
+            outgoingCache.clear();
+            snapshot = null;
+            lastGoodSnapshot = Collections.emptyMap();
+        }
     }
 
     /**
@@ -176,92 +207,161 @@ public class BacklinkService {
     }
 
     private Map<String, List<BacklinkItem>> buildSnapshot() throws Exception {
-        final Query query = new Query()
-                .setPage(1, Integer.MAX_VALUE)
-                .setFilter(new CompositeFilter(CompositeFilterOperator.AND, List.of(
-                        new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED),
-                        new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, "")
-                )))
-                .select(Keys.OBJECT_ID,
-                        Article.ARTICLE_TITLE,
-                        Article.ARTICLE_PERMALINK,
-                        Article.ARTICLE_CONTENT,
-                        Article.ARTICLE_VIEW_PWD,
-                        Article.ARTICLE_UPDATED,
-                        Article.ARTICLE_STATUS)
-                .setPageCount(1);
+        final Set<String> seenPublicIds = new LinkedHashSet<>();
+        final Map<String, String> permalinkToId = new HashMap<>();
+        final Map<String, MetaRow> missingContentMeta = new LinkedHashMap<>();
 
-        final JSONArray rows = QueryResults.array(articleRepository.get(query));
-        if (rows.isEmpty()) {
+        int page = 1;
+        while (true) {
+            final Query metaQuery = new Query()
+                    .setPage(page, SCAN_PAGE_SIZE)
+                    .setPageCount(1)
+                    .addSort(Keys.OBJECT_ID, SortDirection.ASCENDING)
+                    .setFilter(new CompositeFilter(CompositeFilterOperator.AND, List.of(
+                            new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED),
+                            new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, "")
+                    )))
+                    .select(Keys.OBJECT_ID,
+                            Article.ARTICLE_TITLE,
+                            Article.ARTICLE_PERMALINK,
+                            Article.ARTICLE_VIEW_PWD,
+                            Article.ARTICLE_UPDATED,
+                            Article.ARTICLE_STATUS);
+
+            final JSONArray rows = QueryResults.array(articleRepository.get(metaQuery));
+            if (rows.isEmpty()) {
+                break;
+            }
+
+            int newlySeen = 0;
+            for (int i = 0; i < rows.length(); i++) {
+                final JSONObject row = rows.optJSONObject(i);
+                if (row == null) {
+                    continue;
+                }
+                if (row.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                        || StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
+                    continue;
+                }
+                final String oId = StringUtils.trimToEmpty(row.optString(Keys.OBJECT_ID));
+                final String rawPermalink = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_PERMALINK));
+                if (oId.isEmpty() || rawPermalink.isEmpty()) {
+                    continue;
+                }
+                if (!seenPublicIds.add(oId)) {
+                    continue;
+                }
+                newlySeen++;
+                final String canonicalPermalink = rawPermalink.startsWith("/") ? rawPermalink : ("/" + rawPermalink);
+                final String lookupKey = normalizePermalinkKey(canonicalPermalink);
+                if (lookupKey.isEmpty() || "/".equals(lookupKey)) {
+                    seenPublicIds.remove(oId);
+                    continue;
+                }
+                final String title = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_TITLE));
+                final long updated = row.optLong(Article.ARTICLE_UPDATED, 0L);
+
+                permalinkToId.putIfAbsent(lookupKey, oId);
+
+                final CachedOutgoing cached = outgoingCache.get(oId);
+                if (cached != null && cached.updated() == updated) {
+                    if (!title.equals(cached.title()) || !canonicalPermalink.equals(cached.permalink())) {
+                        outgoingCache.put(oId, new CachedOutgoing(updated, title, canonicalPermalink, cached.refs()));
+                    }
+                } else if (row.has(Article.ARTICLE_CONTENT)) {
+                    final Set<String> refs = extractPublicRawRefs(row.optString(Article.ARTICLE_CONTENT, ""));
+                    outgoingCache.put(oId, new CachedOutgoing(updated, title, canonicalPermalink, refs));
+                } else {
+                    missingContentMeta.put(oId, new MetaRow(oId, title, canonicalPermalink, updated));
+                }
+            }
+
+            if (rows.length() < SCAN_PAGE_SIZE || newlySeen == 0) {
+                break;
+            }
+            page++;
+        }
+
+        // Prune deleted, unpublished, or newly password-protected articles from the incremental cache.
+        outgoingCache.keySet().retainAll(seenPublicIds);
+
+        if (seenPublicIds.isEmpty() || permalinkToId.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        if (!missingContentMeta.isEmpty()) {
+            final List<String> missingIds = new ArrayList<>(missingContentMeta.keySet());
+            final Set<String> invalidatedPublicIds = new HashSet<>();
+            for (int start = 0; start < missingIds.size(); start += CONTENT_FETCH_BATCH_SIZE) {
+                final int end = Math.min(start + CONTENT_FETCH_BATCH_SIZE, missingIds.size());
+                final List<String> batchIds = missingIds.subList(start, end);
+                final Query contentQuery = new Query()
+                        .setFilter(new PropertyFilter(Keys.OBJECT_ID, FilterOperator.IN, batchIds))
+                        .select(Keys.OBJECT_ID,
+                                Article.ARTICLE_CONTENT,
+                                Article.ARTICLE_VIEW_PWD,
+                                Article.ARTICLE_STATUS)
+                        .setPage(1, batchIds.size())
+                        .setPageCount(1);
+                final JSONArray contentRows = QueryResults.array(articleRepository.get(contentQuery));
+                final Set<String> fetchedInBatch = new HashSet<>(batchIds.size() * 2);
+                for (int i = 0; i < contentRows.length(); i++) {
+                    final JSONObject row = contentRows.optJSONObject(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    final String oId = StringUtils.trimToEmpty(row.optString(Keys.OBJECT_ID));
+                    final MetaRow meta = missingContentMeta.get(oId);
+                    if (meta == null) {
+                        continue;
+                    }
+                    fetchedInBatch.add(oId);
+                    if (row.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
+                            || StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
+                        invalidatedPublicIds.add(oId);
+                        outgoingCache.remove(oId);
+                        continue;
+                    }
+                    final Set<String> refs = extractPublicRawRefs(row.optString(Article.ARTICLE_CONTENT, ""));
+                    outgoingCache.put(oId, new CachedOutgoing(meta.updated(), meta.title(), meta.permalink(), refs));
+                }
+                for (final String expectedId : batchIds) {
+                    if (!fetchedInBatch.contains(expectedId)) {
+                        invalidatedPublicIds.add(expectedId);
+                        outgoingCache.remove(expectedId);
+                    }
+                }
+            }
+            if (!invalidatedPublicIds.isEmpty()) {
+                seenPublicIds.removeAll(invalidatedPublicIds);
+                permalinkToId.values().removeAll(invalidatedPublicIds);
+            }
+        }
+
+        if (seenPublicIds.isEmpty() || permalinkToId.isEmpty()) {
             return Collections.emptyMap();
         }
 
         final String servePath = stripTrailingSlashes(StringUtils.trimToEmpty(Latkes.getServePath()));
         final String contextPath = stripTrailingSlashes(StringUtils.trimToEmpty(Latkes.getContextPath()));
-
-        record SourceRow(String oId, String title, String permalink, String rawContent, long updated) {
-        }
-
-        final List<SourceRow> publicArticles = new ArrayList<>(rows.length());
-        final Map<String, String> permalinkToId = new HashMap<>(rows.length() * 2);
-
-        for (int i = 0; i < rows.length(); i++) {
-            final JSONObject row = rows.optJSONObject(i);
-            if (row == null) {
-                continue;
-            }
-            if (row.optInt(Article.ARTICLE_STATUS, Article.ARTICLE_STATUS_C_PUBLISHED) != Article.ARTICLE_STATUS_C_PUBLISHED
-                    || StringUtils.isNotBlank(row.optString(Article.ARTICLE_VIEW_PWD))) {
-                continue;
-            }
-            final String oId = StringUtils.trimToEmpty(row.optString(Keys.OBJECT_ID));
-            final String rawPermalink = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_PERMALINK));
-            if (oId.isEmpty() || rawPermalink.isEmpty()) {
-                continue;
-            }
-            final String canonicalPermalink = rawPermalink.startsWith("/") ? rawPermalink : ("/" + rawPermalink);
-            final String lookupKey = normalizePermalinkKey(canonicalPermalink);
-            if (lookupKey.isEmpty() || "/".equals(lookupKey)) {
-                continue;
-            }
-            final String title = StringUtils.trimToEmpty(row.optString(Article.ARTICLE_TITLE));
-            final String content = row.optString(Article.ARTICLE_CONTENT, "");
-            final long updated = row.optLong(Article.ARTICLE_UPDATED, 0L);
-
-            permalinkToId.putIfAbsent(lookupKey, oId);
-            publicArticles.add(new SourceRow(oId, title, canonicalPermalink, content, updated));
-        }
-
-        if (permalinkToId.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
         final Map<String, Map<String, BacklinkItem>> incomingByTarget = new LinkedHashMap<>();
 
-        for (final SourceRow src : publicArticles) {
-            if (StringUtils.isBlank(src.rawContent())) {
+        for (final String sourceId : seenPublicIds) {
+            final CachedOutgoing src = outgoingCache.get(sourceId);
+            if (src == null || src.refs().isEmpty()) {
                 continue;
             }
-            // CRITICAL SECURITY: strip all :::lock ... ::: blocks (failing closed on unclosed locks) first!
-            final String publicMarkdown = stripCodeBlocksAndSpans(Article.sanitizePublicMarkdown(src.rawContent()));
-            if (publicMarkdown.isEmpty()) {
-                continue;
-            }
-            final Set<String> rawTargets = extractRawLinkTargets(publicMarkdown);
-            if (rawTargets.isEmpty()) {
-                continue;
-            }
-            final BacklinkItem backlinkItem = new BacklinkItem(src.oId(), src.title(), src.permalink(), src.updated());
-            for (final String rawTarget : rawTargets) {
+            final BacklinkItem backlinkItem = new BacklinkItem(sourceId, src.title(), src.permalink(), src.updated());
+            for (final String rawTarget : src.refs()) {
                 final String normalizedTarget = normalizeTargetToPermalinkKey(rawTarget, servePath, contextPath);
                 if (normalizedTarget.isEmpty()) {
                     continue;
                 }
                 final String targetArticleId = permalinkToId.get(normalizedTarget);
-                if (targetArticleId != null && !targetArticleId.equals(src.oId())) {
+                if (targetArticleId != null && !targetArticleId.equals(sourceId)) {
                     incomingByTarget
                             .computeIfAbsent(targetArticleId, k -> new LinkedHashMap<>())
-                            .putIfAbsent(src.oId(), backlinkItem);
+                            .putIfAbsent(sourceId, backlinkItem);
                 }
             }
         }
@@ -284,6 +384,19 @@ public class BacklinkService {
         }
 
         return Collections.unmodifiableMap(result);
+    }
+
+    private static Set<String> extractPublicRawRefs(final String rawContent) {
+        if (StringUtils.isBlank(rawContent)) {
+            return Collections.emptySet();
+        }
+        // CRITICAL SECURITY: strip all :::lock ... ::: blocks (failing closed on unclosed locks) first!
+        final String publicMarkdown = stripCodeBlocksAndSpans(Article.sanitizePublicMarkdown(rawContent));
+        if (publicMarkdown.isEmpty()) {
+            return Collections.emptySet();
+        }
+        final Set<String> rawTargets = extractRawLinkTargets(publicMarkdown);
+        return rawTargets.isEmpty() ? Collections.emptySet() : Set.copyOf(rawTargets);
     }
 
     static String stripCodeBlocksAndSpans(final String markdown) {
@@ -442,16 +555,51 @@ public class BacklinkService {
         if (queryIdx >= 0) {
             s = s.substring(0, queryIdx);
         }
-        if (s.isEmpty()) {
+        if (s.isEmpty() || s.length() > 4096) {
             return "";
+        }
+        if (s.indexOf('%') >= 0) {
+            try {
+                final String preservedPlus = s.indexOf('+') >= 0
+                        ? s.replace("+", "%2B")
+                        : s;
+                s = URLDecoder.decode(preservedPlus, StandardCharsets.UTF_8);
+            } catch (final IllegalArgumentException e) {
+                return "";
+            }
+        }
+        for (int i = 0; i < s.length(); i++) {
+            final char c = s.charAt(i);
+            if (c <= 0x1F || c == 0x7F || c == '\\' || c == '\uFFFD') {
+                return "";
+            }
         }
         if (!s.startsWith("/")) {
             s = "/" + s;
+        }
+        if (hasDotDotSegment(s)) {
+            return "";
         }
         while (s.length() > 1 && s.endsWith("/")) {
             s = s.substring(0, s.length() - 1);
         }
         return s;
+    }
+
+    private static boolean hasDotDotSegment(final String path) {
+        int segStart = 0;
+        final int len = path.length();
+        for (int i = 0; i <= len; i++) {
+            if (i == len || path.charAt(i) == '/') {
+                if (i - segStart == 2
+                        && path.charAt(segStart) == '.'
+                        && path.charAt(segStart + 1) == '.') {
+                    return true;
+                }
+                segStart = i + 1;
+            }
+        }
+        return false;
     }
 
     private static String stripTrailingSlashes(final String s) {

@@ -18,6 +18,7 @@
 package org.b3log.solo.repository;
 
 import org.b3log.latke.Keys;
+import org.b3log.latke.Latkes;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.repository.annotation.Repository;
 import org.b3log.solo.model.Category;
@@ -42,24 +43,18 @@ public class CategoryTagRepository extends AbstractRepository {
         super(Category.CATEGORY + "_" + Tag.TAG);
     }
 
+    private boolean isSubclassWithoutDatabase() {
+        return getClass() != CategoryTagRepository.class
+                && "NONE".equalsIgnoreCase(Latkes.getLocalProperty("runtimeDatabase"));
+    }
+
     /**
      * Gets category-tag relations by the specified category id.
      *
      * @param categoryId     the specified category id
      * @param currentPageNum the specified current page number, MUST greater then {@code 0}
      * @param pageSize       the specified page size(count of a page contains objects), MUST greater then {@code 0}
-     * @return for example      <pre>
-     * {
-     *     "pagination": {
-     *       "paginationPageCount": 88250
-     *     },
-     *     "rslts": [{
-     *         "oId": "",
-     *         "category_oId": categoryId,
-     *         "tag_oId": ""
-     *     }, ....]
-     * }
-     * </pre>
+     * @return paginated relations
      * @throws RepositoryException repository exception
      */
     public JSONObject getByCategoryId(final String categoryId, final int currentPageNum, final int pageSize) throws RepositoryException {
@@ -75,18 +70,7 @@ public class CategoryTagRepository extends AbstractRepository {
      * @param tagId          the specified tag id
      * @param currentPageNum the specified current page number, MUST greater then {@code 0}
      * @param pageSize       the specified page size(count of a page contains objects), MUST greater then {@code 0}
-     * @return for example      <pre>
-     * {
-     *     "pagination": {
-     *       "paginationPageCount": 88250
-     *     },
-     *     "rslts": [{
-     *         "oId": "",
-     *         "category_oId": "",
-     *         "tag_oId": tagId
-     *     }, ....]
-     * }
-     * </pre>
+     * @return paginated relations
      * @throws RepositoryException repository exception
      */
     public JSONObject getByTagId(final String tagId, final int currentPageNum, final int pageSize) throws RepositoryException {
@@ -97,32 +81,50 @@ public class CategoryTagRepository extends AbstractRepository {
     }
 
     /**
-     * Removes category-tag relations by the specified category id.
+     * Removes category-tag relations by the specified category id in a single bulk query.
      *
      * @param categoryId the specified category id
      * @throws RepositoryException repository exception
      */
     public void removeByCategoryId(final String categoryId) throws RepositoryException {
-        final Query query = new Query().setFilter(new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId));
-        final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
-        for (int i = 0; i < relations.length(); i++) {
-            final JSONObject rel = relations.optJSONObject(i);
-            remove(rel.optString(Keys.OBJECT_ID));
+        if (null == categoryId || categoryId.isBlank()) {
+            return;
         }
+        final Query query = new Query().setFilter(new PropertyFilter(Category.CATEGORY + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, categoryId));
+        if (isSubclassWithoutDatabase()) {
+            final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
+            for (int i = 0; i < relations.length(); i++) {
+                final JSONObject rel = relations.optJSONObject(i);
+                if (null != rel) {
+                    remove(rel.optString(Keys.OBJECT_ID));
+                }
+            }
+            return;
+        }
+        remove(query);
     }
 
     /**
-     * Removes category-tag relations by the specified tag id.
+     * Removes category-tag relations by the specified tag id in a single bulk query.
      *
      * @param tagId the specified tag id
      * @throws RepositoryException repository exception
      */
     public void removeByTagId(final String tagId) throws RepositoryException {
-        final Query query = new Query().setFilter(new PropertyFilter(Tag.TAG + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, tagId));
-        final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
-        for (int i = 0; i < relations.length(); i++) {
-            final JSONObject rel = relations.optJSONObject(i);
-            remove(rel.optString(Keys.OBJECT_ID));
+        if (null == tagId || tagId.isBlank()) {
+            return;
         }
+        final Query query = new Query().setFilter(new PropertyFilter(Tag.TAG + "_" + Keys.OBJECT_ID, FilterOperator.EQUAL, tagId));
+        if (isSubclassWithoutDatabase()) {
+            final JSONArray relations = org.b3log.solo.util.QueryResults.array(get(query));
+            for (int i = 0; i < relations.length(); i++) {
+                final JSONObject rel = relations.optJSONObject(i);
+                if (null != rel) {
+                    remove(rel.optString(Keys.OBJECT_ID));
+                }
+            }
+            return;
+        }
+        remove(query);
     }
 }

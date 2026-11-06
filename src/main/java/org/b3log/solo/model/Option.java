@@ -314,6 +314,11 @@ public final class Option {
      */
     public static final String CATEGORY_C_VOLO_ANALYTICS = "voloAnalytics";
 
+    /**
+     * Category - Remote Backup (isolated from {@link #CATEGORY_C_PREFERENCE} so credentials never leak into preference responses/updates).
+     */
+    public static final String CATEGORY_C_REMOTE_BACKUP = "remoteBackup";
+
     //// Transient ////
     /**
      * Key of statistic blog published article count.

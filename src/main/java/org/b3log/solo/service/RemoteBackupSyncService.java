@@ -561,7 +561,7 @@ public class RemoteBackupSyncService {
 
     private void persistConfigDocument(final String jsonValue) throws Exception {
         if (optionMgmtService != null) {
-            optionMgmtService.storeDocument(Option.ID_C_VOLO_REMOTE_BACKUP, Option.CATEGORY_C_PREFERENCE, jsonValue);
+            optionMgmtService.storeDocument(Option.ID_C_VOLO_REMOTE_BACKUP, Option.CATEGORY_C_REMOTE_BACKUP, jsonValue);
             return;
         }
         if (optionRepository != null) {
@@ -569,10 +569,10 @@ public class RemoteBackupSyncService {
             if (existing == null) {
                 optionRepository.add(new JSONObject()
                         .put(Keys.OBJECT_ID, Option.ID_C_VOLO_REMOTE_BACKUP)
-                        .put(Option.OPTION_CATEGORY, Option.CATEGORY_C_PREFERENCE)
+                        .put(Option.OPTION_CATEGORY, Option.CATEGORY_C_REMOTE_BACKUP)
                         .put(Option.OPTION_VALUE, jsonValue));
             } else {
-                existing.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_PREFERENCE);
+                existing.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_REMOTE_BACKUP);
                 existing.put(Option.OPTION_VALUE, jsonValue);
                 optionRepository.update(Option.ID_C_VOLO_REMOTE_BACKUP, existing);
             }

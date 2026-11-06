@@ -163,7 +163,11 @@ public class PicUploadProcessor {
             if (!itemList.isEmpty()) {
                 final String config = getOptionValue(Option.ID_C_TUCHUANG_CONFIG, "hacpai");
                 final String compressValue = getOptionValue(Option.ID_C_IMAGE_UPLOAD_COMPRESS, "10");
-                for (final FileUpload item : itemList) {
+                for (int i = 0; i < itemList.size(); i++) {
+                    final FileUpload item = itemList.set(i, null);
+                    if (item == null) {
+                        continue;
+                    }
                     final String name = item.getFilename();
                     final File file;
                     try {

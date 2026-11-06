@@ -85,7 +85,7 @@ admin.comment = {
             '" data-comment-from="' + escape(fromId) + '" data-comment-on="' + escape(onId) +
             '" onclick="admin.comment.del(this.dataset.commentId, this.dataset.commentFrom, this.dataset.commentOn); return false;">' +
             Label.removeLabel + '</a><span class=\'fn__right\'>&nbsp;&nbsp;'
-            + $.bowknot.getDate(comments[i].commentTime)
+            + $.bowknot.getDate(comments[i].commentTime, 2)
             +
             '&nbsp;</span><div class=\'fn__clear\'></div></div><div class=\'vditor-reset\'>'
             + contentHTML + '</div>'

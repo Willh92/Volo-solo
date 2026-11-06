@@ -3,6 +3,24 @@ admin.githubRepositories = {
   loaded: false,
   dirty: false,
   page: 1,
+  formatSyncTime: function (value) {
+    if (value === null || value === undefined || typeof value === 'boolean') return '—'
+    if (typeof value === 'string') {
+      value = value.trim()
+      if (!value) return '—'
+      if (/^\d+$/.test(value)) value = Number(value)
+    }
+    if (typeof value === 'number' && (!Number.isFinite(value) || value <= 0)) return '—'
+    if (typeof Util !== 'undefined' && Util && typeof Util.formatDate === 'function') {
+      return Util.formatDate(value, 2)
+    }
+    var d = value instanceof Date ? value : new Date(value)
+    var time = d.getTime()
+    if (!Number.isFinite(time) || time <= 0) return '—'
+    var pad = function (n) { return (n < 10 ? '0' : '') + n }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+  },
   init: function () {
     if (!document.getElementById('githubRepositoryList')) return
     this.loaded = false
@@ -34,7 +52,9 @@ admin.githubRepositories = {
         admin.githubRepositories.dirty = false
         admin.githubRepositories.page = 1
         $('#githubIncludeForks').prop('checked', !!data.includeForks).prop('disabled', false)
-        admin.githubRepositories.message(data.synced ? (data.updatedAt ? '上次同步：' + new Date(data.updatedAt).toLocaleString() : '这是旧版同步数据，立即同步可补全 Fork 仓库。') : '还没有此账号的仓库快照。保存 GitHub ID 后，点击“立即同步仓库”。')
+        var syncedVal = data.syncedAt != null ? data.syncedAt : data.updatedAt
+        var syncedTime = admin.githubRepositories.formatSyncTime(syncedVal)
+        admin.githubRepositories.message(data.synced ? (syncedTime !== '—' ? '上次同步：' + syncedTime : '这是旧版同步数据，立即同步可补全 Fork 仓库。') : '还没有此账号的仓库快照。保存 GitHub ID 后，点击“立即同步仓库”。')
         admin.githubRepositories.render()
       },
       error: function () { if (admin.githubRepositories.revision === revision) admin.githubRepositories.message('读取仓库失败，可点击“重新载入”重试；已有显示设置不会被清空。') },

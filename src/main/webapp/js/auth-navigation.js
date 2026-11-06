@@ -196,6 +196,10 @@
     })
   }
 
+  function isSingletonVendorScript (scriptPath) {
+    return /\/(?:sweetalert|mdui|jquery\.fancybox|jquery\.cookie|lazyload(?:\.iife)?|typed|swiper|TweenMax)(?:\.min)?\.js$/i.test(scriptPath)
+  }
+
   function shouldSkipPersistentBodyScript (source, scriptPath, navMode) {
     if (!source.src) return false
     if (/\/plugins\/kanbanniang\/loader(?:\.min)?\.js$/i.test(scriptPath)) {
@@ -208,6 +212,30 @@
     }
     if (/\/js\/lib\/(?:compress\/pjax\.min|jquery\/jquery\.min)\.js$/i.test(scriptPath)) {
       return typeof window.jQuery === 'function'
+    }
+    if (/\/sweetalert(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.swal === 'function'
+    }
+    if (/\/mdui(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.mdui === 'object' && window.mdui !== null
+    }
+    if (/\/jquery\.fancybox(?:\.min)?\.js$/i.test(scriptPath)) {
+      return Boolean(window.jQuery && window.jQuery.fn && window.jQuery.fn.fancybox)
+    }
+    if (/\/jquery\.cookie(?:\.min)?\.js$/i.test(scriptPath)) {
+      return Boolean(window.jQuery && window.jQuery.cookie)
+    }
+    if (/\/lazyload(?:\.iife)?(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.LazyLoad === 'function'
+    }
+    if (/\/typed(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.Typed === 'function'
+    }
+    if (/\/swiper(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.Swiper === 'function'
+    }
+    if (/\/TweenMax(?:\.min)?\.js$/i.test(scriptPath)) {
+      return typeof window.TweenMax === 'function'
     }
     if (/\/js\/common(?:\.min)?\.js$/i.test(scriptPath)) {
       return Boolean(window.Util && window.Cookie)
@@ -226,6 +254,7 @@
       return Promise.resolve()
     }
     var isPersistentHead = hasNavAttr && navMode !== 'once'
+    var preserveInjectedStyles = Boolean(source.src && (isPersistentHead || navMode === 'once' || isSingletonVendorScript(scriptPath)))
     if (isPersistentHead) {
       if (!source.src) return Promise.resolve()
       if (loadedPersistentScripts.has(scriptPath)) return Promise.resolve()
@@ -234,6 +263,7 @@
     return new Promise(function (resolve, reject) {
       var script = document.createElement('script')
       var timer
+      var headChildrenBefore = preserveInjectedStyles ? new Set(Array.from(document.head.children)) : null
       Array.from(source.attributes).forEach(function (attribute) {
         if (attribute.name !== 'async' && attribute.name !== 'defer') script.setAttribute(attribute.name, attribute.value)
       })
@@ -242,6 +272,13 @@
         timer = nativeTimeout(function () { script.remove(); reject(new Error('Script timed out: ' + source.src)) }, 15000)
         script.onload = function () {
           nativeClearTimeout(timer)
+          if (headChildrenBefore) {
+            Array.from(document.head.children).forEach(function (element) {
+              if (!headChildrenBefore.has(element) && element.tagName && element.tagName.toUpperCase() === 'STYLE' && typeof element.setAttribute === 'function') {
+                element.setAttribute(persistentAttribute, '')
+              }
+            })
+          }
           // A newly loaded jQuery must wait until the page's Label and modules are ready.
           if (window.jQuery && !heldJQueries.includes(window.jQuery) && !window.jQuery.isReady) {
             window.jQuery.holdReady(true)
@@ -336,6 +373,10 @@
       }
       Array.from(document.head.children).forEach(function (element) {
         if (element.hasAttribute(persistentAttribute) || element.matches('link[rel="stylesheet"]')) return
+        if (element.tagName && element.tagName.toUpperCase() === 'STYLE' && typeof element.textContent === 'string' && element.textContent.indexOf('.swal-') !== -1) {
+          if (typeof element.setAttribute === 'function') element.setAttribute(persistentAttribute, '')
+          return
+        }
         element.remove()
       })
       Array.from(page.head.children).forEach(function (element) {

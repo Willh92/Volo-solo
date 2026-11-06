@@ -39,23 +39,19 @@ admin.pageList = {
         this.tablePagination.buildTable([{
                 text: "",
                 index: "pageOrder",
-                width: 60,
-                style: "padding-left: 12px;font-size:14px;"
+                width: 68
             }, {
-                style: "padding-left: 12px;",
                 text: Label.titleLabel,
                 index: "pageTitle",
-                width: 300
+                width: 220
             }, {
-                style: "padding-left: 12px;",
                 text: Label.permalinkLabel,
                 index: "pagePermalink",
-                minWidth: 100
+                minWidth: 180
             }, {
-                style: "padding-left: 12px;",
                 text: Label.openMethodLabel,
                 index: "pageTarget",
-                width: 120
+                width: 110
             }]);
         this.tablePagination.initPagination();
         this.getList(page);

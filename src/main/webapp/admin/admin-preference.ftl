@@ -330,7 +330,7 @@
         <script>
             function loadRemind() {
                 clear();
-                sel = $('#tcS').val();
+                var sel = $('#tcS').val();
                 switch (sel) {
                     case 'hacpai':
                         $('#td1').show();
@@ -474,7 +474,7 @@
             }
 
             function save() {
-                sel = $('#tcS').val();
+                var sel = $('#tcS').val();
                 switch (sel) {
                     case 'hacpai':
                         $('#sourceTC').text('hacpai');
@@ -501,29 +501,26 @@
                         $('#sourceTC').text('s3<<>>' + $.trim($('#tc2').val()) + '<<>>' + $.trim($('#tc3').val()) + '<<>>' + $('#tc4').val() + '<<>>' + $.trim($('#tc5').val()) + '<<>>' + ($.trim($('#tc6').val()) || 'auto') + '<<>>' + $.trim($('#tc7').val()) + '<<>>' + $.trim($('#tc8').val()) + '<<>>' + ($('#tc9').val() === 'true' ? 'true' : 'false'));
                         break;
                 }
-                admin.preference.update();
-                noBtnSwal('${picBed24Label}');
+                admin.preference.update(function () {
+                    noBtnSwal('${picBed24Label}');
+                });
             }
 
             function checkImageBedConfig() {
-                let flag = false;
-                $.ajax({
+                return $.ajax({
                     type: 'POST',
                     url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
-                    async: false,
-                    success: function (res) {
-                        result = res.msg;
-                        flag = result.indexOf(":)") !== -1;
-                    }
-                })
-                return flag;
+                    cache: false
+                }).then(function (res) {
+                    return Boolean(res && res.msg && res.msg.indexOf(':)') !== -1);
+                });
             }
 
             function checkImageBedConfigAndAlert() {
                 $.ajax({
                     type: 'POST',
                     url: Label.servePath + '/pic/local/check?path=' + encodeURIComponent($('#tc2').val()),
-                    async: false,
+                    cache: false,
                     success: function (res) {
                         noBtnSwal(res.msg);
                     }

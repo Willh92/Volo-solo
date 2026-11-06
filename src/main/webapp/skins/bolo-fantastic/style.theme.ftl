@@ -473,21 +473,23 @@
 
     .content table thead td,
     .content table thead th {
-        border: 1px solid var(--background);
-
+        border: 1px solid rgba(127, 140, 154, 0.28);
     }
 
     .content table td,
     .content table th {
-        border: 1px solid var(--background);
+        border: 1px solid rgba(127, 140, 154, 0.28);
     }
 
-    table {
-        border: 2px solid var(--btn-hover-color);
+    .content table {
+        border: 1px solid rgba(127, 140, 154, 0.28);
     }
 
-    thead, tbody, tr, th {
-        border: 1px solid var(--background);
+    .content table thead,
+    .content table tbody,
+    .content table tr,
+    .content table th {
+        border: 1px solid rgba(127, 140, 154, 0.28);
     }
 
     footer .title {
