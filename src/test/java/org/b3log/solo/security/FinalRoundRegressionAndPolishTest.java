@@ -485,6 +485,7 @@ public class FinalRoundRegressionAndPolishTest {
             org.b3log.solo.web.Routes.mapping();
         } finally {
             org.b3log.latke.ioc.BeanManager.close();
+            configure();
         }
     }
 

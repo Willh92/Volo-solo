@@ -26,6 +26,7 @@ import org.b3log.latke.http.Request;
 import org.b3log.latke.http.Response;
 
 import org.b3log.latke.Keys;
+import org.b3log.latke.Latkes;
 import org.b3log.latke.ioc.Inject;
 import org.apache.logging.log4j.Level;
 import org.b3log.solo.logging.Logger;
@@ -129,7 +130,7 @@ public class UserTemplateProcessor {
         }
 
         try {
-            final Map<String, String> langs = langPropsService.getAll(Locales.getLocale(request));
+            final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
             dataModel.putAll(langs);
             final JSONObject preference = optionQueryService.getPreference();
             dataModelService.fillCommon(context, dataModel, preference);

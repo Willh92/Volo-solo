@@ -327,6 +327,13 @@
 
       cleanupPage({keepKanban: keepKanban})
       oldStyles.forEach(function (style) { if (!styles.includes(style)) style.remove() })
+      for (var styleIndex = 1; styleIndex < styles.length; styleIndex++) {
+        var prevStyle = styles[styleIndex - 1]
+        var nextStyle = styles[styleIndex]
+        if (typeof prevStyle.compareDocumentPosition === 'function' && !(prevStyle.compareDocumentPosition(nextStyle) & 4)) {
+          document.head.appendChild(nextStyle)
+        }
+      }
       Array.from(document.head.children).forEach(function (element) {
         if (element.hasAttribute(persistentAttribute) || element.matches('link[rel="stylesheet"]')) return
         element.remove()

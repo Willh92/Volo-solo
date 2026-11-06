@@ -56,6 +56,10 @@ body.bolo-console {
   #top .avatar { float: none; margin: 0; border-radius: 50%; width: 30px; height: 30px; object-fit: cover; background: var(--bolo-raised); }
   .console-logout, .console-menu { background: transparent; border: 0; color: var(--bolo-muted); width: 34px; height: 36px; padding: 0; display: grid; place-items: center; font-size: 17px; }
   .console-logout:hover, .console-menu:hover { background: var(--bolo-raised); color: var(--bolo-text); }
+  .bolo-appearance [data-bolo-theme-toggle] { background: var(--bolo-surface); border: 1px solid var(--bolo-line); color: var(--bolo-text); }
+  .bolo-appearance [data-bolo-theme-toggle]:is(:hover, [aria-expanded='true']) { background: var(--bolo-raised); border-color: var(--bolo-muted); color: var(--bolo-text); filter: none; }
+  .bolo-appearance [data-bolo-mode] { background: transparent; border: 0; color: var(--bolo-text); }
+  .bolo-appearance [data-bolo-mode]:hover, .bolo-appearance [aria-checked='true'] { background: var(--bolo-raised); border-color: transparent; color: var(--bolo-text); }
   .console-menu { display: none; }
   #tabs { margin: 0; top: 80px; left: 0; height: calc(100dvh - 80px); padding: 24px 14px 0; background: var(--console-nav); color: var(--console-nav-text); display: flex; flex-direction: column; scrollbar-width: thin; z-index: 81; }
   #tabs > ul { margin: 0; padding: 0; height: auto !important; }
@@ -337,14 +341,17 @@ body.bolo-console {
   .console-log-level--error { color: #a13d4c; }
   .console-log-time, .console-log-source { color: var(--bolo-muted); }
   .console-accent { position: relative; }
-  .console-accent > summary { list-style: none; cursor: pointer; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--bolo-line); border-radius: 9px; background: var(--bolo-surface); }
+  .console-accent > summary { list-style: none; cursor: pointer; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--bolo-line); border-radius: 9px; background: var(--bolo-surface); transition: background-color .18s, border-color .18s; }
+  .console-accent > summary:hover, .console-accent[open] > summary { background: var(--bolo-raised); border-color: var(--bolo-muted); }
   .console-accent > summary::-webkit-details-marker { display: none; }
   .console-accent-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--bolo-button); }
   .console-accent-panel { position: absolute; top: 46px; right: 0; width: 238px; padding: 18px; border: 1px solid var(--bolo-line); border-radius: 12px; background: var(--bolo-surface); box-shadow: 0 10px 35px #0002; }
   .console-accent-panel p { margin: 0 0 12px; font-size: 12px; color: var(--bolo-text); }
   .console-accent-swatches { display: flex; gap: 9px; }
   .console-accent-swatches button { width: 25px; height: 25px; padding: 0; border-radius: 50%; border: 3px solid var(--bolo-surface); outline: 1px solid var(--bolo-line); }
+  .console-accent-swatches button:hover { border-color: var(--bolo-surface); outline-color: var(--bolo-accent); }
   .console-accent-swatches button[aria-pressed='true'] { outline: 1px solid var(--bolo-accent); }
+  .vditor-emojis button:hover { background-color: var(--bolo-raised); border-color: transparent; }
   .console-accent-panel small { display: block; color: var(--bolo-muted); font-size: 10px; margin-top: 12px; }
   .volo-about-hero { display: flex; align-items: center; gap: 25px; padding: 20px 0 36px; }
   .volo-about-mark { width: 85px; height: 85px; flex-shrink: 0; display: grid; place-items: center; font-size: 54px; font-weight: 750; letter-spacing: -.09em; background: var(--bolo-button); color: #f0f6f2; border-radius: 27px; }

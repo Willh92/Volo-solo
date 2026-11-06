@@ -193,4 +193,29 @@ for(const skin of skins){
   sandbox.document.querySelector=()=>null;sandbox.Skin._initMenu();
 }
 
+// PJAX navigation must preserve exact <head> stylesheet cascade order (e.g. appearance.css after admin.css).
+{
+  let current=new URL('http://localhost:18085/start');
+  const headChildren=[];
+  const makeLink=href=>({
+    tagName:'LINK',href,attributes:[],childNodes:[],
+    hasAttribute:()=>false,matches:sel=>sel==='link[rel="stylesheet"]',
+    remove(){const idx=headChildren.indexOf(this);if(idx>=0)headChildren.splice(idx,1);},
+    compareDocumentPosition(other){const a=headChildren.indexOf(this),b=headChildren.indexOf(other);return a>=0&&b>=0&&b>a?4:2;}
+  });
+  headChildren.push(makeLink('http://localhost:18085/js/lib/vditor/dist/index.css'),makeLink('http://localhost:18085/scss/account.css'),makeLink('http://localhost:18085/scss/appearance.css'));
+  const node=()=>({attributes:[],childNodes:[],hasAttribute:()=>false,matches:()=>false,remove(){},setAttribute(){},removeAttribute(){}});
+  const head={...node(),children:headChildren,querySelectorAll:sel=>sel==='link[rel="stylesheet"]'?headChildren.filter(c=>c.tagName==='LINK'):[],appendChild(el){const idx=headChildren.indexOf(el);if(idx>=0)headChildren.splice(idx,1);headChildren.push(el);queueMicrotask(()=>el.onload?.());return el;}};
+  const doc=Object.assign(new Target(),{currentScript:{hasAttribute:()=>true},readyState:'complete',head,documentElement:{...node(),dataset:{boloPage:'auth',boloSkin:'',boloLoginUrl:'/start',boloAdminUrl:'/admin-index.do'}},body:{...node(),classList:{contains:()=>false},replaceChildren(){},setAttribute(){},removeAttribute(){}},createElement:node,querySelectorAll:()=>[],importNode:el=>el.tagName==='LINK'?makeLink(el.href):el,title:'Start'});
+  const loc={get href(){return current.href;},get origin(){return current.origin;},assign(h){current=new URL(h);}};
+  const hist={state:null,replaceState(s,_,h){this.state=s;current=new URL(h,current);},pushState(s,_,h){this.state=s;current=new URL(h,current);}};
+  const win=Object.assign(new Target(),{location:loc,scrollY:0,scrollX:0,scrollTo(){},confirm:()=>true,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){}});
+  const incomingLinks=['http://localhost:18085/js/lib/vditor/dist/index.css','http://localhost:18085/scss/admin.css','http://localhost:18085/scss/console-theme.css','http://localhost:18085/scss/appearance.css'].map(makeLink);
+  class XHR extends Target{send(){}abort(){}}
+  vm.runInNewContext(source,{window:win,document:doc,location:loc,history:hist,URL,URLSearchParams,FormData,AbortController,XMLHttpRequest:XHR,HTMLFormElement:class{},Event:class{constructor(t){this.type=t;}},CustomEvent:class{constructor(t,o){this.type=t;this.detail=o?.detail;}},console,fetch:async href=>({ok:true,status:200,url:href,redirected:false,headers:new Map([['Content-Type','text/html']]),text:async()=>''}),DOMParser:class{parseFromString(){return{head:{...node(),children:incomingLinks,querySelectorAll:sel=>sel==='link[rel="stylesheet"]'?incomingLinks:[]},body:{...node(),childNodes:[],querySelectorAll:()=>[]},documentElement:{...node(),lang:'zh-CN',className:''},querySelectorAll:()=>[],title:'Admin'};}}});
+  doc.currentScript=null;
+  await win.BoloNavigation.navigate('/admin-index.do');
+  assert.deepEqual(head.querySelectorAll('link[rel="stylesheet"]').map(l=>l.href),incomingLinks.map(l=>l.href),'PJAX navigation must keep appearance.css after admin.css and console-theme.css');
+}
+
 console.log('Navigation checks passed: '+skins.length+' skins, page cleanup, history, native-link exclusions and chapter tracking');

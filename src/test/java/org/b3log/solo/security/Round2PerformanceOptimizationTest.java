@@ -344,16 +344,30 @@ public class Round2PerformanceOptimizationTest {
         }
 
         // Skins.fillLangs negative cache for default skin volo-studio (no /lang/ directory)
-        final Field langMapField = Skins.class.getDeclaredField("LANG_MAP");
-        langMapField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        final Map<String, Map<String, String>> langMap = (Map<String, Map<String, String>>) langMapField.get(null);
-        langMap.remove("volo-studio.zh_CN");
-        final Map<String, Object> dataModel = new HashMap<>();
-        Skins.fillLangs("zh_CN", "volo-studio", dataModel);
-        Assert.assertNotNull(langMap.get("volo-studio.zh_CN"),
-                "Skins without /lang/ directory must store emptyMap in LANG_MAP negative cache");
-        Assert.assertTrue(langMap.get("volo-studio.zh_CN").isEmpty());
+        org.b3log.latke.Latkes.setLocale(Locale.SIMPLIFIED_CHINESE);
+        boolean startedBeanManager = false;
+        try {
+            org.b3log.latke.ioc.BeanManager.getInstance().getReference(org.b3log.latke.service.LangPropsService.class);
+        } catch (final Exception ignored) {
+            org.b3log.latke.ioc.BeanManager.start(new java.util.ArrayList<>(List.of(org.b3log.latke.service.LangPropsService.class)));
+            startedBeanManager = true;
+        }
+        try {
+            final Field langMapField = Skins.class.getDeclaredField("LANG_MAP");
+            langMapField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            final Map<String, Map<String, String>> langMap = (Map<String, Map<String, String>>) langMapField.get(null);
+            langMap.remove("volo-studio.zh_CN");
+            final Map<String, Object> dataModel = new HashMap<>();
+            Skins.fillLangs("zh_CN", "volo-studio", dataModel);
+            Assert.assertNotNull(langMap.get("volo-studio.zh_CN"),
+                    "Skins without /lang/ directory must store emptyMap in LANG_MAP negative cache");
+            Assert.assertTrue(langMap.get("volo-studio.zh_CN").isEmpty());
+        } finally {
+            if (startedBeanManager) {
+                org.b3log.latke.ioc.BeanManager.close();
+            }
+        }
     }
 
     @Test

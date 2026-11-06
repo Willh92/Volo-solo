@@ -776,5 +776,7 @@ console.log('Admin checks passed: safe renderers, persistent list actions, pagin
     assert(consoleScss.includes('.console-modal')&&consoleScss.includes("input[type='search']"),'Console modal controls must receive unified input/select/textarea styling');
     assert(consoleScss.includes('button.console-btn-compact:hover:not(:disabled):not(.is-active)'),'Compact console button hover must explicitly preserve legible surface background');
     assert(consoleScss.includes('.console-trend-rank li.is-empty:hover'),'Empty trend rank card must preserve surface background on hover');
+    assert(consoleScss.includes(".bolo-appearance [data-bolo-theme-toggle]:is(:hover, [aria-expanded='true'])"),'Console appearance toggle must override legacy admin.scss teal button:hover');
+    assert(consoleScss.includes('.vditor-emojis button:hover'),'Console Vditor emoji buttons must override legacy admin.scss teal button:hover');
   }
 }

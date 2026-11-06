@@ -42,8 +42,9 @@ html[data-bolo-page='public'] ::-webkit-scrollbar-button { display: none; width:
 .bolo-appearance button { appearance: none; color: var(--bolo-text); border: 1px solid var(--bolo-line); background: var(--bolo-surface); font: inherit; cursor: pointer; box-shadow: none; margin: 0; width: auto; height: auto; }
 .bolo-appearance [data-bolo-theme-toggle] { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 7px 11px; border-radius: 9px; transition: filter .18s, border-color .18s, box-shadow .18s, transform .18s; }
 @media (hover: hover) {
-  .bolo-appearance [data-bolo-theme-toggle]:hover { filter: brightness(.96); border-color: var(--bolo-muted); box-shadow: 0 3px 10px #10251b12; transform: translateY(-1px); }
-  html[data-bolo-theme='dark'] .bolo-appearance [data-bolo-theme-toggle]:hover { filter: brightness(1.14); }
+  .bolo-appearance:not(.bolo-appearance--floating):not(.bolo-appearance--header):not(.bolo-appearance--native) [data-bolo-theme-toggle]:hover { background: var(--bolo-raised); color: var(--bolo-text); filter: none; border-color: var(--bolo-muted); box-shadow: 0 3px 10px #10251b12; transform: translateY(-1px); }
+  .bolo-appearance--floating [data-bolo-theme-toggle]:hover { filter: brightness(.96); border-color: var(--bolo-muted); box-shadow: 0 3px 10px #10251b12; transform: translateY(-1px); }
+  html[data-bolo-theme='dark'] .bolo-appearance--floating [data-bolo-theme-toggle]:hover { filter: brightness(1.14); }
 }
 .bolo-appearance [data-bolo-theme-toggle]:active { transform: none; box-shadow: none; }
 .bolo-appearance svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; }

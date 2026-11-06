@@ -19,11 +19,13 @@ package org.b3log.solo.security;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Properties;
 import org.b3log.latke.Latkes;
 
 final class LatkeTestSupport {
     static void configure() throws Exception {
+        Latkes.setLocale(Locale.SIMPLIFIED_CHINESE);
         final Properties properties = new Properties();
         try (var reader = Files.newBufferedReader(Path.of("src/test/resources/latke.properties"))) { properties.load(reader); }
         Latkes.setLatkeProps(properties);

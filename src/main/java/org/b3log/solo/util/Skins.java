@@ -174,7 +174,10 @@ public final class Skins {
             // Fills the core language configurations
             final BeanManager beanManager = BeanManager.getInstance();
             final LangPropsService langPropsService = beanManager.getReference(LangPropsService.class);
-            dataModel.putAll(langPropsService.getAll(Latkes.getLocale()));
+            final Locale locale = StringUtils.isNotBlank(localeString)
+                    ? new Locale(Locales.getLanguage(localeString), Locales.getCountry(localeString))
+                    : Latkes.getLocale();
+            dataModel.putAll(langPropsService.getAll(locale));
 
             if (StringUtils.isBlank(currentSkinDirName)) {
                 currentSkinDirName = Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME;
