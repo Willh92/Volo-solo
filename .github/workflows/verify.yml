@@ -32,3 +32,4 @@ jobs:
       - run: yarn verify:appearance && yarn verify:admin && yarn verify:navigation && yarn verify:kanbanniang
       - run: node scripts/verify-editor-runtime.mjs && node scripts/verify-comments.mjs && node scripts/verify-recommendations.mjs && node scripts/verify-skin-controls.mjs && node scripts/verify-utility-pages.mjs
       - run: mvn --batch-mode --no-transfer-progress -Pci -Dlicense.skip=true verify
+      - run: test -s target/volo-netty.zip

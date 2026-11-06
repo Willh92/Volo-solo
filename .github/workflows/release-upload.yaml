@@ -1,60 +1,108 @@
-name: Upload-Bolo-Netty-Zip-To-Upyun
+name: Release-Volo-Package
 
 on:
   release:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      full_models:
+        description: 'Include all 26 Kanbanniang Live2D models (-DfullModels)'
+        required: false
+        type: boolean
+        default: false
+
 permissions:
-  contents: read
+  contents: write
+
 jobs:
-  upload-zip:
+  release-package:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Java and Maven
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: maven
-
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: yarn
-      - name: Build frontend and standalone distribution
+
+      - name: Set up Java and Maven
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build frontend assets and fetch offline GeoIP databases
         run: |
           corepack enable
           yarn install --frozen-lockfile --ignore-scripts --non-interactive
+          node scripts/fetch-geoip.mjs
           yarn build
-          mvn --batch-mode --no-transfer-progress -Pci -Dlicense.skip=true verify
 
-      - name: Extract version from pom.xml
-        id: version
+      - name: Verify frontend bundles
         run: |
-          version=$(grep -m 1 '<version>' pom.xml | sed -E 's/.*<version>(.+)<\/version>.*/\1/')
-          version_sanitized=$(echo "$version" | sed 's/[.-]/_/g')
-          zip_name="bolo_${version_sanitized}.zip"
-          echo "Extracted version: $version"
-          echo "zip_name=$zip_name" >> $GITHUB_OUTPUT
+          yarn verify:appearance && yarn verify:admin && yarn verify:navigation && yarn verify:kanbanniang
+          node scripts/verify-editor-runtime.mjs && node scripts/verify-comments.mjs && node scripts/verify-recommendations.mjs && node scripts/verify-skin-controls.mjs && node scripts/verify-utility-pages.mjs
+
+      - name: Build and verify standalone Netty distribution
+        env:
+          FULL_MODELS: ${{ inputs.full_models == true && '-DfullModels' || '' }}
+        run: |
+          mvn --batch-mode --no-transfer-progress -Pci -Dlicense.skip=true $FULL_MODELS verify
+          test -s target/volo-netty.zip
+
+      - name: Determine release archive name
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          FULL_MODELS: ${{ inputs.full_models == true && 'true' || 'false' }}
+        run: |
+          pom_version=$(node -e 'const xml = require("node:fs").readFileSync("pom.xml", "utf8").replace(/<!--[\s\S]*?-->/g, ""); const top = xml.replace(/<(parent|properties|dependencyManagement|dependencies|build|profiles)\b[\s\S]*?<\/\1>/g, ""); const m = top.match(/<version>([^<]+)<\/version>/); if (!m) process.exit(1); process.stdout.write(m[1].trim());')
+          raw_version="${RELEASE_TAG:-$pom_version}"
+          clean_version="${raw_version#v}"
+          if [[ ! "$clean_version" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Invalid version format: $clean_version" >&2
+            exit 1
+          fi
+          suffix=""
+          if [ "$FULL_MODELS" = "true" ]; then
+            suffix="-full"
+          fi
+          zip_name="volo-${clean_version}${suffix}.zip"
+          artifact_name="volo-${clean_version}${suffix}-package"
+          echo "Resolved package name: $zip_name"
+          echo "zip_name=$zip_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: Prepare versioned standalone ZIP
         env:
           ZIP_NAME: ${{ steps.version.outputs.zip_name }}
         run: |
-          mkdir -p zip-output
-          cp target/bolo-netty.zip "zip-output/$ZIP_NAME"
+          mkdir -p release-dist
+          cp target/volo-netty.zip "release-dist/$ZIP_NAME"
+          {
+            echo "### Volo Release Package"
+            echo ""
+            echo "- File: \`$ZIP_NAME\`"
+            echo "- Size: \`$(du -h "release-dist/$ZIP_NAME" | cut -f1)\`"
+            echo "- SHA-256: \`$(sha256sum "release-dist/$ZIP_NAME" | cut -d' ' -f1)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload bolo_*.zip to UpYun
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact_name }}
+          path: release-dist/${{ steps.version.outputs.zip_name }}
+          if-no-files-found: error
+
+      - name: Upload ZIP to GitHub Release Assets
+        if: github.event_name == 'release'
         env:
-          ZIP_NAME: ${{ steps.version.outputs.zip_name }}
-          UPLOAD_URL: ${{ secrets.UPYUN_UPLOAD_URL }}
-          UPYUN_OPERATOR: ${{ secrets.UPYUN_OPERATOR }}
-          UPYUN_PASSWORD: ${{ secrets.UPYUN_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ZIP_PATH: release-dist/${{ steps.version.outputs.zip_name }}
         run: |
-          test -n "$UPLOAD_URL" && test -n "$UPYUN_OPERATOR" && test -n "$UPYUN_PASSWORD"
-          curl --fail-with-body --silent --show-error -T "zip-output/$ZIP_NAME" \
-            "${UPLOAD_URL%/}/$ZIP_NAME" -u "$UPYUN_OPERATOR:$UPYUN_PASSWORD"
+          gh release upload "$TAG_NAME" "$ZIP_PATH" --clobber --repo "$GITHUB_REPOSITORY"

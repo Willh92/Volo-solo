@@ -248,4 +248,4 @@ Nginx、面板或 CDN 不应向静态响应统一追加 `Cache-Control: no-store
 
 ## 构建
 
-构建命令和工具版本见 [README.md](README.md#开发与构建)。输出为 `target/bolo-netty.zip`，包含应用、依赖、启动脚本和本地静态资源。离线 IP 库由固定版本下载脚本校验 SHA-256 后打包，运行时不会下载。
+构建命令和工具版本见 [README.md](README.md#开发与构建)。输出为 `target/volo-netty.zip`（GitHub Release 发布包为 `volo-<version>.zip`），包含应用、依赖、启动脚本和本地静态资源。离线 IP 库由固定版本下载脚本校验 SHA-256 后打包，运行时不会下载。

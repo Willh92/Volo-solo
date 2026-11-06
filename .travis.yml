@@ -6,6 +6,7 @@ install:
   - nvm install 22
   - corepack enable
   - yarn install --frozen-lockfile --ignore-scripts --non-interactive
+  - node scripts/fetch-geoip.mjs
   - yarn build
 script:
   - mvn verify -Dlicense.skip=true -B -V -Pci

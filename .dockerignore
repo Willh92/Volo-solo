@@ -5,3 +5,5 @@ target
 temp
 image
 ReleasePackages
+docs
+local-tools

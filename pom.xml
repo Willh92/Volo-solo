@@ -574,7 +574,7 @@
                 <version>3.7.1</version>
                 <configuration>
                     <descriptors><descriptor>src/assembly/distribution.xml</descriptor></descriptors>
-                    <finalName>bolo</finalName>
+                    <finalName>volo</finalName>
                 </configuration>
                 <executions>
                     <execution>
@@ -587,7 +587,7 @@
 
         </plugins>
 
-        <finalName>bolo</finalName>
+        <finalName>volo</finalName>
     </build>
 
     <profiles>

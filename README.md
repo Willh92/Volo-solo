@@ -96,7 +96,7 @@ node scripts/verify-utility-pages.mjs
 mvn -Pci verify
 ```
 
-独立运行包位于 `target/bolo-netty.zip`，该内部文件名为兼容已有构建流程保留。必须先构建前端，才能把固定版本的编辑器、字体、公共库及全站预压缩 `.gz` 静态资源打入包中。也可通过项目的 `Dockerfile` 构建 Java 17 运行镜像。
+独立运行包位于 `target/volo-netty.zip`（GitHub Release 发布包为 `volo-<version>.zip`）。必须先构建前端并拉取离线定位库，才能把固定版本的编辑器、字体、公共库、离线 IP 库及全站预压缩 `.gz` 静态资源打入包中。也可通过项目的 `Dockerfile` 构建多架构 Java 17 运行镜像。
 
 普通 Maven 构建不会重写源文件的许可证头；需要统一头部格式时可单独执行 `mvn license:format`。
 

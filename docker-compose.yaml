@@ -1,9 +1,9 @@
-version: '2'
+version: '3.8'
 services:
-  bolo:
-    image: tangcuyu/bolo-solo:latest
+  volo:
+    image: ghcr.io/willh92/volo-solo:latest
     restart: always
-    container_name: bolo
+    container_name: volo
     ports:
       - '8080:8080'
     environment:
