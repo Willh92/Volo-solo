@@ -17,26 +17,22 @@
  */
 package org.b3log.solo.processor;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import org.b3log.latke.http.Request;
-import org.b3log.latke.http.Response;
-
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Level;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.Inject;
-import org.apache.logging.log4j.Level;
-import org.b3log.solo.logging.Logger;
-import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.http.HttpMethod;
 import org.b3log.latke.http.RequestContext;
-import org.b3log.solo.web.annotation.RequestProcessing;
-import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.http.Response;
 import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.util.Locales;
+import org.b3log.latke.ioc.Inject;
+import org.b3log.latke.ioc.Singleton;
+import org.b3log.latke.service.LangPropsService;
+import org.b3log.latke.util.URLs;
+import org.b3log.solo.logging.Logger;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.DataModelService;
 import org.b3log.solo.service.OptionMgmtService;
@@ -45,6 +41,7 @@ import org.b3log.solo.service.StatisticMgmtService;
 import org.b3log.solo.service.UserMgmtService;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
+import org.b3log.solo.web.annotation.RequestProcessing;
 import org.json.JSONObject;
 
 import freemarker.template.Template;
@@ -68,7 +65,7 @@ public class UserTemplateProcessor {
     /**
      * Logger.
      */
-    private static final Logger LOGGER = Logger.getLogger(ArticleProcessor.class);
+    private static final Logger LOGGER = Logger.getLogger(UserTemplateProcessor.class);
 
     /**
      * DataModelService.
@@ -114,20 +111,49 @@ public class UserTemplateProcessor {
     @RequestProcessing(value = "/{name}.html", method = HttpMethod.GET)
     public void showPage(final RequestContext context) {
         final String requestURI = context.requestURI();
-        final String templateName = context.pathVar("name") + ".ftl";
+        final String localURI = StringUtils.removeStart(requestURI, Latkes.getContextPath());
+        if (StringUtils.isBlank(localURI)
+                || localURI.charAt(0) != '/'
+                || !localURI.endsWith(".html")
+                || localURI.indexOf('/', 1) >= 0) {
+            context.sendError(404);
+
+            return;
+        }
+        final String name = URLs.decode(localURI.substring(1, localURI.length() - 5));
+        if (StringUtils.isBlank(name)
+                || name.indexOf('/') >= 0
+                || name.indexOf('\\') >= 0
+                || name.contains("..")) {
+            context.sendError(404);
+
+            return;
+        }
+        String templateName = name + ".ftl";
         LOGGER.log(Level.DEBUG, "Shows page [requestURI={0}, templateName={1}]", requestURI, templateName);
 
-        final Request request = context.getRequest();
-        final Response response = context.getResponse();
-        final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, templateName);
-
-        final Map<String, Object> dataModel = renderer.getDataModel();
-        final Template template = Skins.getSkinTemplate(context, templateName);
+        Template template = Skins.getSkinTemplate(context, templateName);
+        if (null == template && ("categories".equals(name) || "category".equals(name))) {
+            final String altCategoryTemplate = "categories".equals(name) ? "category.ftl" : "categories.ftl";
+            template = Skins.getSkinTemplate(context, altCategoryTemplate);
+            if (null != template) {
+                templateName = altCategoryTemplate;
+            } else {
+                template = Skins.getSkinTemplate(context, "tags.ftl");
+                if (null != template) {
+                    templateName = "tags.ftl";
+                }
+            }
+        }
         if (null == template) {
             context.sendError(404);
 
             return;
         }
+
+        final Response response = context.getResponse();
+        final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, templateName);
+        final Map<String, Object> dataModel = renderer.getDataModel();
 
         try {
             final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
@@ -149,8 +175,8 @@ public class UserTemplateProcessor {
 
     /**
      * Refresh usite from hacpai.
-     * 
-     * @param context
+     *
+     * @param context request context
      */
     @RequestProcessing(value = "/admin/usite/refresh", method = HttpMethod.POST)
     public void refreshUsite(final RequestContext context) {

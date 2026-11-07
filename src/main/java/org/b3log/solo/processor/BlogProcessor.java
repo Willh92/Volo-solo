@@ -72,6 +72,10 @@ public class BlogProcessor {
 
     @RequestProcessing(value = "/github-stats/{username}.svg", method = HttpMethod.GET)
     public void githubStats(final RequestContext context) {
+        if (!StringUtils.endsWith(context.requestURI(), ".svg")) {
+            context.sendError(404);
+            return;
+        }
         final String username = context.pathVar("username");
         if (!org.b3log.solo.util.GitHubStats.validUser(username)) {
             context.sendError(404);

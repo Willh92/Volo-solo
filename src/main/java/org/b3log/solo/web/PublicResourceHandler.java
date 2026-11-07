@@ -159,9 +159,21 @@ public final class PublicResourceHandler implements Handler {
                 uri = uri.substring(ctxPath.length());
             }
             if (!isCleanSingleSlashAsciiPath(uri)) {
-                uri = java.net.URI.create(uri).getPath();
+                try {
+                    uri = java.net.URI.create(uri).getPath();
+                } catch (final IllegalArgumentException invalidUriSyntax) {
+                    int cut = uri.indexOf('?');
+                    if (cut >= 0) {
+                        uri = uri.substring(0, cut);
+                    }
+                    cut = uri.indexOf('#');
+                    if (cut >= 0) {
+                        uri = uri.substring(0, cut);
+                    }
+                    uri = org.b3log.solo.processor.PermalinkHandler.normalizeRequestPermalink(uri);
+                }
             }
-            if (uri == null || uri.isEmpty()) {
+            if (uri == null || uri.isEmpty() || uri.indexOf('\0') >= 0) {
                 context.sendError(404); context.abort(); return;
             }
             final String lower = uri.toLowerCase(Locale.ROOT);

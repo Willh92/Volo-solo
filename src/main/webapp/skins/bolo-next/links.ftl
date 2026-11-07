@@ -1,0 +1,58 @@
+<#--
+
+    Bolo - A stable and beautiful blogging system based in Solo.
+    Copyright (c) 2020-present, https://github.com/bolo-blog
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
+<#include "../../common-template/macro-common_head.ftl">
+<!DOCTYPE html>
+<html>
+    <head>
+        <@head title="${linkLabel} - ${blogTitle}">
+            <link rel="stylesheet" href="${staticServePath}/skins/${skinDirName}/css/base.css?${staticResourceVersion}"/>
+        </@head>
+    </head>
+    <body>
+        <#include "header.ftl">
+        <main class="main">
+            <div class="wrapper">
+                <div class="content page-archive">
+                    <section class="posts-collapse">
+                        <div class="tag-cloud">
+                            ${sumLabel} ${links?size} ${linkLabel}
+                        </div>
+                        <#list links as link>
+                            <article>
+                                <header class="post-header">
+                                    <h2>
+                                        <a class="post-title" rel="friend noopener noreferrer" href="${link.linkAddress?html}" target="_blank">
+                                            ${link.linkTitle?html}
+                                        </a>
+                                        <#if (link.linkDescription!'') != ''>
+                                            <small>${link.linkDescription?html}</small>
+                                        </#if>
+                                    </h2>
+                                </header>
+                            </article>
+                        </#list>
+                    </section>
+                </div>
+                <#include "side.ftl">
+            </div>
+        </main>
+        <#include "footer.ftl">
+    </body>
+</html>

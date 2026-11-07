@@ -1531,9 +1531,11 @@ public class ArticleMgmtService {
      */
     private String getPermalinkForAddArticle(final JSONObject article) throws ServiceException {
         final long date = article.optLong(Article.ARTICLE_CREATED);
-        String ret = article.optString(Article.ARTICLE_PERMALINK);
+        String ret = StringUtils.trimToEmpty(article.optString(Article.ARTICLE_PERMALINK));
         if (StringUtils.isBlank(ret)) {
             ret = "/articles/" + DateFormatUtils.format(date, "yyyy/MM/dd") + "/" + article.optString(Keys.OBJECT_ID) + ".html";
+        } else {
+            ret = ret.replaceAll("\\s+", "-");
         }
 
         if (!ret.startsWith("/")) {
@@ -1548,7 +1550,7 @@ public class ArticleMgmtService {
             throw new ServiceException(langPropsService.get("duplicatedPermalinkLabel"));
         }
 
-        return ret.replaceAll(" ", "-");
+        return ret;
     }
 
     /**
@@ -1564,12 +1566,14 @@ public class ArticleMgmtService {
     private String getPermalinkForUpdateArticle(final JSONObject oldArticle, final JSONObject article, final long created)
             throws ServiceException, JSONException {
         final String articleId = article.getString(Keys.OBJECT_ID);
-        String ret = article.optString(ARTICLE_PERMALINK).trim();
+        String ret = StringUtils.trimToEmpty(article.optString(ARTICLE_PERMALINK));
         final String oldPermalink = oldArticle.getString(ARTICLE_PERMALINK);
 
         if (!oldPermalink.equals(ret)) {
             if (StringUtils.isBlank(ret)) {
                 ret = "/articles/" + DateFormatUtils.format(created, "yyyy/MM/dd") + "/" + articleId + ".html";
+            } else {
+                ret = ret.replaceAll("\\s+", "-");
             }
 
             if (!ret.startsWith("/")) {

@@ -36,7 +36,6 @@ import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.Stopwatchs;
 import org.b3log.latke.util.Strings;
-import org.b3log.latke.util.StaticResources;
 import org.b3log.solo.bolo.prop.MailService;
 import org.b3log.solo.bolo.waf.WAF;
 import org.b3log.solo.event.B3ArticleSender;
@@ -48,6 +47,7 @@ import org.b3log.solo.event.FishPiArticleUpdater;
 import org.b3log.solo.event.FollowArticleRefresher;
 import org.b3log.solo.event.PluginRefresher;
 import org.b3log.solo.model.Option;
+import org.b3log.solo.processor.IndexNowKeyHandler;
 import org.b3log.solo.processor.InitCheckHandler;
 import org.b3log.solo.processor.PermalinkHandler;
 import org.b3log.solo.processor.console.AdminConsole;
@@ -156,7 +156,12 @@ public final class SoloApplication {
             evictTransientSession(req);
             requestDestroyed(req);
         };
-        Routes.HANDLERS.removeIf(handler -> handler instanceof org.b3log.latke.http.handler.StaticResourceHandler);
+        Routes.HANDLERS.removeIf(handler -> handler instanceof org.b3log.latke.http.handler.StaticResourceHandler
+                || handler instanceof InitCheckHandler
+                || handler instanceof org.b3log.solo.web.PublicResourceHandler
+                || handler instanceof PermalinkHandler
+                || handler instanceof IndexNowKeyHandler);
+        Routes.HANDLERS.add(0, new IndexNowKeyHandler());
         Routes.HANDLERS.add(0, new PermalinkHandler());
         Routes.HANDLERS.add(0, new org.b3log.solo.web.PublicResourceHandler());
         Routes.HANDLERS.add(0, new InitCheckHandler());
@@ -426,8 +431,7 @@ public final class SoloApplication {
 
         final String requestURI = httpServletRequest.getRequestURI();
         if (httpServletRequest.isStaticResource()
-                || org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)
-                || StaticResources.isStatic(httpServletRequest)) {
+                || org.b3log.solo.web.PublicResourceHandler.isPublicAssetUri(requestURI)) {
             return;
         }
         if (LOGGER.isTraceEnabled()) {

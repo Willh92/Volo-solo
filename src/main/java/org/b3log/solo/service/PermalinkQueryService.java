@@ -67,7 +67,7 @@ public class PermalinkQueryService {
      */
     public static final Set<String> RESERVED_EXACT_LINKS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
             "/", "/search", "/manifest.json", "/opensearch.xml",
-            "/categories.html", "/archives.html", "/links.html", "/follows.html",
+            "/categories.html", "/category.html", "/archives.html", "/links.html", "/follows.html",
             "/dynamic.html", "/bookshelf.html", "/books", "/follows", "/usite", "/timeaxis",
             "/change-skin", "/login", "/logout", "/register", "/start", "/kill-browser", "/captcha",
             "/favicon", "/favicon.ico", "/robots.txt", "/rss.xml", "/atom.xml", "/sitemap.xml",
@@ -277,8 +277,9 @@ public class PermalinkQueryService {
      */
     public boolean exist(final String permalink) {
         try {
-            return isReservedLink(permalink) || null != articleRepository.getByPermalink(permalink)
-                    || null != pageRepository.getByPermalink(permalink) || permalink.endsWith(".ftl");
+            return isReservedLink(permalink)
+                    || (null != articleRepository && null != articleRepository.getByPermalink(permalink))
+                    || permalink.endsWith(".ftl");
         } catch (final RepositoryException e) {
             LOGGER.log(Level.ERROR, "Determines whether the permalink[" + permalink + "] exists failed, returns true",
                     e);

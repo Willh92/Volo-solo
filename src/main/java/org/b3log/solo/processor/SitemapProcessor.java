@@ -155,23 +155,45 @@ public class SitemapProcessor {
      * Serves the IndexNow key verification file {@code /{indexNowKey}.txt} when IndexNow is enabled
      * and the requested key matches the configured key in constant time; returns 404 otherwise.
      *
+     * <p>Dispatched via {@link IndexNowKeyHandler} before {@code RouteHandler} so single-segment
+     * {@code .txt} verification files never collide with {@code /{name}.html} user template routes.</p>
+     *
      * @param context the specified context
      */
-    @RequestProcessing(value = "/{indexNowKey}.txt", method = HttpMethod.GET)
     public void indexNowKeyFile(final RequestContext context) {
-        final String keyParam = context.pathVar("indexNowKey");
-        if (indexNowService == null || !indexNowService.verifyKeyRequest(keyParam)) {
+        String keyParam = context.pathVar("indexNowKey");
+        if (keyParam == null) {
+            final String localURI = StringUtils.removeStart(context.requestURI(), Latkes.getContextPath());
+            if (localURI != null && localURI.startsWith("/") && localURI.endsWith(".txt") && localURI.indexOf('/', 1) < 0) {
+                keyParam = localURI.substring(1, localURI.length() - 4);
+            }
+        }
+        if (!tryServeIndexNowKey(context, keyParam)) {
             context.sendError(404);
-            return;
+        }
+    }
+
+    /**
+     * Verifies {@code candidateKey} in constant time and writes the plain-text IndexNow verification response
+     * if enabled and matched.
+     *
+     * @param context      request context
+     * @param candidateKey candidate key extracted from {@code /{indexNowKey}.txt}
+     * @return {@code true} if verified and written; {@code false} otherwise
+     */
+    public boolean tryServeIndexNowKey(final RequestContext context, final String candidateKey) {
+        if (indexNowService == null || !indexNowService.verifyKeyRequest(candidateKey)) {
+            return false;
         }
 
         final Response response = context.getResponse();
         response.setContentType(PLAIN_TEXT_CONTENT_TYPE);
         response.setHeader("Cache-Control", SyndicationCacheService.CACHE_CONTROL_VALUE);
         final TextResponseRenderer renderer = new TextResponseRenderer(PLAIN_TEXT_CONTENT_TYPE);
-        renderer.setContent(keyParam);
+        renderer.setContent(candidateKey);
         context.setRenderer(renderer);
         renderer.render(context);
+        return true;
     }
 
     private String buildSitemapXml() throws Exception {
